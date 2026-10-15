@@ -1,0 +1,11 @@
+# StyLua dikonfigurasi line_endings = "Unix", dan CI jalan `stylua --check`.
+# Paksa LF di working copy supaya hasil lokal dan CI sama.
+* text=auto eol=lf
+
+*.rbxl  binary
+*.rbxlx binary
+*.rbxm  binary
+*.rbxmx binary
+*.png   binary
+*.ogg   binary
+*.mp3   binary

@@ -1,0 +1,51 @@
+name: Publish to Roblox
+
+# Manual trigger. Ubah ke `push: branches: [main]` kalau mau auto-publish
+# tiap merge ke main.
+on:
+  workflow_dispatch:
+    inputs:
+      versionType:
+        description: "Published (live) atau Saved (draft)"
+        type: choice
+        options: [Saved, Published]
+        default: Saved
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: roblox
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rokit
+        run: |
+          ROKIT_VERSION=1.2.0
+          curl -fsSL -o rokit.zip \
+            "https://github.com/rojo-rbx/rokit/releases/download/v${ROKIT_VERSION}/rokit-${ROKIT_VERSION}-linux-x86_64.zip"
+          unzip -q rokit.zip -d /tmp/rokit
+          chmod +x /tmp/rokit/rokit
+          /tmp/rokit/rokit self-install
+          echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
+
+      - name: Install project tools
+        run: rokit install --no-trust-check
+
+      - name: Build place
+        run: |
+          mkdir -p build
+          wally install
+          rojo build default.project.json --output build/codeverse.rbxl
+
+      - name: Upload via Open Cloud
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+          UNIVERSE_ID: ${{ vars.ROBLOX_UNIVERSE_ID }}
+          PLACE_ID: ${{ vars.ROBLOX_PLACE_ID }}
+        run: |
+          curl -fsSL --fail-with-body \
+            -X POST \
+            -H "x-api-key: ${ROBLOX_API_KEY}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @build/codeverse.rbxl \
+            "https://apis.roblox.com/universes/v1/${UNIVERSE_ID}/places/${PLACE_ID}/versions?versionType=${{ inputs.versionType }}"

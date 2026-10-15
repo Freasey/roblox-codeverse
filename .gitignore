@@ -1,0 +1,30 @@
+# ---- Roblox build artifacts (BINARY — jangan pernah di-commit) ----
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+*.rbxm
+build/
+
+# ---- Wally dependencies (di-restore lewat `wally install`) ----
+/Packages/*
+/ServerPackages/*
+/DevPackages/*
+!/Packages/.gitkeep
+
+# ---- luau-lsp ----
+sourcemap.json
+
+# ---- Secrets: Open Cloud API key, JANGAN di-commit ----
+.env
+.env.local
+*.key
+
+# ---- OS / editor ----
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- selene generated std (regenerate: selene generate-roblox-std) ----
+roblox.yml
+globalTypes.d.luau
