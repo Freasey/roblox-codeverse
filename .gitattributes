@@ -9,3 +9,6 @@
 *.png   binary
 *.ogg   binary
 *.mp3   binary
+
+*.blend binary
+*.fbx   binary
