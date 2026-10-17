@@ -25,7 +25,14 @@ jobs:
         run: rokit install --no-trust-check
 
       - name: Install Wally dependencies
-        run: wally install
+        run: |
+          wally install
+          # `wally install` menghapus Packages/ kalau [dependencies] kosong —
+          # termasuk .gitkeep yang ada di repo. Setelah itu $path "Packages" di
+          # default.project.json menunjuk ke direktori yang tidak ada dan rojo
+          # berhenti. Folder kosong lebih murah daripada menghapus mapping-nya,
+          # yang tetap dibutuhkan begitu ada dependency pertama.
+          mkdir -p Packages
 
       - name: Check formatting
         run: stylua --check src/ tests/
@@ -35,9 +42,13 @@ jobs:
           selene generate-roblox-std
           selene src/
 
+      # Dipisah dari type check: dulu satu step, jadi rojo yang gagal muncul
+      # dengan judul "Type check" dan errornya terbaca seolah-olah error tipe.
+      - name: Generate sourcemap
+        run: rojo sourcemap default.project.json --output sourcemap.json
+
       - name: Type check
         run: |
-          rojo sourcemap default.project.json --output sourcemap.json
           # Tag-nya disamakan dengan versi luau-lsp di rokit.toml. Kalau
           # ditarik dari branch main upstream, hasil type check bisa berubah
           # tanpa ada satu baris pun di repo ini yang berubah.
