@@ -11,31 +11,35 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Config = require(ReplicatedStorage.Shared.Config)
+local Shared = ReplicatedStorage.Shared
+local Config = require(Shared.Config)
+local Remotes = require(Shared.Remotes)
+local DataSchema = require(Shared.Modules.DataSchema)
+local Signal = require(Shared.Modules.Signal)
 
 type PlayerData = Config.PlayerData
 
 local LOCK_EXPIRY = 1800 -- 30 menit; lock lebih tua dari ini dianggap mati
-local LOCK_RETRY_LIMIT = 6
-local LOCK_RETRY_DELAY = 5
+-- Tiga putaran saja. Satu putaran retry() yang gagal total sudah makan ~22
+-- detik (lihat cap backoff di retry), jadi batas lama (6) berarti pemain
+-- menatap layar kosong menit-menitan sebelum di-kick. Lebih baik kick cepat
+-- dengan pesan jelas. Lihat docs/DEVELOPMENT_PLAN.md bagian 3.2 poin 2.
+local LOCK_RETRY_LIMIT = 3
+local LOCK_RETRY_DELAY = 4
+local MAX_BACKOFF = 8
+local WAIT_TIMEOUT = 90 -- detik; batas atas waitFor, sedikit di atas worst case load
 
 local PlayerDataService = {}
+
+-- Ditembakkan sekali per player begitu datanya siap dipakai. Ini yang dipakai
+-- kode lain untuk tahu kapan boleh membaca data, menggantikan `task.wait(1)`
+-- yang dulu ada di init.server.luau (bagian 3.2 poin 3 dan 4).
+PlayerDataService.onLoaded = Signal.new() :: Signal.Signal<Player, PlayerData>
 
 local store = DataStoreService:GetDataStore(Config.DATASTORE_NAME)
 local cache: { [number]: PlayerData } = {}
 local loaded: { [number]: boolean } = {}
 local shuttingDown = false
-
--- Isi field yang belum ada dengan default, tanpa menimpa yang sudah ada.
--- Ini yang bikin nambah field baru di Config aman buat player lama.
-local function reconcile(data: { [string]: any }): PlayerData
-	for key, default in Config.DEFAULT_DATA :: { [string]: any } do
-		if data[key] == nil then
-			data[key] = default
-		end
-	end
-	return data :: any
-end
 
 local function keyFor(userId: number): string
 	return string.format("Player_%d", userId)
@@ -49,7 +53,11 @@ local function retry<T>(label: string, fn: () -> T): (boolean, T?)
 			return true, result
 		end
 		lastErr = result
-		task.wait(2 ^ attempt) -- backoff eksponensial: 2, 4, 8, ...
+		if attempt < Config.SAVE_RETRY_COUNT then
+			-- Backoff eksponensial yang di-cap: 2, 4, 8, 8, ... Tanpa cap,
+			-- lima percobaan saja sudah 62 detik.
+			task.wait(math.min(2 ^ attempt, MAX_BACKOFF))
+		end
 	end
 	warn(string.format("[PlayerDataService] %s gagal setelah retry: %s", label, tostring(lastErr)))
 	return false, nil
@@ -62,13 +70,16 @@ function PlayerDataService.load(player: Player): PlayerData?
 	for attempt = 1, LOCK_RETRY_LIMIT do
 		local ok, result = retry("UpdateAsync(load)", function()
 			return store:UpdateAsync(key, function(old: any): any?
-				local data = reconcile(old and old.data or {})
+				local data =
+					DataSchema.reconcile(old and old.data or {}, Config.DEFAULT_DATA :: any)
 				local lock = old and old.lock
 
 				-- Ada lock milik server lain yang masih hidup -> tolak.
 				if lock and lock.jobId ~= game.JobId and os.time() - lock.at < LOCK_EXPIRY then
 					return nil -- batalkan tulisan
 				end
+
+				data.lastLogin = os.time()
 
 				return {
 					data = data,
@@ -81,6 +92,7 @@ function PlayerDataService.load(player: Player): PlayerData?
 			local entry = result :: any
 			cache[userId] = entry.data
 			loaded[userId] = true
+			PlayerDataService.onLoaded:Fire(player, entry.data)
 			return entry.data
 		end
 
@@ -100,7 +112,7 @@ function PlayerDataService.load(player: Player): PlayerData?
 	warn(
 		string.format("[PlayerDataService] gagal load %s, kick biar data gak ketimpa", player.Name)
 	)
-	player:Kick("Gagal memuat data kamu. Coba join ulang dalam beberapa saat.")
+	player:Kick("Gagal memuat data kamu. Coba join ulang sekitar 30 detik lagi.")
 	return nil
 end
 
@@ -108,15 +120,51 @@ function PlayerDataService.get(player: Player): PlayerData?
 	return cache[player.UserId]
 end
 
+-- Tunggu sampai data player siap. Mengembalikan nil kalau player keburu keluar
+-- atau load gagal sampai timeout. Pakai ini, jangan task.wait() menebak-nebak.
+function PlayerDataService.waitFor(player: Player, timeout: number?): PlayerData?
+	local userId = player.UserId
+	if loaded[userId] then
+		return cache[userId]
+	end
+
+	local thread = coroutine.running()
+	local settled = false
+	local connection: Signal.Connection
+
+	local function finish(data: PlayerData?)
+		if settled then
+			return
+		end
+		settled = true
+		connection:Disconnect()
+		task.spawn(thread, data)
+	end
+
+	connection = PlayerDataService.onLoaded:Connect(function(who: Player, data: PlayerData)
+		if who == player then
+			finish(data)
+		end
+	end)
+
+	task.delay(timeout or WAIT_TIMEOUT, function()
+		finish(nil)
+	end)
+
+	return (coroutine.yield() :: any) :: PlayerData?
+end
+
 -- Satu-satunya cara yang benar untuk mengubah data: lewat mutator.
--- Jangan pernah assign langsung ke tabel hasil get() tanpa lewat sini,
--- supaya ada satu titik buat validasi & broadcast nanti.
+-- Jangan pernah assign langsung ke tabel hasil get() tanpa lewat sini.
+-- Broadcast DataChanged dilakukan di sini supaya tidak ada service lain yang
+-- bisa lupa mengirimnya (bagian 3.2 poin 4).
 function PlayerDataService.update(player: Player, mutator: (PlayerData) -> ()): boolean
 	local data = cache[player.UserId]
 	if not data then
 		return false
 	end
 	mutator(data)
+	Remotes.Events.DataChanged:FireClient(player, data)
 	return true
 end
 
@@ -162,6 +210,8 @@ function PlayerDataService.start()
 		end
 	end
 
+	-- Satu-satunya titik PlayerAdded yang memuat data. Yang butuh tahu kapan
+	-- data siap mendengarkan onLoaded, bukan menyambung PlayerAdded lagi.
 	for _, player in Players:GetPlayers() do
 		task.spawn(PlayerDataService.load, player)
 	end
