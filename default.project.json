@@ -18,12 +18,6 @@
       }
     },
 
-    "Workspace": {
-      "Arena": {
-        "$path": "assets/Arena.rbxmx"
-      }
-    },
-
     "StarterPlayer": {
       "StarterPlayerScripts": {
         "Client": {
