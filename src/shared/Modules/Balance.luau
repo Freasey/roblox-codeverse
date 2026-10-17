@@ -25,6 +25,32 @@ Balance.UPGRADE_BASE_PRICE = 50
 Balance.UPGRADE_PRICE_GROWTH = 1.35
 Balance.DAMAGE_PER_LEVEL = 0.12
 
+-- Batas musuh aktif sekaligus (bagian 1.3). Sisa spawn masuk antrian, bukan
+-- dibuang: wave 10 dengan 4 player melebihi angka ini, dan kalau sisanya
+-- dibuang wave itu tidak akan pernah bisa diselesaikan.
+Balance.MAX_ACTIVE_ENEMIES = 40
+
+-- Jeda antar spawn musuh dalam satu wave. Bukan nol: 30 musuh yang muncul pada
+-- frame yang sama langsung menumpuk jadi satu gumpalan dan pemain tidak punya
+-- kesempatan mengurangi jumlahnya.
+Balance.SPAWN_INTERVAL = 0.9
+
+-- Core Server. Tidak diskalakan terhadap jumlah player: HP musuh sudah naik
+-- 35% per player tambahan (HP_PER_EXTRA_PLAYER), jadi menaikkan HP core juga
+-- akan menghitung jumlah player dua kali.
+Balance.CORE_MAX_HP = 1000
+
+-- Musuh dianggap sampai di sebuah waypoint kalau jaraknya di bawah ini. Harus
+-- lebih besar dari perpindahan satu frame musuh tercepat (16 stud/detik pada 60
+-- fps = 0.27 stud), kalau tidak musuh bisa melewati waypoint dan berputar-putar.
+Balance.WAYPOINT_REACH = 1.5
+
+-- Toleransi uji kena (bagian 3.7). Sengaja longgar: musuh digerakkan server,
+-- jadi posisi di layar pemain selalu tertinggal sebesar latensi.
+Balance.MELEE_RADIUS_BONUS = 5 -- stud ekstra di luar `range` senjata
+Balance.MELEE_MIN_COS = 0.2 -- cos setengah sudut kerucut; 0.2 ~ 78 derajat
+Balance.RANGED_RADIUS = 5 -- radius silinder di sekitar garis bidik
+
 -- HP satu musuh pada wave tertentu.
 function Balance.enemyHp(
 	def: Types.EnemyDef,

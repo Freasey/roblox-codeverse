@@ -2,14 +2,32 @@
 -- init.server.luau — entry point server.
 -- Rojo bikin file `init.server.luau` jadi Script di node induknya,
 -- jadi ini otomatis jalan sebagai ServerScriptService.Server.
+--
+-- File ini CUMA wiring: dia me-require service, menyambungkan sinyal antar
+-- service, lalu memanggil start(). Tidak ada logika gameplay di sini.
+--
+-- Urutan wiring-nya penting dan sengaja satu arah: service yang lebih rendah
+-- (CoreService, EnemyService) tidak pernah me-require yang lebih tinggi.
+-- Ketergantungan yang arahnya berlawanan disuntik dari file ini lewat
+-- `setGate` dan kawan-kawan, supaya tidak ada lingkaran require — Luau tidak
+-- bisa menyelesaikan lingkaran require dan errornya ("requested module is
+-- currently being loaded") muncul saat runtime, bukan saat type check.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Remotes)
 local Waves = require(Shared.Modules.Waves)
-local PlayerDataService = require(script.Services.PlayerDataService)
+
+local Services = script.Services
+local CombatService = require(Services.CombatService)
+local CoreService = require(Services.CoreService)
+local EnemyService = require(Services.EnemyService)
+local MapService = require(Services.MapService)
+local PlayerDataService = require(Services.PlayerDataService)
+local PrototypeDriver = require(Services.PrototypeDriver)
 
 print(string.format("[%s] server booting (place %d)", Config.GAME_NAME, game.PlaceId))
 
@@ -67,3 +85,64 @@ Remotes.Events.RequestAction.OnServerEvent:Connect(function(player: Player, acti
 		end
 	end
 end)
+
+-- --------------------------------------------------------------------------
+-- Gameplay (M1)
+-- --------------------------------------------------------------------------
+
+-- Pembacaan map dilakukan sekali di sini. Kalau map belum ada, MapService
+-- sudah mengeluarkan SATU warn yang menyebut apa yang dicari dan apa yang
+-- harus dilakukan user, dan seluruh gameplay di bawah tidak dijalankan.
+-- Tidak ada warn kedua, dan tidak ada loop yang terus mencoba.
+EnemyService.start()
+EnemyService.setRunning(false)
+
+local arena = MapService.getArena()
+if arena ~= nil then
+	CoreService.bindVisual(arena.corePart)
+
+	CombatService.setGate(PrototypeDriver.canAttack)
+	CombatService.start()
+
+	CoreService.onDestroyed:Connect(function()
+		print(string.format("[%s] Core Server hancur", Config.GAME_NAME))
+	end)
+
+	PrototypeDriver.start()
+
+	-- Pemain yang join setelah prototipe mulai tetap muncul di arena: M1 belum
+	-- punya aturan join/rejoin (itu M2, bagian 3.3).
+	local playerSpawn = arena.playerSpawn
+	if playerSpawn ~= nil then
+		local function placeCharacter(character: Model)
+			-- Tunggu HumanoidRootPart ada: PivotTo pada Model yang bagiannya
+			-- belum lengkap memindahkan sebagian saja.
+			if character:WaitForChild("HumanoidRootPart", 5) == nil then
+				return
+			end
+			character:PivotTo(CFrame.new(playerSpawn.Position + Vector3.new(0, 5, 0)))
+		end
+
+		local function watch(player: Player)
+			player.CharacterAdded:Connect(placeCharacter)
+			local existing = player.Character
+			if existing ~= nil then
+				placeCharacter(existing)
+			end
+		end
+
+		Players.PlayerAdded:Connect(watch)
+		for _, player in Players:GetPlayers() do
+			watch(player)
+		end
+	end
+else
+	-- Supaya HUD pemain tidak kosong tanpa penjelasan.
+	Remotes.Events.MatchState:FireAllClients({
+		state = "Lobby",
+		wave = 0,
+		timer = 0,
+		coreHp = CoreService.getHp(),
+		coreMaxHp = CoreService.getMaxHp(),
+	})
+end

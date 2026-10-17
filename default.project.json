@@ -30,6 +30,15 @@
           "$path": "src/client"
         }
       }
+    },
+
+    "Workspace": {
+      "Arena": {
+        "$path": { "optional": "assets/Arena.rbxmx" }
+      },
+      "Lobby": {
+        "$path": { "optional": "assets/Lobby.rbxmx" }
+      }
     }
   }
 }

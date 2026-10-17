@@ -154,4 +154,62 @@ table.insert(cases, {
 	end,
 })
 
+table.insert(cases, {
+	name = "batas musuh aktif cukup besar untuk wave terberat",
+	run = function()
+		-- Batas ini (bagian 1.3) menahan spawn, bukan membuangnya, jadi wave
+		-- yang jumlahnya di atas batas tetap bisa diselesaikan. Yang perlu
+		-- dicek adalah batasnya tidak lebih kecil dari jumlah musuh satu wave
+		-- paling ringan — kalau sampai begitu, wave 1 solo pun langsung
+		-- mengantre dan prototipe terasa macet.
+		assert(Balance.MAX_ACTIVE_ENEMIES > 0, "batas musuh aktif harus positif")
+		assert(
+			Balance.MAX_ACTIVE_ENEMIES >= Balance.enemyCount(1, 1),
+			"wave 1 solo seharusnya tidak sampai mengantre"
+		)
+	end,
+})
+
+table.insert(cases, {
+	name = "wave terberat memang melebihi batas musuh aktif, jadi antrian wajib ada",
+	run = function()
+		-- Ini bukan test atas kode, tapi atas asumsinya: kalau wave terberat
+		-- ternyata di bawah batas, antrian spawn jadi kode mati dan bagian 1.3
+		-- perlu dibaca ulang.
+		local heaviest = Balance.enemyCount(10, 4)
+		assert(
+			heaviest > Balance.MAX_ACTIVE_ENEMIES,
+			string.format(
+				"wave 10 x 4 player cuma %d musuh, di bawah batas %d — antrian jadi tidak pernah terpakai",
+				heaviest,
+				Balance.MAX_ACTIVE_ENEMIES
+			)
+		)
+	end,
+})
+
+table.insert(cases, {
+	name = "konstanta gerak dan spawn masuk akal",
+	run = function()
+		assert(Balance.SPAWN_INTERVAL > 0, "jeda spawn harus positif")
+		assert(Balance.CORE_MAX_HP > 0, "HP core harus positif")
+
+		-- WAYPOINT_REACH harus lebih besar dari perpindahan satu frame musuh
+		-- tercepat, kalau tidak musuh bisa melewati waypoint dan berputar.
+		local fastest = 0
+		for _, def in Enemies do
+			fastest = math.max(fastest, def.speed)
+		end
+		local perFrameAt30Fps = fastest / 30
+		assert(
+			Balance.WAYPOINT_REACH > perFrameAt30Fps,
+			string.format(
+				"WAYPOINT_REACH %.2f lebih kecil dari perpindahan satu frame (%.2f stud pada 30 fps)",
+				Balance.WAYPOINT_REACH,
+				perFrameAt30Fps
+			)
+		)
+	end,
+})
+
 return cases

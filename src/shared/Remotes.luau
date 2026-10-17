@@ -12,14 +12,60 @@ local RunService = game:GetService("RunService")
 local FOLDER_NAME = "Remotes"
 
 -- Daftarkan remote baru di dua tabel ini.
+--
+-- Nama dan payload remote gameplay mengikuti tabel docs/DEVELOPMENT_PLAN.md
+-- bagian 3.6 persis. Jangan diubah namanya tanpa mengubah tabel itu juga.
 local EVENT_NAMES = {
-	"DataLoaded", -- Server -> Client: data player siap dipakai
-	"DataChanged", -- Server -> Client: ada field yang berubah
-	"RequestAction", -- Client -> Server: player melakukan aksi
+	-- Data player (M0)
+	"DataLoaded", -- S -> C: data player siap dipakai
+	"DataChanged", -- S -> C: ada field yang berubah
+	"RequestAction", -- C -> S: player melakukan aksi
+
+	-- Match (bagian 3.6)
+	"MatchState", -- S -> C: { state, wave, timer, coreHp, coreMaxHp }
+	"MatchCoins", -- S -> C: number (koin match tim)
+	"MatchResult", -- S -> C: { won, waveReached, coins, xp, materials, unlocked }
+	"SetReady", -- C -> S: boolean
+	"SelectLoadout", -- C -> S: weaponId, difficultyId
+
+	-- Combat (bagian 3.7)
+	"Attack", -- C -> S: Vector3 arah bidik
+	"EnemyHit", -- S -> C: { id, damage, position } — untuk efek saja
+
+	-- Toko Match
+	"BuyShopItem", -- C -> S: itemId
+	"ShopState", -- S -> C: { open, locked, purchases } — lihat catatan di bawah
+
+	-- Boss
+	"BossState", -- S -> C: { bossId, hp, maxHp, alive } — lihat catatan di bawah
+	"ShowInfoCard", -- S -> C: bossId
+
+	-- Progres permanen (lobby)
+	"UpgradeWeapon", -- C -> S: weaponId
+	"BuyWeapon", -- C -> S: weaponId
+	"CraftWeapon", -- C -> S: weaponId
+	"ActionResult", -- S -> C: { action, ok, reason } — lihat catatan di bawah
 }
 
+-- Tiga remote di atas (`ShopState`, `BossState`, `ActionResult`) TIDAK ada di
+-- tabel bagian 3.6. Ditambahkan karena milestone-nya memintanya tapi tabelnya
+-- tidak menyediakan jalurnya:
+--   * `BossState` — M4 minta "HP bar boss di HUD", dan payload `MatchState`
+--     yang sudah dipatok tidak punya tempat untuk HP boss.
+--   * `ShopState` — M3 minta toko hanya aktif saat Intermission dan punya
+--     batas pembelian per item; client butuh tahu sisa jatahnya untuk
+--     menonaktifkan tombol, dan itu bukan sesuatu yang boleh ditebak client.
+--   * `ActionResult` — semua remote C -> S harus bisa ditolak server (koin
+--     kurang, state salah). Tanpa jalur balasan, penolakan jadi tidak terlihat
+--     dan pemain mengira tombolnya rusak.
+-- Semuanya penambahan, bukan penggantian nama, jadi tidak ada yang bergeser
+-- dari tabel 3.6.
+--
+-- `GetLeaderboard` dari tabel 3.6 sengaja BELUM didaftarkan: itu milestone M6,
+-- dan RemoteFunction tanpa `OnServerInvoke` membuat client yang memanggilnya
+-- menggantung selamanya.
 local FUNCTION_NAMES = {
-	"GetProfile", -- Client -> Server (yields): snapshot data sekarang
+	"GetProfile", -- C -> S (yields): snapshot data sekarang
 }
 
 local function getFolder(): Instance
