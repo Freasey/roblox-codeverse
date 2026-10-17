@@ -36,10 +36,38 @@ local PlayerDataService = {}
 -- yang dulu ada di init.server.luau (bagian 3.2 poin 3 dan 4).
 PlayerDataService.onLoaded = Signal.new() :: Signal.Signal<Player, PlayerData>
 
-local store = DataStoreService:GetDataStore(Config.DATASTORE_NAME)
 local cache: { [number]: PlayerData } = {}
 local loaded: { [number]: boolean } = {}
 local shuttingDown = false
+
+-- DataStore-nya diambil lazy, JANGAN di module scope.
+--
+-- `GetDataStore` melempar error di place lokal yang belum pernah di-publish
+-- ("You must publish this place to the web to access DataStore"). Kalau
+-- dipanggil di module scope, error itu terjadi saat modul di-require — jadi
+-- `require(script.Services.PlayerDataService)` di init.server.luau ikut gagal
+-- dan SELURUH script server mati sebelum satu baris pun jalan. Playtest di file
+-- .rbxl lokal jadi mustahil, dan gejalanya menyesatkan: yang terlihat cuma
+-- "Requested module experienced an error while loading".
+local store: DataStore? = nil
+local storeChecked = false
+
+local function getStore(): DataStore?
+	if storeChecked then
+		return store
+	end
+	storeChecked = true
+
+	local ok, result = pcall(function()
+		return DataStoreService:GetDataStore(Config.DATASTORE_NAME)
+	end)
+	if ok then
+		store = result :: DataStore
+	else
+		warn(string.format("[PlayerDataService] DataStore tidak tersedia: %s", tostring(result)))
+	end
+	return store
+end
 
 local function keyFor(userId: number): string
 	return string.format("Player_%d", userId)
@@ -63,13 +91,51 @@ local function retry<T>(label: string, fn: () -> T): (boolean, T?)
 	return false, nil
 end
 
+-- Tidak ada DataStore sama sekali (place lokal belum di-publish, atau API
+-- Services belum dicentang). Di Studio: lanjut dengan data default di memori
+-- supaya gameplay tetap bisa di-playtest, tapi tandai `loaded = false` sehingga
+-- save() berhenti di gerbang pertamanya dan tidak pernah menulis apa pun.
+-- Di server live: JANGAN — pemain yang jalan dengan data kosong akan menimpa
+-- progresnya sendiri pada autosave berikutnya.
+local function loadWithoutDataStore(player: Player): PlayerData?
+	if not RunService:IsStudio() then
+		warn(
+			string.format(
+				"[PlayerDataService] tidak ada DataStore di server live, kick %s",
+				player.Name
+			)
+		)
+		player:Kick("Layanan data sedang bermasalah. Coba join ulang beberapa saat lagi.")
+		return nil
+	end
+
+	local data = DataSchema.reconcile({}, Config.DEFAULT_DATA :: any)
+	cache[player.UserId] = data
+	loaded[player.UserId] = false
+	PlayerDataService.onLoaded:Fire(player, data)
+	warn(
+		string.format(
+			"[PlayerDataService] %s jalan dengan data default di memori. Progres TIDAK "
+				.. "tersimpan. Publish place-nya sekali, lalu centang Game Settings -> "
+				.. "Security -> Enable Studio Access to API Services.",
+			player.Name
+		)
+	)
+	return data
+end
+
 function PlayerDataService.load(player: Player): PlayerData?
 	local userId = player.UserId
 	local key = keyFor(userId)
 
+	local dataStore = getStore()
+	if not dataStore then
+		return loadWithoutDataStore(player)
+	end
+
 	for attempt = 1, LOCK_RETRY_LIMIT do
 		local ok, result = retry("UpdateAsync(load)", function()
-			return store:UpdateAsync(key, function(old: any): any?
+			return dataStore:UpdateAsync(key, function(old: any): any?
 				local data =
 					DataSchema.reconcile(old and old.data or {}, Config.DEFAULT_DATA :: any)
 				local lock = old and old.lock
@@ -175,8 +241,13 @@ function PlayerDataService.save(player: Player, releaseLock: boolean?): boolean
 		return false
 	end
 
+	local dataStore = getStore()
+	if not dataStore then
+		return false
+	end
+
 	local ok = retry("UpdateAsync(save)", function()
-		return store:UpdateAsync(keyFor(userId), function(old: any): any?
+		return dataStore:UpdateAsync(keyFor(userId), function(old: any): any?
 			-- Jangan nulis kalau lock sudah pindah ke server lain.
 			local lock = old and old.lock
 			if lock and lock.jobId ~= game.JobId then
@@ -197,15 +268,22 @@ function PlayerDataService.save(player: Player, releaseLock: boolean?): boolean
 end
 
 function PlayerDataService.start()
-	-- DataStore mati di Studio kecuali "Enable Studio Access to API Services" dicentang.
+	-- DataStore mati di Studio kecuali place-nya sudah pernah di-publish DAN
+	-- "Enable Studio Access to API Services" dicentang. Diperiksa sekali di sini
+	-- supaya peringatannya muncul saat boot, bukan baru saat player pertama join.
 	if RunService:IsStudio() then
-		local ok = pcall(function()
-			store:GetAsync("__probe")
-		end)
+		local dataStore = getStore()
+		local ok = false
+		if dataStore then
+			ok = pcall(function()
+				dataStore:GetAsync("__probe")
+			end)
+		end
 		if not ok then
 			warn(
-				"[PlayerDataService] DataStore tidak aktif. Centang Game Settings -> Security -> "
-					.. "Enable Studio Access to API Services, lalu restart playtest."
+				"[PlayerDataService] DataStore tidak aktif. Publish place-nya sekali, lalu "
+					.. "centang Game Settings -> Security -> Enable Studio Access to API "
+					.. "Services, lalu restart playtest. Sementara ini progres tidak tersimpan."
 			)
 		end
 	end
