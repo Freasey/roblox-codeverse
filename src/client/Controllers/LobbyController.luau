@@ -1,32 +1,62 @@
 --!strict
--- LobbyController.luau — UI lobby.
+-- LobbyController.luau — UI lobby: pilih senjata, pilih kesulitan, Ready,
+-- panel upgrade dan craft.
 --
--- M2 cuma butuh satu hal dari file ini: tombol Ready. Tanpa itu tidak ada cara
--- memulai match, dan kriteria M2 ("satu match penuh bisa dimainkan dari lobby
--- sampai hasil") tidak bisa diverifikasi sama sekali. Panel pilih senjata,
--- pilih kesulitan, upgrade, dan craft masuk di M5 — semuanya menempel di panel
--- yang sama.
+-- Semua tombol di sini cuma mengirim NIAT (`SetReady`, `SelectLoadout`,
+-- `UpgradeWeapon`, `BuyWeapon`, `CraftWeapon`) dengan id saja. Harga, syarat,
+-- dan hasilnya diputuskan server (bagian 1.2). Yang ditampilkan di sini dibaca
+-- dari modul shared yang sama dengan server (`Weapons`, `Difficulties`,
+-- `Balance`, `ProgressionRules`) plus cache data pemain di `ProfileStore`.
 --
--- Tombol Ready cuma mengirim `SetReady(boolean)`. Dia TIDAK memutuskan apakah
--- match mulai; server yang memeriksa syaratnya (semua pemain siap, minimal
--- satu) dan client cuma melihat hasilnya lewat `MatchState`.
+-- Kalau cache itu ketinggalan, yang terjadi paling buruk adalah tombol
+-- terlihat aktif lalu aksinya ditolak server dengan alasan yang jelas lewat
+-- `ActionResult` — bukan progres yang salah.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Shared = ReplicatedStorage.Shared
+local Balance = require(Shared.Modules.Balance)
+local Difficulties = require(Shared.Modules.Difficulties)
+local ProgressionRules = require(Shared.Modules.ProgressionRules)
+local Remotes = require(Shared.Remotes)
+local Weapons = require(Shared.Modules.Weapons)
+
 local MatchStore = require(script.Parent.MatchStore)
-local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local ProfileStore = require(script.Parent.ProfileStore)
 local UiKit = require(script.Parent.UiKit)
 
 local LobbyController = {}
 
 local localPlayer = Players.LocalPlayer
 
+local PANEL_WIDTH = 340
+local ROW_HEIGHT = 66
+
+-- Urutan tampil dipatok di sini, bukan dari iterasi tabel: urutan iterasi
+-- tabel Luau tidak dijamin, jadi tanpa daftar ini susunan tombol bisa berbeda
+-- tiap kali client dibuka.
+local WEAPON_ORDER = { "weapon_starter", "weapon_ranged", "weapon_boss_a" }
+local DIFFICULTY_ORDER = { "normal", "hard" }
+
+type WeaponRow = {
+	root: Frame,
+	title: TextLabel,
+	detail: TextLabel,
+	action: TextButton,
+	equip: TextButton,
+}
+
 local gui: ScreenGui? = nil
 local panel: Frame? = nil
 local readyButton: TextButton? = nil
 local hintLabel: TextLabel? = nil
+local statusLabel: TextLabel? = nil
+local weaponRows: { [string]: WeaponRow } = {}
+local difficultyButtons: { [string]: TextButton } = {}
+
 local isReady = false
+local selectedDifficulty = "normal"
 local started = false
 
 local function build()
@@ -36,17 +66,147 @@ local function build()
 
 	local screen = UiKit.screenGui("CodeVerseLobby", 20)
 
-	local frame =
-		UiKit.panel(screen, "Panel", UDim2.new(0.5, -150, 1, -108), UDim2.fromOffset(300, 92))
+	local height = 150 + #WEAPON_ORDER * ROW_HEIGHT
+	local frame = UiKit.panel(
+		screen,
+		"Panel",
+		UDim2.new(0, 16, 0.5, -height // 2),
+		UDim2.fromOffset(PANEL_WIDTH, height)
+	)
 
-	local hint = UiKit.label(frame, "Hint", UDim2.fromOffset(14, 8), UDim2.fromOffset(272, 32), "")
-	hint.TextSize = 13
+	local title =
+		UiKit.label(frame, "Title", UDim2.fromOffset(14, 10), UDim2.fromOffset(312, 20), "Lobby")
+	title.Font = Enum.Font.GothamBold
+
+	local status =
+		UiKit.label(frame, "Status", UDim2.fromOffset(14, 30), UDim2.fromOffset(312, 18), "")
+	status.TextSize = 13
+	status.TextColor3 = UiKit.COLOR_WARN
+
+	-- Kesulitan -------------------------------------------------------------
+	local difficultyTitle = UiKit.label(
+		frame,
+		"DifficultyTitle",
+		UDim2.fromOffset(14, 52),
+		UDim2.fromOffset(312, 16),
+		"Tingkat kesulitan"
+	)
+	difficultyTitle.TextSize = 12
+	difficultyTitle.TextColor3 = UiKit.COLOR_MUTED
+
+	local buttonWidth = (312 - 8) // #DIFFICULTY_ORDER
+	for index, difficultyId in DIFFICULTY_ORDER do
+		local def = Difficulties[difficultyId]
+		if def == nil then
+			continue
+		end
+		local button = UiKit.button(
+			frame,
+			difficultyId,
+			UDim2.fromOffset(14 + (index - 1) * (buttonWidth + 8), 70),
+			UDim2.fromOffset(buttonWidth, 26),
+			def.name
+		)
+		button.Activated:Connect(function()
+			if not button.Active then
+				return
+			end
+			selectedDifficulty = difficultyId
+			-- Senjata dan kesulitan dikirim bersama karena tabel bagian 3.6
+			-- memaku `SelectLoadout` menerima dua argumen sekaligus.
+			local data = ProfileStore.get()
+			local weaponId = if data ~= nil then data.equippedWeapon else "weapon_starter"
+			Remotes.Events.SelectLoadout:FireServer(weaponId, difficultyId)
+		end)
+		difficultyButtons[difficultyId] = button
+	end
+
+	-- Senjata ---------------------------------------------------------------
+	local weaponTitle = UiKit.label(
+		frame,
+		"WeaponTitle",
+		UDim2.fromOffset(14, 102),
+		UDim2.fromOffset(312, 16),
+		"Senjata"
+	)
+	weaponTitle.TextSize = 12
+	weaponTitle.TextColor3 = UiKit.COLOR_MUTED
+
+	for index, weaponId in WEAPON_ORDER do
+		local def = Weapons[weaponId]
+		if def == nil then
+			continue
+		end
+
+		local row = UiKit.panel(
+			frame,
+			weaponId,
+			UDim2.fromOffset(14, 120 + (index - 1) * ROW_HEIGHT),
+			UDim2.fromOffset(312, ROW_HEIGHT - 8)
+		)
+		row.BackgroundColor3 = Color3.fromRGB(26, 29, 36)
+
+		local rowTitle =
+			UiKit.label(row, "Title", UDim2.fromOffset(10, 4), UDim2.fromOffset(292, 16), def.name)
+		rowTitle.Font = Enum.Font.GothamBold
+		rowTitle.TextSize = 13
+
+		local detail =
+			UiKit.label(row, "Detail", UDim2.fromOffset(10, 20), UDim2.fromOffset(292, 14), "")
+		detail.TextSize = 11
+		detail.TextColor3 = UiKit.COLOR_MUTED
+
+		local equip =
+			UiKit.button(row, "Equip", UDim2.fromOffset(10, 36), UDim2.fromOffset(140, 20), "Pakai")
+		equip.TextSize = 12
+		equip.Activated:Connect(function()
+			if not equip.Active then
+				return
+			end
+			Remotes.Events.SelectLoadout:FireServer(weaponId, selectedDifficulty)
+		end)
+
+		local action =
+			UiKit.button(row, "Action", UDim2.fromOffset(158, 36), UDim2.fromOffset(144, 20), "")
+		action.TextSize = 12
+		action.Activated:Connect(function()
+			if not action.Active then
+				return
+			end
+			-- Satu tombol, tiga aksi: remote mana yang dikirim ditentukan
+			-- status senjata dan `acquire.method`-nya, bukan oleh teks tombol.
+			if ProfileStore.owns(weaponId) then
+				Remotes.Events.UpgradeWeapon:FireServer(weaponId)
+			elseif def.acquire.method == "buy" then
+				Remotes.Events.BuyWeapon:FireServer(weaponId)
+			elseif def.acquire.method == "craft" then
+				Remotes.Events.CraftWeapon:FireServer(weaponId)
+			end
+		end)
+
+		weaponRows[weaponId] = {
+			root = row,
+			title = rowTitle,
+			detail = detail,
+			action = action,
+			equip = equip,
+		}
+	end
+
+	-- Ready -----------------------------------------------------------------
+	local hint =
+		UiKit.label(frame, "Hint", UDim2.fromOffset(14, height - 56), UDim2.fromOffset(312, 26), "")
+	hint.TextSize = 12
 	hint.TextWrapped = true
 	hint.TextColor3 = UiKit.COLOR_MUTED
 
-	local button =
-		UiKit.button(frame, "Ready", UDim2.fromOffset(14, 46), UDim2.fromOffset(272, 32), "Ready")
-
+	local button = UiKit.button(
+		frame,
+		"Ready",
+		UDim2.fromOffset(14, height - 30),
+		UDim2.fromOffset(312, 24),
+		"Ready"
+	)
 	button.Activated:Connect(function()
 		if not button.Active then
 			return
@@ -61,37 +221,141 @@ local function build()
 	panel = frame
 	readyButton = button
 	hintLabel = hint
+	statusLabel = status
+end
+
+local function describeWeapon(weaponId: string): string
+	local def = Weapons[weaponId]
+	if def == nil then
+		return ""
+	end
+
+	local level = ProfileStore.getWeaponLevel(weaponId)
+	if level == nil then
+		-- Belum dimiliki: yang relevan adalah cara mendapatkannya.
+		if def.acquire.method == "buy" then
+			return string.format("Belum dimiliki — %d koin", def.acquire.coinCost or 0)
+		end
+		if def.acquire.method == "craft" then
+			local parts: { string } = {}
+			local needed: { [string]: number } = def.acquire.materials or {}
+			for materialId, amount in needed do
+				table.insert(
+					parts,
+					string.format(
+						"%s %d/%d",
+						materialId,
+						ProfileStore.getMaterial(materialId),
+						amount
+					)
+				)
+			end
+			table.sort(parts)
+			return "Belum dimiliki — craft: " .. table.concat(parts, ", ")
+		end
+		return "Belum dimiliki"
+	end
+
+	return string.format(
+		"Level %d/%d · damage %d · %s",
+		level,
+		def.maxLevel,
+		math.floor(Balance.weaponDamage(def, level) + 0.5),
+		if def.kind == "melee" then "jarak dekat" else "jarak jauh"
+	)
 end
 
 local function render()
 	local frame = panel
 	local button = readyButton
 	local hint = hintLabel
-	if frame == nil or button == nil or hint == nil then
+	local status = statusLabel
+	if frame == nil or button == nil or hint == nil or status == nil then
 		return
 	end
 
 	local stateName = MatchStore.getStateName()
-	local inLobby = stateName == "Lobby" or stateName == "Countdown"
-	frame.Visible = inLobby
+	local inLobby = stateName == "Lobby"
+	frame.Visible = inLobby or stateName == "Countdown"
 
-	if not inLobby then
-		-- Match sudah jalan: Ready dari match sebelumnya tidak boleh ikut
-		-- terbawa, kalau tidak pemain yang kembali ke lobby langsung dianggap
-		-- siap tanpa menekan apa pun.
+	if not inLobby and stateName ~= "Countdown" then
+		-- Match sudah jalan: Ready dari match sebelumnya tidak boleh terbawa,
+		-- kalau tidak pemain yang kembali ke lobby langsung dianggap siap
+		-- tanpa menekan apa pun.
 		isReady = false
 		return
 	end
 
+	local data = ProfileStore.get()
+	if data == nil then
+		status.Text = "Memuat data..."
+		UiKit.setButtonEnabled(button, false)
+		return
+	end
+
+	status.Text = string.format("Level %d · %d koin", data.level, data.coins)
+
+	-- Kesulitan: yang belum terbuka dimatikan, yang dipilih ditandai.
+	for difficultyId, difficultyButton in difficultyButtons do
+		local unlocked = ProfileStore.hasDifficulty(difficultyId)
+		UiKit.setButtonEnabled(difficultyButton, unlocked and inLobby)
+		local def = Difficulties[difficultyId]
+		local name = if def ~= nil then def.name else difficultyId
+		if not unlocked then
+			difficultyButton.Text = name .. " (terkunci)"
+		elseif difficultyId == selectedDifficulty then
+			difficultyButton.Text = "▸ " .. name
+		else
+			difficultyButton.Text = name
+		end
+	end
+
+	-- Senjata.
+	for weaponId, row in weaponRows do
+		local def = Weapons[weaponId]
+		if def == nil then
+			continue
+		end
+
+		row.detail.Text = describeWeapon(weaponId)
+
+		local owned = ProfileStore.owns(weaponId)
+		local equipped = data.equippedWeapon == weaponId
+		row.title.Text = if equipped then def.name .. " (dipakai)" else def.name
+		row.title.TextColor3 = if equipped then UiKit.COLOR_ACCENT else UiKit.COLOR_TEXT
+		UiKit.setButtonEnabled(row.equip, owned and not equipped and inLobby)
+
+		local context: ProgressionRules.Context = { state = stateName, data = data }
+		if owned then
+			local level = ProfileStore.getWeaponLevel(weaponId) or 1
+			local price = Balance.upgradePrice(level)
+			local canUpgrade = ProgressionRules.canUpgrade(def, context, price)
+			row.action.Text = if level >= def.maxLevel
+				then "Level maks"
+				else string.format("Upgrade %d", price)
+			UiKit.setButtonEnabled(row.action, canUpgrade)
+		elseif def.acquire.method == "buy" then
+			row.action.Text = string.format("Beli %d", def.acquire.coinCost or 0)
+			UiKit.setButtonEnabled(row.action, (ProgressionRules.canBuy(def, context)))
+		elseif def.acquire.method == "craft" then
+			row.action.Text = "Craft"
+			UiKit.setButtonEnabled(row.action, (ProgressionRules.canCraft(def, context)))
+		else
+			row.action.Text = "—"
+			UiKit.setButtonEnabled(row.action, false)
+		end
+	end
+
+	-- Ready.
 	button.Text = if isReady then "Batal siap" else "Ready"
 	UiKit.setButtonEnabled(button, true)
 
 	if stateName == "Countdown" then
-		hint.Text = "Semua pemain siap. Match dimulai — tekan lagi untuk membatalkan."
+		hint.Text = "Semua pemain siap. Tekan lagi untuk membatalkan."
 	elseif isReady then
 		hint.Text = "Kamu siap. Menunggu pemain lain."
 	else
-		hint.Text = "Tekan Ready untuk mulai. Match baru jalan kalau semua pemain siap."
+		hint.Text = "Match baru jalan kalau semua pemain di server siap."
 	end
 end
 
@@ -105,6 +369,43 @@ function LobbyController.start()
 	render()
 
 	MatchStore.onMatchState:Connect(render)
+	ProfileStore.onChanged:Connect(function(data)
+		-- Kesulitan yang dipilih diikutkan ke data server supaya pilihan
+		-- pemain tidak hilang saat dia rejoin.
+		if not ProfileStore.hasDifficulty(selectedDifficulty) then
+			selectedDifficulty = "normal"
+		end
+		local _ = data
+		render()
+	end)
+
+	-- Penolakan dari server ditampilkan di baris petunjuk. Tanpa ini,
+	-- pembelian yang ditolak terlihat sama seperti tombol yang rusak.
+	Remotes.Events.ActionResult.OnClientEvent:Connect(function(raw: unknown)
+		if type(raw) ~= "table" then
+			return
+		end
+		local payload = raw :: { [string]: unknown }
+		local hint = hintLabel
+		if hint == nil or type(payload.ok) ~= "boolean" then
+			return
+		end
+		if payload.ok then
+			hint.Text = "Berhasil."
+			hint.TextColor3 = UiKit.COLOR_GOOD
+		else
+			hint.Text = if type(payload.reason) == "string"
+				then payload.reason :: string
+				else "Ditolak server."
+			hint.TextColor3 = UiKit.COLOR_BAD
+		end
+		-- Dikembalikan ke teks biasa setelah beberapa detik supaya pesan
+		-- penolakan lama tidak menempel selamanya.
+		task.delay(4, function()
+			hint.TextColor3 = UiKit.COLOR_MUTED
+			render()
+		end)
+	end)
 end
 
 return LobbyController

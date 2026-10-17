@@ -29,6 +29,8 @@ local EnemyService = require(Services.EnemyService)
 local MapService = require(Services.MapService)
 local MatchService = require(Services.MatchService)
 local PlayerDataService = require(Services.PlayerDataService)
+local ProgressionService = require(Services.ProgressionService)
+local RewardService = require(Services.RewardService)
 local ShopService = require(Services.ShopService)
 local WaveService = require(Services.WaveService)
 
@@ -58,6 +60,15 @@ end
 PlayerDataService.onLoaded:Connect(function(player, data)
 	Remotes.Events.DataLoaded:FireClient(player, data)
 end)
+
+-- RewardService disambung SEBELUM PlayerDataService.start(). Urutannya
+-- penting dan bukan gaya: keduanya mendengarkan Players.PlayerRemoving, dan
+-- PlayerDataService menyimpan lalu MENGHAPUS cache data pemain di situ. Kalau
+-- handler-nya jalan lebih dulu, RewardService tidak punya data lagi untuk
+-- dibayar dan pemain yang keluar di tengah match kehilangan rewardnya —
+-- tepat kasus yang diwajibkan bagian 3.3. Handler Roblox dijalankan dalam
+-- urutan penyambungan, jadi inilah yang menjaminnya.
+RewardService.start()
 
 PlayerDataService.start()
 
@@ -153,6 +164,7 @@ WaveService.setBossHooks({
 WaveService.start()
 ShopService.start()
 BossService.start()
+ProgressionService.start()
 
 -- Boss mati bisa berarti wave sudah bersih (kalau musuh biasanya sudah habis
 -- lebih dulu). Diperiksa lewat jalur yang sama dengan musuh terakhir mati.

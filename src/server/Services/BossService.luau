@@ -170,6 +170,12 @@ function BossService.spawnForWave(bossId: string)
 		return
 	end
 
+	-- Mekanik boss sebelumnya dibersihkan dulu. Dalam alur normal tidak ada
+	-- yang tersisa (wave boss tidak bisa bersih sebelum boss-nya mati), tapi
+	-- loop pemanggil minion Locker adalah thread yang hidup sendiri — kalau
+	-- sampai ada yang tersisa, dia akan terus mengantre musuh di wave berikutnya
+	-- dan tidak ada apa pun yang menunjuk ke penyebabnya.
+	Locker.cleanup(lockerState)
 	clearActive()
 	activeBossId = bossId
 

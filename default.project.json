@@ -34,8 +34,9 @@
 
     "Workspace": {
       "Arena": {
-        "$path": { "optional": "assets/Arena.rbxmx" }
+        "$path": "assets/Arena.rbxmx"
       },
+
       "Lobby": {
         "$path": { "optional": "assets/Lobby.rbxmx" }
       }

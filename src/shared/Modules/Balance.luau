@@ -21,6 +21,12 @@ Balance.COINS_PER_WAVE = 10
 Balance.COINS_WIN_BONUS = 50
 Balance.XP_PER_WAVE = 20
 Balance.XP_WIN_BONUS = 100
+-- Kurva level. Tidak disebut bagian 3.5, yang cuma menyebut XP per match;
+-- angkanya dipilih supaya match pertama (wave 1 kalah, 20 XP) tidak langsung
+-- naik level, dan satu match penuh yang menang (300 XP) menaikkan beberapa
+-- level di awal lalu makin lambat.
+Balance.XP_LEVEL_BASE = 100
+Balance.XP_LEVEL_GROWTH = 1.25
 Balance.UPGRADE_BASE_PRICE = 50
 Balance.UPGRADE_PRICE_GROWTH = 1.35
 Balance.DAMAGE_PER_LEVEL = 0.12
@@ -121,6 +127,52 @@ end
 -- Damage senjata pada level tertentu.
 function Balance.weaponDamage(def: Types.WeaponDef, level: number): number
 	return def.baseDamage * (1 + Balance.DAMAGE_PER_LEVEL * (level - 1))
+end
+
+-- XP yang dibutuhkan untuk naik DARI level ini ke level berikutnya.
+function Balance.xpForLevel(level: number): number
+	local clamped = math.max(1, math.floor(level))
+	return math.floor(Balance.XP_LEVEL_BASE * Balance.XP_LEVEL_GROWTH ^ (clamped - 1))
+end
+
+-- Terapkan XP yang baru didapat, naik level sebanyak yang mampu.
+--
+-- Mengembalikan (level baru, sisa XP, jumlah level yang naik). Satu match bisa
+-- memberi cukup XP untuk naik beberapa level sekaligus (terutama match pertama
+-- yang menang di hard), jadi ini loop, bukan satu pengurangan.
+--
+-- Loop-nya dibatasi MAX_LEVEL_UPS_PER_CALL. Bukan karena ada yang bisa
+-- memberi XP sebanyak itu secara sah, tapi karena satu nilai XP yang rusak
+-- (inf, atau angka raksasa dari data yang korup) akan membuat loop ini
+-- berjalan selamanya dan menggantung thread yang memanggilnya — di server itu
+-- berarti pemain yang tidak pernah dapat reward dan tidak pernah tahu kenapa.
+Balance.MAX_LEVEL_UPS_PER_CALL = 100
+
+function Balance.applyXp(level: number, xp: number, gained: number): (number, number, number)
+	local newLevel = math.max(1, math.floor(level))
+	local newXp = math.max(0, xp)
+
+	-- XP yang bukan angka wajar tidak diterapkan sama sekali, bukan di-clamp:
+	-- di-clamp berarti data yang rusak tetap menghasilkan reward, dan itu
+	-- menyembunyikan penyebabnya.
+	if gained ~= gained or gained == math.huge or gained < 0 then
+		return newLevel, newXp, 0
+	end
+
+	newXp += math.floor(gained)
+
+	local gainedLevels = 0
+	while gainedLevels < Balance.MAX_LEVEL_UPS_PER_CALL do
+		local needed = Balance.xpForLevel(newLevel)
+		if needed <= 0 or newXp < needed then
+			break
+		end
+		newXp -= needed
+		newLevel += 1
+		gainedLevels += 1
+	end
+
+	return newLevel, newXp, gainedLevels
 end
 
 return Balance

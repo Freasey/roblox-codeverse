@@ -21,6 +21,7 @@ local MatchStore = require(Controllers.MatchStore)
 local ProfileStore = require(Controllers.ProfileStore)
 local ResultController = require(Controllers.ResultController)
 local ShopController = require(Controllers.ShopController)
+local TutorialController = require(Controllers.TutorialController)
 
 local localPlayer = Players.LocalPlayer
 
@@ -39,6 +40,7 @@ LobbyController.start()
 ResultController.start()
 ShopController.start()
 InfoCardController.start()
+TutorialController.start()
 
 -- Dipakai nanti oleh controller lain; dibiarkan di sini supaya jelas kalau
 -- remote ini memang sudah dipakai client.

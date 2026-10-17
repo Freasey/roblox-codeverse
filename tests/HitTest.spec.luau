@@ -207,4 +207,65 @@ table.insert(cases, {
 	end,
 })
 
+table.insert(cases, {
+	name = "ketiga senjata v1 cocok dengan dua jalur uji kena di CombatService",
+	run = function()
+		-- CombatService cuma punya dua cabang: `kind == "melee"` pakai kerucut,
+		-- sisanya pakai silinder bidik. Senjata dengan `kind` di luar dua nilai
+		-- itu akan diam-diam masuk cabang ranged, dan `projectiles` nol akan
+		-- membuat serangan tidak pernah mengenai apa pun — dua-duanya tanpa
+		-- error.
+		local melee, ranged = 0, 0
+		for id, def in Weapons do
+			assert(
+				def.kind == "melee" or def.kind == "ranged",
+				string.format("senjata '%s' kind-nya '%s'", id, def.kind)
+			)
+			assert(def.projectiles >= 1, string.format("senjata '%s' projectiles < 1", id))
+			assert(def.range > 0, string.format("senjata '%s' range-nya %d", id, def.range))
+			assert(
+				def.cooldown > 0,
+				string.format("senjata '%s' cooldown-nya %f", id, def.cooldown)
+			)
+			if def.kind == "melee" then
+				melee += 1
+			else
+				ranged += 1
+			end
+		end
+		assert(melee >= 1, "harus ada minimal satu senjata jarak dekat")
+		assert(ranged >= 1, "harus ada minimal satu senjata jarak jauh (M5)")
+	end,
+})
+
+table.insert(cases, {
+	name = "senjata jarak jauh jangkauannya jauh di atas jarak dekat",
+	run = function()
+		-- Kalau tidak, silinder bidik dan kerucut menutup area yang sama dan
+		-- tidak ada alasan memakai senjata jarak jauh.
+		local meleeReach = Weapons.weapon_starter.range + Balance.MELEE_RADIUS_BONUS
+		assert(
+			Weapons.weapon_ranged.range > meleeReach * 2,
+			string.format(
+				"range ranged %d tidak jauh di atas jangkauan melee efektif %d",
+				Weapons.weapon_ranged.range,
+				meleeReach
+			)
+		)
+	end,
+})
+
+table.insert(cases, {
+	name = "senjata multi-proyektil bisa mengenai lebih dari satu musuh",
+	run = function()
+		-- weapon_boss_a punya projectiles = 3, dan CombatService memakai angka
+		-- itu sebagai batas jumlah target. Kalau angkanya 1, senjata hasil
+		-- craft tidak berbeda dari senjata beli selain damage.
+		assert(
+			Weapons.weapon_boss_a.projectiles > 1,
+			"weapon_boss_a harus bisa mengenai lebih dari satu musuh"
+		)
+	end,
+})
+
 return cases

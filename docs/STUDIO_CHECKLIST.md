@@ -577,3 +577,217 @@ karena dia sedang tidak di server saat boss mati.
 | Musuh pecahan saat boss mati | **Dibiarkan hidup** | Wave belum bersih sampai mereka juga habis, dan itu memang bagian dari mekaniknya. Menghapusnya saat boss mati akan membuat ambang 33% tidak ada konsekuensinya kalau pemain langsung membunuh boss sesudahnya. |
 | Boss dibedakan dari apa | `mechanic.kind`, bukan id boss | `Types.BossMechanic` sudah ditulis sebagai tagged union untuk ini. Menambah boss baru yang memakai mekanik yang sama jadi tidak perlu menyentuh `BossService`. |
 | Kartu info ditutup bagaimana | Tombol **Tutup** DAN hilang sendiri setelah 18 detik | Kartu muncul tepat setelah boss mati, dan saat itu bisa masih ada musuh pecahan berjalan ke Core. Pemain yang ingin terus bertarung tidak boleh dipaksa membaca dulu, tapi yang ingin membaca juga tidak boleh kehilangan kartunya karena salah klik. |
+
+---
+
+## M5 — Progres permanen & lobby
+
+**Yang sudah diverifikasi otomatis:** `ProgressionRules.luau` punya 25 unit test
+yang menutup seluruh daftar syarat tiga remote bagian 3.6 — upgrade (dimiliki,
+belum max, koin cukup termasuk kurang satu koin), beli (belum dimiliki, metode
+`buy`, harga terdefinisi), craft (belum dimiliki, metode `craft`, material cukup
+termasuk kurang satu) — plus semuanya ditolak di luar state `Lobby`. Kurva
+level diperiksa monoton, aman terhadap XP inf/NaN/negatif, dan loop naik
+level-nya dibatasi. Satu test memeriksa material yang di-drop boss **cocok**
+dengan bahan craft `weapon_boss_a`: kalau boss men-drop `material_b` sementara
+craft butuh `material_c`, senjata itu tidak akan pernah bisa dibuat dan tidak
+ada yang error. Lint, type check, `rojo build` hijau, 146 test Lune lulus.
+
+**Yang belum diverifikasi sama sekali, dan sebagian TIDAK BISA diverifikasi
+sampai place-nya di-publish:** semua kriteria persistensi. Baca kotak DataStore
+di bagian Persiapan — sebelum place di-publish sekali, pemain jalan dengan data
+default di memori dan tidak ada yang tersimpan. Jadi kriteria penerimaan M5
+("keluar, join lagi, dan semua progres masih ada") **tidak bisa dites sama
+sekali** sampai langkah itu dilakukan.
+
+### M5.0 Membuat `assets/Lobby.rbxmx` (lakukan ini dulu)
+
+1. View → **Command Bar**.
+2. Tempel seluruh isi `scripts/build_lobby.luau`, Enter.
+3. Script memilih `Workspace.Lobby` otomatis. Klik kanan → **Save to File** →
+   simpan sebagai `assets/Lobby.rbxmx` di root repo.
+4. Commit filenya. **Tidak perlu menyentuh `default.project.json`** — mapping
+   `Lobby` sudah ada di sana dalam bentuk
+   `"$path": { "optional": "assets/Lobby.rbxmx" }`, yang melewatkan file yang
+   belum ada tanpa menggagalkan `rojo build` dan otomatis memakainya begitu
+   filenya muncul. (Lihat tabel keputusan di bawah: bentuk `optional` sudah
+   diuji empiris, bentuk `$path` biasa memang menggagalkan build.)
+5. Restart `rojo serve` dan Connect lagi, lalu F5.
+
+Diharapkan di Output server: **tidak ada** warn `[MapService] Lobby tidak
+lengkap`. Kalau masih ada, nama instance-nya tidak persis `SpawnLocation` dan
+`ReadyPad`.
+
+Lobby ditaruh di Z = 400, jauh di belakang arena (lantai arena berakhir di
+Z = 120). Jaraknya disengaja: karena lobby dan arena ada di satu place
+(bagian 1.1), pemain yang ditahan di lobby harus dipisahkan dengan jarak, bukan
+dengan kode.
+
+### M5.1 Panel lobby
+
+1. F5. Panel **Lobby** muncul di kiri layar.
+
+Diharapkan:
+- Header menampilkan level dan koin permanen.
+- Dua tombol kesulitan: **Normal** aktif, **Hard (terkunci)** mati.
+- Tiga baris senjata, dalam urutan: Patch Wrench, Packet Rifle, Fork Bomb.
+  - Patch Wrench: "Level 1/10 · damage 25 · jarak dekat", judulnya bertanda
+    **(dipakai)**, tombol "Pakai" mati (sudah dipakai), tombol "Upgrade 50".
+  - Packet Rifle: "Belum dimiliki — 1500 koin", tombol "Beli 1500" mati karena
+    koin belum cukup.
+  - Fork Bomb: "Belum dimiliki — craft: material_a 0/5", tombol "Craft" mati.
+- Tombol **Ready** di bawah.
+
+### M5.2 Upgrade senjata
+
+Supaya tidak perlu memainkan 15 match: dari command bar **server**, naikkan
+koin pemain lewat remote contoh yang sudah ada, atau sementara ubah
+`Config.DEFAULT_DATA.coins` ke 50000 dan restart playtest.
+
+1. Tekan **Upgrade 50** berulang kali.
+
+Diharapkan:
+- Level senjata naik 1 tiap tekan, damage di baris detail naik, dan harga
+  tombol naik (50 → 67 → 91 → ...).
+- Koin di header turun sesuai harga.
+- Di **level 10** tombolnya berubah jadi "Level maks" dan mati.
+- Baris petunjuk di bawah menampilkan "Berhasil." sebentar tiap pembelian
+  berhasil.
+
+### M5.3 Beli dan craft
+
+1. Dengan koin ≥ 1500, tekan **Beli 1500** di Packet Rifle.
+
+Diharapkan: senjata jadi dimiliki ("Level 1/10 · damage 14 · jarak jauh"),
+tombolnya berubah jadi "Upgrade 50", dan tombol "Pakai" jadi aktif.
+
+2. Tekan **Pakai**, lalu Ready dan masuk wave.
+
+Diharapkan: serangan sekarang mengenai musuh **jauh** (sampai 60 stud), bukan
+cuma yang di depan. Ini jalur `ranged` di CombatService: silinder di sekitar
+garis bidik, bukan kerucut.
+
+3. Kalahkan boss sampai punya `material_a` 5 buah (satu boss men-drop 1, jadi
+   lima kali — atau sementara ubah `Weapons.weapon_boss_a.acquire.materials`
+   ke `{ material_a = 1 }` untuk mengetesnya).
+4. Di lobby, tekan **Craft**.
+
+Diharapkan: Fork Bomb jadi dimiliki, material terpotong, dan saat dipakai satu
+serangan mengenai **sampai 3 musuh sekaligus** (`projectiles = 3`).
+
+### M5.4 Reward akhir match
+
+1. Selesaikan satu match sampai menang (atau kalah).
+
+Diharapkan di layar hasil: koin dan XP **bukan nol lagi** (di M2 memang nol,
+karena RewardService belum ada). Angkanya harus sama dengan yang masuk ke
+header lobby setelah kembali — kalau layar hasil bilang "+120 koin" tapi
+header cuma naik 100, ada dua jalur yang menghitung berbeda.
+
+Output server mencetak satu baris per pemain:
+`[RewardService] <nama>: wave 10 menang, +150 koin, +300 xp, naik 2 level, membuka hard`
+
+### M5.5 First clear membuka Hard
+
+1. Menangkan satu match di Normal (wave 10 bersih).
+
+Diharapkan:
+- Layar hasil memuat baris **"Terbuka: hard"**.
+- Setelah kembali ke lobby, tombol **Hard** jadi aktif (tidak lagi "terkunci").
+- Menangkan lagi di Normal: layar hasil **TIDAK** lagi memuat "Terbuka: hard".
+  Kalau masih, daftar yang baru terbuka dibandingkan salah dan pemain akan
+  melihat pesan itu setiap match selamanya.
+
+2. Pilih **Hard**, Ready, masuk wave 1.
+
+Diharapkan: musuh butuh lebih banyak serangan (hpMult 1.8), dan reward koin di
+akhir lebih besar (rewardMult 1.6).
+
+### M5.6 Pemain yang keluar di tengah match tetap dapat reward (bagian 3.3)
+
+1. F5, Ready, mainkan sampai wave 4, lalu **tutup client**-nya.
+
+Diharapkan di Output server:
+`[RewardService] <nama>: wave 4 tidak selesai/kalah, +40 koin, +80 xp`
+— tanpa bonus menang, tapi tetap dapat reward sesuai wave saat dia keluar.
+
+2. Yang penting: pemain itu **tidak boleh dibayar dua kali**. Di server live,
+   keluar di wave 4 lalu rejoin dan ikut sampai match selesai harus memberi
+   satu pembayaran saja. Kalau dua, keluar-lalu-rejoin jadi cara menggandakan
+   reward.
+
+### M5.7 Persistensi — BUTUH PLACE YANG SUDAH DI-PUBLISH
+
+Langkah ini **tidak bisa dijalankan** sampai place-nya di-publish sekali
+(File → Publish to Roblox) **dan** Game Settings → Security → Enable Studio
+Access to API Services dicentang. Sebelum itu, Output server akan memuat warn
+`[PlayerDataService] ... jalan dengan data default di memori. Progres TIDAK
+tersimpan.` dan seluruh langkah di bawah dijamin gagal — bukan karena bug.
+
+1. Publish place-nya sekali, centang API Services, restart Studio.
+2. F5. Output server **tidak** lagi memuat warn data default di memori.
+3. Mainkan satu match, upgrade senjata, beli Packet Rifle.
+4. Stop playtest, F5 lagi.
+
+Diharapkan: level, koin, level senjata, senjata yang dibeli, material, dan
+`unlockedDifficulties` **semuanya masih ada**. Ini kriteria penerimaan M5 di
+rencana development, dan satu-satunya yang membuktikan dua lapis progres di
+CONCEPT.md benar-benar bekerja.
+
+5. Tes dobel-save: keluar di tengah match (reward dibayar), lalu join lagi
+   cepat. Koin tidak boleh bertambah dua kali untuk match yang sama.
+
+### M5.8 Tutorial pemain baru
+
+1. Pakai akun/karakter yang `stats.matchesPlayed`-nya masih 0 (pemain baru).
+
+Diharapkan: panel **PANDUAN** muncul di bawah layar, satu langkah per momen
+baru, masing-masing **sekali saja** per sesi:
+- di lobby: "Selamat datang di CodeVerse..."
+- saat hitung mundur, saat wave 1, saat wave 2, saat jeda pertama, saat boss
+  pertama muncul, dan saat match selesai.
+- Tiap panel hilang sendiri setelah 12 detik.
+
+2. Selesaikan satu match, lalu kembali ke lobby.
+
+Diharapkan: panduan **tidak muncul lagi** (`matchesPlayed` sudah ≥ 1). Di
+Studio tanpa DataStore, `matchesPlayed` ada di memori saja, jadi restart
+playtest akan membuat panduannya muncul lagi — itu benar, bukan bug.
+
+### M5.9 Remote progres tidak bisa disalahgunakan
+
+Dari command bar **client**:
+
+```lua
+local R = game:GetService("ReplicatedStorage").Remotes
+R.UpgradeWeapon:FireServer()                      -- nil
+R.UpgradeWeapon:FireServer(42)                    -- tipe salah
+R.UpgradeWeapon:FireServer("weapon_ranged")       -- belum dimiliki
+R.BuyWeapon:FireServer("weapon_starter")          -- sudah dimiliki
+R.BuyWeapon:FireServer("weapon_boss_a")           -- bukan dijual, tapi craft
+R.CraftWeapon:FireServer("weapon_ranged")         -- bukan craft, tapi dijual
+R.CraftWeapon:FireServer("weapon_boss_a")         -- material kurang
+for _ = 1, 200 do R.UpgradeWeapon:FireServer("weapon_starter") end -- spam
+```
+
+Diharapkan: **tidak ada error di Output server**, setiap penolakan membalas
+`ActionResult` dengan alasannya (terlihat di baris petunjuk panel lobby), dan
+yang paling penting: **koin dan material tidak berubah sama sekali** setelah
+semua percobaan di atas. Spam dibatasi 2 per detik.
+
+Ulangi ketiga remote itu **saat match sedang berjalan**. Semuanya harus
+ditolak dengan alasan "cuma bisa di lobby".
+
+### Keputusan M5 yang diambil tanpa menanyakan dulu
+
+| Keputusan | Yang dipilih | Alasan |
+|---|---|---|
+| Mapping `Lobby` di `default.project.json` | **Ditambahkan sekarang** sebagai `"$path": { "optional": "assets/Lobby.rbxmx" }` | Diuji empiris: `"$path": "assets/Lobby.rbxmx"` biasa membuat `rojo build` gagal keras selama filenya belum ada, jadi CI merah — itu sebabnya mapping-nya ditunda. Bentuk `optional` melewatkan path yang tidak ada tanpa error dan otomatis memakainya begitu filenya muncul, jadi masalahnya hilang tanpa perlu menunda. Konsekuensinya user tidak perlu menyentuh file proyek setelah men-generate lobby — satu langkah manual yang mudah terlupa jadi hilang. Mapping `Arena` dibiarkan dalam bentuk `$path` biasa karena filenya sudah ada. |
+| Kurva level | `100 * 1.25^(level-1)` XP per level, maksimum 100 kenaikan per panggilan | Bagian 3.5 memberi rumus XP per match tapi tidak memberi kurva levelnya. Angkanya dipilih supaya match pertama yang kalah di wave 1 (20 XP) tidak langsung naik level, dan sepuluh match penuh yang menang mendarat di level 5 sampai 20 — dites eksplisit. Batas 100 kenaikan ada bukan karena ada yang bisa memberi XP sebanyak itu secara sah, tapi karena satu nilai XP yang rusak (inf, atau angka raksasa dari data korup) akan membuat loopnya berjalan selamanya dan menggantung thread yang memanggilnya; di server itu berarti pemain yang tidak pernah dapat reward tanpa ada yang tahu kenapa. |
+| Urutan penyambungan `PlayerRemoving` | `RewardService.start()` dipanggil **sebelum** `PlayerDataService.start()` | Keduanya mendengarkan `Players.PlayerRemoving`, dan PlayerDataService menyimpan lalu MENGHAPUS cache data pemain di situ. Handler Roblox dijalankan dalam urutan penyambungan, jadi kalau PlayerDataService disambung lebih dulu, RewardService tidak punya data lagi untuk dibayar — dan pemain yang keluar di tengah match kehilangan rewardnya, tepat kasus yang diwajibkan bagian 3.3. |
+| Pembayaran dobel | Pembukuan `paid` per UserId, direset saat **Countdown**, bukan saat match selesai | Pemain yang keluar di wave 7 sudah dibayar. Kalau pembukuannya dihapus saat `Ended`, dia bisa ikut dibayar lagi di akhir match yang sama kalau sempat rejoin — jadi keluar-lalu-rejoin menggandakan reward. |
+| Material boss di layar hasil | Dibaca dari pembukuan BossService, **tidak** ditambahkan lagi | BossService sudah membayarkan materialnya saat boss mati (M4). Menambahkannya lagi di RewardService berarti satu boss memberi dua kali. |
+| Tutorial | **Teks panduan saja, tanpa wave latihan**, dan seluruhnya di client | M5 mengizinkan "bisa berupa wave latihan dengan teks panduan" — jadi teks saja sudah memenuhi. Wave latihan butuh state keenam di MatchService, dan bagian 3.3 eksplisit bahwa service lain tidak boleh menambah atau mengubah state: menambah state demi tutorial menyentuh bagian paling rapuh dari seluruh sistem untuk keuntungan yang bisa didapat dengan teks. Dibuat di client karena semua yang diperlukan sudah ada di sana (`MatchState` memberi state dan wave, data pemain memberi `stats.matchesPlayed`), jadi tutorialnya tidak menambah satu remote pun. |
+| "Pemain baru" diukur dari apa | `stats.matchesPlayed < 1` | Satu-satunya penanda yang sudah ada di skema bagian 3.1 dan yang artinya tidak ambigu. Menambah field `tutorialDone` berarti menambah field skema untuk sesuatu yang bisa disimpulkan. |
+| ReadyPad: tombol atau penanda | **Penanda posisi**; tombol Ready yang sesungguhnya ada di UI | Bagian 3.4 cuma menyebut "Part untuk tanda siap". Tombol UI bisa dipakai di mobile (CONCEPT.md menargetkan mobile) dan tidak bergantung pada pemain berhasil menginjak satu Part. ReadyPad tetap dibuat dan tetap dibaca MapService supaya kontrak bagian 3.4 utuh. |
+| Posisi lobby | Z = 400, 280 stud di belakang tepi arena | Lobby dan arena ada di satu place (bagian 1.1), jadi pemain yang ditahan di lobby harus dipisahkan dengan **jarak**, bukan dengan kode. Pada jarak itu pemain di lobby tidak bisa melihat atau menjangkau musuh di arena. |
