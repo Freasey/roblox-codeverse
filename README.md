@@ -52,6 +52,8 @@ rojo sourcemap default.project.json --output sourcemap.json      # buat type che
 | `src/client/` | `StarterPlayer.StarterPlayerScripts.Client` |
 | `src/shared/` | `ReplicatedStorage.Shared` |
 | `Packages/` | `ReplicatedStorage.Packages` (dikelola Wally) |
+| `assets/` | `Workspace` — map dan model, di-mount mulai M1 |
+| `art/` | — sumber Blender (`.blend`), tidak di-mount |
 
 Mapping-nya didefinisikan di `default.project.json`.
 
@@ -66,6 +68,85 @@ itu konvensi Rojo, bukan nama khusus Roblox.
   pemain yang niat ngecheat. Isinya cuma input dan presentasi.
 - Komunikasi antar keduanya lewat `src/shared/Remotes.luau`. Jangan bikin
   RemoteEvent ad-hoc di tempat lain — susah di-audit.
+
+## Mengedit map
+
+Geometry arena dan lobby dibuat di Studio, tapi yang disimpan di repo adalah
+hasilnya: `assets/Arena.rbxmx` dan `assets/Lobby.rbxmx`. Formatnya XML, jadi
+masih bisa di-review di git, untuk di-mount ke `Workspace`. Titik spawn, waypoint
+lane, dan posisi Core Server ditandai Part bernama khusus supaya kode tidak
+bergantung pada koordinat.
+
+> ⚠️ **Rojo bekerja satu arah.** Dia membaca file dari disk lalu menimpa
+> Instance yang bersangkutan di Studio — tidak pernah sebaliknya. Begitu
+> `assets/Arena.rbxmx` ter-mount, apa pun yang kamu ubah pada `Workspace.Arena`
+> di dalam Studio akan **hilang** pada sync berikutnya: tanpa peringatan, tanpa
+> bisa di-undo.
+
+Jadi tiap kali ngedit map:
+
+1. Edit arena di Studio seperti biasa.
+2. **Sebelum** sync apa pun: klik kanan `Workspace.Arena` → **Save to File** →
+   timpa `assets/Arena.rbxmx`.
+3. Baru commit.
+
+Lupa langkah 2 = kerjaannya hilang. Mitigasinya kebiasaan, bukan tooling:
+kerjakan map di sesi terpisah dari coding, dan commit tiap kali selesai satu
+sesi.
+
+Mapping `assets/` **sudah ada** di `default.project.json` sejak M1, jadi
+prosedur di atas berlaku sekarang:
+
+```json
+"Workspace": {
+  "Arena": { "$path": "assets/Arena.rbxmx" },
+  "Lobby": { "$path": { "optional": "assets/Lobby.rbxmx" } }
+}
+```
+
+`assets/Arena.rbxmx` sudah ada di repo; `assets/Lobby.rbxmx` **belum** dan
+dibuat sekali lewat `scripts/build_lobby.luau` — langkahnya ada di
+[docs/TEST_CASES.md](docs/TEST_CASES.md) bagian 2.6. Bentuk `optional` dipakai
+karena `"$path"` biasa membuat `rojo build` gagal keras selama filenya belum
+ada; alasan lengkapnya di bagian 20 dokumen itu.
+
+## Aset 3D
+
+Roblox tidak memakai file 3D saat game berjalan. Waktu sebuah mesh di-import,
+Studio meng-upload geometrinya ke server Roblox dan dapat sebuah **asset ID**;
+`MeshPart` di place cuma menyimpan ID itu di properti `MeshId`. File `.fbx`-nya
+sendiri tidak pernah ikut terkirim ke pemain. Artinya format file cuma
+menentukan kelancaran saat import, bukan performa game.
+
+Importer menerima `.fbx`, `.obj`, dan `.gltf`/`.glb`. Project ini pakai
+**`.blend` sebagai sumber di `art/`, export `.fbx` untuk import** — satu format
+yang menutup mesh statis, rigged, dan ber-animasi, dan yang paling banyak
+dibahas di panduan export Blender di dokumentasi Roblox.
+
+`art/` sengaja **dipisah** dari `assets/`: `assets/` di-mount Rojo ke dalam
+DataModel, jadi file `.blend` tidak boleh nyangkut di sana.
+
+Budget triangle:
+
+| Aset | Target triangle |
+|---|---|
+| Musuh biasa | 200 sampai 500 |
+| Boss | beberapa ribu (cuma satu di layar) |
+| Props arena | 100 sampai 300 |
+
+Batas keras Roblox sendiri 20.000 triangle per mesh dan maksimal 4 bone per
+vertex, tapi angka itu tidak relevan di sini — constraint yang sebenarnya adalah
+40 musuh aktif sekaligus, di platform mobile juga. Low poly bukan pilihan gaya,
+tapi kebutuhan performa.
+
+Karena hasil upload jadi asset ID, file `.rbxmx` di `assets/` menyimpan ID itu
+di dalamnya. Jadi tiap kali model diubah, alurnya:
+
+export ulang dari Blender → import ulang di Studio (dapat ID baru) → simpan
+ulang `.rbxmx` → commit.
+
+Iterasi visual tidak gratis, jadi lebih hemat kalau model diselesaikan dulu di
+Blender sebelum masuk Studio.
 
 ## Data / "database"
 

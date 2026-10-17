@@ -180,7 +180,9 @@ File menimpa `assets/Arena.rbxmx`.
 > **Prosedur edit map, jangan dilewati.** Rojo satu arah: begitu
 > `assets/Arena.rbxmx` ter-mount, apa pun yang kamu ubah pada `Workspace.Arena`
 > di Studio akan **hilang** pada sync berikutnya. Alurnya selalu: edit di Studio
-> → **Save to File** menimpa file di `assets/` → baru commit.
+> → **Save to File** menimpa file di `assets/` → baru commit. Versi lengkapnya
+> ada di [README bagian "Mengedit map"](../README.md#mengedit-map); yang di sini
+> cuma sebanyak yang dibutuhkan untuk menjalankan test di bawah.
 
 ## 3. Yang sudah terverifikasi di luar dokumen ini
 
@@ -475,7 +477,7 @@ Acuan: CONCEPT.md tabel boss, DEVELOPMENT_PLAN.md M4.
 | BOSS-01 | Match berjalan sampai wave 5 | Amati awal wave 5 | Kubus merah besar (9x9x9) muncul **lebih dulu** dari musuh biasa, di lane 1 — boss diantre sebelum musuh biasa dengan sengaja, karena mekanik membelah cuma bermakna kalau boss ada sejak awal wave. Panel bar HP boss muncul di bawah HUD utama bertulisan **"Splitter — Worm"** dan persentase HP. Persentase turun saat boss diserang, dan **tidak lebih sering dari 5 kali per detik** (disiarkan paling cepat tiap 0.2 detik dan cuma kalau angkanya berubah — kalau bar-nya berkedip tiap frame, dua pembatas itu tidak bekerja) | M4 | solo | - |
 | BOSS-02 | `boss_splitter` hidup, HP masih di atas 66% | Serang boss sampai HP-nya turun melewati 66% | **4 musuh `fast`** muncul **di posisi boss saat itu**, menyebar melingkar sekitar 6 stud, dan langsung melanjutkan ke Core dari waypoint yang sama dengan boss — bukan dari awal lane. Boss tetap hidup | M4 | solo | - |
 | BOSS-03 | `boss_splitter` HP di antara 66% dan 33% | Terus serang sampai HP melewati 33% | 4 `fast` lagi. Pembelahan di 66% **tidak terulang** — total hanya dua kali sepanjang hidup boss, berapa kali pun dia dipukul | M4 | solo | - |
-| BOSS-04 | `boss_splitter` HP penuh. Sementara naikkan `Weapons.weapon_starter.baseDamage` supaya satu serangan menurunkan HP boss dari ~70% ke ~20% | Serang boss sekali dengan damage besar itu | **8 musuh `fast`** muncul, bukan 4: dua ambang terlewati sekaligus dalam satu serangan. Ini kasus pinggir yang punya unit test, dan yang kalau salah membuat boss kehilangan satu fase tanpa ada yang error. Balikkan `Weapons.luau` setelah test | M4 | solo+EDIT | - |
+| BOSS-04 | Sesi 2 client, keduanya Ready, kalahkan boss | Baca Output server dan `materials` dari kedua client lewat `R.GetProfile:InvokeServer().materials` | `[BossService] drop material_a x1 ke 2 peserta`, dan **kedua** pemain dapat material — bukan cuma yang menyerang paling banyak atau yang memberi pukulan terakhir | M4 | 2P | - |
 | BOSS-05 | `boss_splitter` baru mati | Amati layar client | Bar HP boss hilang. **Kartu info malware** muncul di tengah layar: badge "KARTU INFO MALWARE", judul **"Worm"**, satu paragraf penjelasan, dan **tiga** butir cara mencegah — teksnya dari `Bosses.luau`. Bisa ditutup dengan tombol **Tutup**, dan hilang sendiri setelah 18 detik kalau dibiarkan. Gameplay lanjut normal selama kartu terbuka | M4 | solo | - |
 | BOSS-06 | Match berjalan sampai wave 10 | Amati awal wave 10 | Kubus merah sangat besar (11x11x11) muncul, bar HP boss bertulisan **"Locker — Ransomware"** | M4 | solo | - |
 | BOSS-07 | `boss_locker` hidup | Tunggu beberapa saat tanpa membunuh boss | Tiap **8 detik**, 3 musuh `basic` muncul **dari awal lane** — beda dari Splitter dengan sengaja: Locker memanggil bantuan dari luar, bukan memecah dirinya. Soal kunci tokonya, lihat SHOP-10 | M4 | solo | - |
@@ -485,7 +487,7 @@ Acuan: CONCEPT.md tabel boss, DEVELOPMENT_PLAN.md M4.
 | BOSS-11 | Playtest 4 player, wave dengan boss | Amati bar HP boss di keempat client sambil boss diserang | Persentase sama di semua client dan turun bersamaan — server satu-satunya sumber angkanya | M4 | 4P | - |
 | BOSS-12 | `boss_splitter` sudah membelah dua kali dan masih ada musuh pecahan hidup | Habiskan boss-nya saja, lalu amati arena | Musuh pecahan **dibiarkan hidup**, dan wave **belum** dinyatakan bersih sampai mereka juga habis. Itu bagian dari mekaniknya: kalau pecahan dihapus saat boss mati, ambang 33% tidak ada konsekuensinya bagi pemain yang langsung membunuh boss sesudahnya | M4 | solo | - |
 | BOSS-13 | Sesi 2 client, keduanya peserta. Tutup client ke-2 **sebelum** boss mati, lalu kalahkan boss | Join lagi dengan akun yang sama | Material-nya dibayarkan saat dia rejoin, dan Output mencetak `[BossService] material tertunda dibayarkan ke <nama>`. Dropnya tidak boleh hilang hanya karena dia sedang tidak di server pada detik boss mati | M4 | LIVE | - |
-| BOSS-14 | Sesi 2 client, keduanya Ready, kalahkan boss | Baca Output server dan `materials` dari kedua client | `[BossService] drop material_a x1 ke 2 peserta`, dan **kedua** pemain dapat material — bukan cuma yang menyerang paling banyak atau yang memberi pukulan terakhir | M4 | 2P | - |
+| BOSS-14 | `boss_splitter` HP penuh. Sementara naikkan `Weapons.weapon_starter.baseDamage` supaya satu serangan menurunkan HP boss dari ~70% ke ~20% | Serang boss sekali dengan damage besar itu | **8 musuh `fast`** muncul, bukan 4: dua ambang terlewati sekaligus dalam satu serangan. Ini kasus pinggir yang punya unit test, dan yang kalau salah membuat boss kehilangan satu fase tanpa ada yang error. Balikkan `Weapons.luau` setelah test | M4 | solo+EDIT | - |
 
 ## 13. Progres permanen dan data player (PROG)
 
@@ -661,8 +663,8 @@ bisa dicentang — tapi dia juga tidak sedang gagal.
 | M3 | Beli item mengubah gameplay di wave berikutnya | SHOP-01 sampai SHOP-06, SHOP-14, CORE-05, COMBAT-14 | — |
 | M3 | Tidak bisa beli di luar jeda atau dengan koin kurang (dicoba lewat remote manual) | SHOP-07, SHOP-08, SHOP-09, SHOP-12, SEC-04 | SHOP-13 (`LIVE`) menutup kasus bukan-peserta |
 | M3 | Koin match per tim, reset tiap match | MP-04, MP-14, SHOP-12 | MP-04 dan MP-14 butuh `2P`/`4P` |
-| M4 | Kedua boss bisa dikalahkan dengan mekaniknya berjalan | BOSS-01 sampai BOSS-09, BOSS-12, SHOP-10, SHOP-11, SHOP-15, HUD-04, HUD-08 | SHOP-10 tidak bisa membuktikan kuncinya lewat UI — temuan T2 |
-| M4 | Material tercatat di data player setelah match | BOSS-09, BOSS-10, BOSS-14 | BOSS-14 butuh `2P`; BOSS-13 (`LIVE`) menutup kasus peserta yang disconnect; persistensi sesungguhnya butuh `PUB` |
+| M4 | Kedua boss bisa dikalahkan dengan mekaniknya berjalan | BOSS-01, BOSS-02, BOSS-03, BOSS-05 sampai BOSS-09, BOSS-12, BOSS-14, SHOP-10, SHOP-11, SHOP-15, HUD-04, HUD-08 | SHOP-10 tidak bisa membuktikan kuncinya lewat UI — temuan T2 |
+| M4 | Material tercatat di data player setelah match | BOSS-04, BOSS-09, BOSS-10 | BOSS-04 butuh `2P`; BOSS-13 (`LIVE`) menutup kasus peserta yang disconnect; persistensi sesungguhnya butuh `PUB` |
 | M5 | Player baru bisa main | PROG-16, HUD-05, HUD-06, BOOT-04, BOOT-05 | — |
 | M5 | Dapat reward | PROG-01, PROG-02, PROG-03, PROG-04, PROG-05, HUD-03 | Semuanya terpukul temuan T1 di bagian layar hasil; yang dinilai adalah print server dan header lobby |
 | M5 | Upgrade senjata | PROG-08, PROG-09, PROG-17, COMBAT-12, HUD-07 | — |
@@ -670,7 +672,7 @@ bisa dicentang — tapi dia juga tidak sedang gagal.
 | M5 | Membuka Hard | PROG-06, PROG-07, WAVE-09 | — |
 | M5 | Keluar, join lagi, dan semua progres masih ada | PROG-14, PROG-15, DATA-03, DATA-06a | **Seluruhnya `PUB`** — kriteria ini tidak bisa dites sama sekali sampai place-nya di-publish sekali |
 | M5 | Senjata `weapon_ranged` dan `weapon_boss_a` jalan di CombatService | PROG-10, COMBAT-06, COMBAT-07, COMBAT-08, COMBAT-09 | COMBAT-06 butuh `LAG` |
-| M6 | Playtest 4 player lewat Studio (Test → Clients and Servers) lancar | MP-01, MP-02, MP-03, MP-04, MP-05, MP-12, MP-13, MP-14, BOSS-11, BOSS-14, WAVE-06, WAVE-08, WAVE-10, DATA-01 | Semuanya butuh `2P`/`4P`, dan itu memang isi kriterianya. MATCH-16 (pemain join saat Countdown) berkode `LIVE` karena Studio tidak bisa menambah pemain di tengah sesi |
+| M6 | Playtest 4 player lewat Studio (Test → Clients and Servers) lancar | MP-01, MP-02, MP-03, MP-04, MP-05, MP-12, MP-13, MP-14, BOSS-04, BOSS-11, WAVE-06, WAVE-08, WAVE-10, DATA-01 | Semuanya butuh `2P`/`4P`, dan itu memang isi kriterianya. MATCH-16 (pemain join saat Countdown) berkode `LIVE` karena Studio tidak bisa menambah pemain di tengah sesi |
 | M6 | Rejoin di tengah match berhasil | MP-06, MP-07, MP-08, MP-09, MP-10, MP-11, DATA-04, DATA-05, DATA-07, DATA-08 | MP-09 dan MP-10 bisa dites sekarang dengan `2P`. **Sisanya `LIVE`** — Studio tidak bisa mensimulasikan join ulang dengan UserId yang sama |
 | M6 | Leaderboard (`LeaderboardService` + papan di lobby) | LB-00 sampai LB-05, SEC-08 | **Seluruhnya `BELUM`** — belum ada satu baris kode pun |
 | M6 | Rate limit di semua remote | SEC-14, SEC-01 sampai SEC-07, SEC-11 | SEC-14 **akan gagal**: `RequestAction` dan `GetProfile` belum punya rate limit (temuan T6) |
