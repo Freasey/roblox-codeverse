@@ -350,3 +350,108 @@ ganti loadout di lobby."
 | Dua pemain memilih kesulitan berbeda | Ambil yang **paling mudah** di antara pilihan mereka | Tidak disebut rencana development. `hard` harus dibuka dulu per pemain (bagian 3.1), jadi aturan apa pun yang mengambil yang lebih sulit bisa memaksa pemain ikut match pada tingkat yang belum dia buka. Mengambil yang termudah tidak pernah bisa melakukan itu. Diukur dari `hpMult`, bukan urutan tabel, supaya menambah tingkat baru nanti tidak perlu menyentuh fungsinya. |
 | Pemain baru join saat Countdown | Hitung mundur **dibatalkan**, kembali ke Lobby | Syarat masuk Countdown di bagian 3.3 adalah "semua player di server menekan Ready". Pemain yang baru join otomatis belum Ready, jadi syaratnya tidak lagi terpenuhi. Memeriksa syarat itu terus-menerus (bukan sekali saat masuk) adalah tafsir paling lurus dari aturannya, dan mencegah match dimulai dengan pemain yang tidak pernah menyatakan siap. |
 | Tombol Ready ditaruh di mana | `LobbyController`, versi minimal (cuma tombol Ready + teks petunjuk) | Rencana development menaruh tombol Ready di `LobbyController`, yang milestone-nya M5. Tapi tanpa tombol itu tidak ada cara memulai match dan kriteria M2 tidak bisa diverifikasi sama sekali. Jadi file-nya dibuat sekarang dengan isi minimal, dan panel senjata/kesulitan/upgrade/craft menempel ke panel yang sama di M5. |
+
+---
+
+## M3 — Toko Match
+
+**Yang sudah diverifikasi otomatis:** `ShopRules.luau` punya 18 unit test yang
+menutup seluruh daftar penolakan bagian 3.6 — di luar `Intermission`, toko
+terkunci boss, item tidak ada, jatah habis, koin kurang (termasuk kurang satu
+koin, nol, dan negatif) — plus efek kumulatifnya (linear, monoton, berlantai)
+dan konsistensi `ShopItems.order` dengan `ShopItems.byId`. Lint, type check, dan
+`rojo build` hijau.
+
+**Yang belum diverifikasi sama sekali:** apakah panelnya muncul di tempat yang
+benar, apakah penghalang dan turret kelihatan dan benar-benar berpengaruh, dan
+apakah efek damage/attack speed terasa di wave berikutnya.
+
+### M3.1 Toko buka dan tutup pada waktu yang benar
+
+1. F5, Ready, selesaikan wave 1.
+
+Diharapkan:
+- Saat state "Jeda — toko buka", panel **Toko Match** muncul di kanan layar
+  dengan lima item: Exploit Patch, Overclock, Hotfix, Firewall Block, Scanner
+  Turret — **dalam urutan itu** (urutannya dari `ShopItems.order`; kalau
+  berubah-ubah tiap kali client dibuka, daftar itu tidak dipakai).
+- Header menampilkan jumlah koin tim, dan jumlahnya naik setiap musuh mati
+  selama wave berjalan.
+- Begitu jeda habis dan wave 2 mulai, panelnya **hilang**.
+
+### M3.2 Tombol dinonaktifkan saat koin kurang
+
+1. Di jeda pertama (koin masih sedikit), perhatikan tombol Scanner Turret
+   (250 koin).
+
+Diharapkan: tombolnya kelihatan abu-abu dan **mengkliknya tidak melakukan
+apa-apa** — tidak mengirim remote, tidak mengurangi koin. Tombol yang harganya
+di bawah saldo kelihatan biru dan bisa diklik.
+
+### M3.3 Koin match per TIM, bukan per pemain — butuh 2 client
+
+Sesi 2-player. Kedua pemain Ready.
+
+Diharapkan:
+- Kedua pemain melihat **angka koin yang sama persis**, dan angkanya naik
+  siapa pun yang membunuh musuhnya.
+- Kalau pemain A membeli Hotfix 150 koin, saldo di layar pemain B **ikut
+  turun** 150.
+- Jatah item juga dibagi tim: setelah A membeli Hotfix 3 kali (jatah maksimum),
+  tombol Hotfix di layar B juga mati.
+
+### M3.4 Efek tiap item benar-benar berpengaruh
+
+Beli satu per satu dan lihat efeknya di wave berikutnya:
+
+| Item | Yang harus terlihat |
+|---|---|
+| **Hotfix** | Bar Core di HUD naik 150 poin (15% dari 1000) **langsung saat dibeli**. Kalau Core sudah penuh, saldo tetap terpotong dan bar tidak berubah — itu benar, bukan bug. |
+| **Exploit Patch** | Musuh mati dengan lebih sedikit serangan di wave berikutnya. `basic` wave 2 butuh 5 serangan tanpa buff; dengan satu Exploit Patch (+10%) jadi 5 juga, dengan tiga jadi 4. Lebih mudah diukur dengan menghitung serangan ke `tank`. |
+| **Overclock** | Serangan bisa dikirim lebih cepat. Tahan klik kiri dan bandingkan ritme bar HP musuh yang turun, sebelum dan sesudah beli. |
+| **Firewall Block** | Dinding biru tembus pandang muncul di tengah **kedua** lane tepat saat wave berikutnya mulai, dan musuh di lane itu **berhenti bergerak** selama 6 detik, lalu jalan lagi dan dindingnya hilang. Membeli dua kali menggandakan **durasinya** (12 detik), bukan jumlah dindingnya. |
+| **Scanner Turret** | Balok hijau-kebiruan muncul mengelilingi Core. Saat wave jalan, dia menembak musuh terdekat sendiri (HP musuh turun tanpa kamu menyerang) kira-kira sekali per detik, dalam radius 70 stud. Turret kedua muncul di sudut berbeda, tidak menumpuk di atas yang pertama. |
+
+### M3.5 Koin dan pembelian reset tiap match
+
+1. Selesaikan satu match (menang atau kalah), beli beberapa item di dalamnya.
+2. Kembali ke lobby, tekan **Ready** lagi.
+
+Diharapkan: saldo koin **0** saat hitung mundur match kedua, semua tombol toko
+kembali ke jatah penuh, dan **tidak ada turret sisa** dari match sebelumnya di
+sekitar Core. Buff damage/attack speed juga tidak terbawa — kalau musuh wave 1
+match kedua mati lebih cepat dari biasanya, pembukuan pembelian tidak
+di-reset.
+
+### M3.6 Server menolak pembelian yang tidak sah
+
+Dari command bar **client**:
+
+```lua
+local R = game:GetService("ReplicatedStorage").Remotes
+R.BuyShopItem:FireServer()                     -- nil
+R.BuyShopItem:FireServer(123)                  -- tipe salah
+R.BuyShopItem:FireServer("shop_tidak_ada")     -- id tidak ada
+R.BuyShopItem:FireServer("shop_turret")        -- saat wave jalan (bukan jeda)
+for _ = 1, 100 do R.BuyShopItem:FireServer("shop_barrier") end -- spam
+```
+
+Diharapkan: tidak ada error di Output server. Dua baris terakhir ditolak;
+spam-nya dibatasi 2 panggilan per detik dan sisanya dibuang. Yang penting:
+**saldo koin tidak berubah sama sekali** setelah semua percobaan di atas. Kalau
+turun, ada jalur yang memotong koin sebelum validasinya lengkap.
+
+Coba juga dari pemain yang **bukan peserta** (join saat match berjalan, di
+server live): `R.BuyShopItem:FireServer("shop_barrier")` harus ditolak dengan
+`ActionResult` "Kamu bukan peserta match ini."
+
+### Keputusan M3 yang diambil tanpa menanyakan dulu
+
+| Keputusan | Yang dipilih | Alasan |
+|---|---|---|
+| Efek `shop_damage_up` dan `shop_fire_rate`: per pemain atau per tim | **Per tim** | M3 menyebut "upgrade damage tim". Selain itu koin match adalah satu kolam milik tim, jadi efek per-pembeli membuat pemain pertama yang menekan tombol memakai uang bersama untuk keuntungan pribadi. Deskripsi item di `ShopItems.luau` ikut diubah supaya tidak lagi berbunyi "senjatamu". |
+| Penghalang dipasang di lane mana | **Semua lane**, dan beberapa pembelian menumpuk **durasinya** | Tabel bagian 3.6 memaku payload `BuyShopItem` jadi `itemId` saja, tanpa argumen lane. Menambah argumen berarti menyimpang dari tabel yang milestone berikutnya ikut pakai, dan menebak lane mana yang dimaksud pemain lebih buruk daripada efek yang jelas dan bisa diprediksi. Durasi yang menumpuk dipilih karena dua penghalang di lane yang sama pada waktu yang sama tidak menahan musuh dua kali lebih kuat. |
+| Penghalang berlaku kapan | **Wave berikutnya**, bukan saat dibeli | Toko cuma buka saat `Intermission`, dan saat itu tidak ada musuh yang bergerak. Dipasang langsung berarti 6 detiknya habis sebelum ada yang perlu ditahan. |
+| Posisi turret | Ditentukan **server**, mengelilingi Core, sudutnya dari nomor pembelian | Alasan yang sama dengan penghalang: payload-nya cuma `itemId`. Sudut dari nomor pembelian memastikan turret kedua tidak muncul menumpuk di atas yang pertama. |
+| Pengali efek: linear atau berlipat | **Linear** (5 x +10% = 1.5x, bukan 1.61x), dengan lantai cooldown 0.4 | Harga item tetap, jadi efek yang berlipat akan meledak di pembelian terakhir. Linear juga bisa dihitung sendiri oleh pemain. Lantainya ada supaya menaikkan step nanti tidak bisa membuat cooldown senjata hilang sama sekali. |
+| Siapa yang boleh membeli | Hanya pemain yang ada di `participants` | Tidak disebut bagian 3.6, tapi mengikuti aturan yang sama dengan `Attack`: pemain yang ditahan di lobby bukan bagian dari match yang sedang berjalan (bagian 3.3), jadi dia tidak boleh membelanjakan koin tim. |

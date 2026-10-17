@@ -51,6 +51,20 @@ Balance.MELEE_RADIUS_BONUS = 5 -- stud ekstra di luar `range` senjata
 Balance.MELEE_MIN_COS = 0.2 -- cos setengah sudut kerucut; 0.2 ~ 78 derajat
 Balance.RANGED_RADIUS = 5 -- radius silinder di sekitar garis bidik
 
+-- Toko Match (M3). Efeknya ditambahkan secara linear, bukan dikalikan, supaya
+-- lima pembelian jadi 1.5x dan bukan 1.61x: harga tetap, efek tidak meledak,
+-- dan pemain bisa menghitung sendiri apa yang dia dapat.
+Balance.SHOP_DAMAGE_STEP = 0.10
+Balance.SHOP_FIRE_RATE_STEP = 0.08
+-- Lantai cooldown. Lima kali -8% linear jadi 0.6; lantainya ada supaya
+-- menaikkan step nanti tidak bisa membuat cooldown senjata hilang sama sekali.
+Balance.SHOP_COOLDOWN_FLOOR = 0.4
+Balance.CORE_REPAIR_FRACTION = 0.15
+Balance.BARRIER_DURATION = 6 -- detik musuh tertahan di satu lane
+Balance.TURRET_DAMAGE = 12
+Balance.TURRET_INTERVAL = 1.0 -- detik antar tembakan
+Balance.TURRET_RANGE = 70 -- stud
+
 -- HP satu musuh pada wave tertentu.
 function Balance.enemyHp(
 	def: Types.EnemyDef,

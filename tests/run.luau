@@ -17,6 +17,7 @@ local suites: { { name: string, cases: { Case } } } = {
 	{ name = "HitTest", cases = require("./HitTest.spec") },
 	{ name = "RateLimit", cases = require("./RateLimit.spec") },
 	{ name = "MatchRules", cases = require("./MatchRules.spec") },
+	{ name = "ShopRules", cases = require("./ShopRules.spec") },
 }
 
 local passed = 0

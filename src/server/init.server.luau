@@ -28,6 +28,7 @@ local EnemyService = require(Services.EnemyService)
 local MapService = require(Services.MapService)
 local MatchService = require(Services.MatchService)
 local PlayerDataService = require(Services.PlayerDataService)
+local ShopService = require(Services.ShopService)
 local WaveService = require(Services.WaveService)
 
 print(string.format("[%s] server booting (place %d)", Config.GAME_NAME, game.PlaceId))
@@ -123,6 +124,10 @@ MapService.getLobby()
 -- (bagian 3.6). Disuntik, bukan di-require, supaya CombatService tidak
 -- bergantung ke MatchService dan tidak ada lingkaran require.
 CombatService.setGate(MatchService.canAttack)
+-- Pengali damage dan cooldown dari Toko Match (M3). Disuntik dengan alasan
+-- yang sama dengan gerbangnya: CombatService tidak boleh bergantung ke
+-- ShopService, dan ShopService sudah bergantung ke MatchService.
+CombatService.setModifiers(ShopService.getModifiers)
 CombatService.start()
 
 -- Musuh berhenti bergerak di luar WaveActive, dan dibersihkan saat kembali ke
@@ -137,6 +142,7 @@ end)
 
 MatchService.start()
 WaveService.start()
+ShopService.start()
 
 CoreService.onDestroyed:Connect(function()
 	print(string.format("[%s] Core Server hancur", Config.GAME_NAME))
