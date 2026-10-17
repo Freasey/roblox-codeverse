@@ -15,8 +15,10 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Controllers = script.Controllers
 local HudController = require(Controllers.HudController)
 local InputController = require(Controllers.InputController)
+local LobbyController = require(Controllers.LobbyController)
 local MatchStore = require(Controllers.MatchStore)
 local ProfileStore = require(Controllers.ProfileStore)
+local ResultController = require(Controllers.ResultController)
 
 local localPlayer = Players.LocalPlayer
 
@@ -31,6 +33,8 @@ ProfileStore.start()
 
 HudController.start()
 InputController.start()
+LobbyController.start()
+ResultController.start()
 
 -- Dipakai nanti oleh controller lain; dibiarkan di sini supaya jelas kalau
 -- remote ini memang sudah dipakai client.

@@ -26,8 +26,9 @@ local CombatService = require(Services.CombatService)
 local CoreService = require(Services.CoreService)
 local EnemyService = require(Services.EnemyService)
 local MapService = require(Services.MapService)
+local MatchService = require(Services.MatchService)
 local PlayerDataService = require(Services.PlayerDataService)
-local PrototypeDriver = require(Services.PrototypeDriver)
+local WaveService = require(Services.WaveService)
 
 print(string.format("[%s] server booting (place %d)", Config.GAME_NAME, game.PlaceId))
 
@@ -87,7 +88,7 @@ Remotes.Events.RequestAction.OnServerEvent:Connect(function(player: Player, acti
 end)
 
 -- --------------------------------------------------------------------------
--- Gameplay (M1)
+-- Gameplay
 -- --------------------------------------------------------------------------
 
 -- Pembacaan map dilakukan sekali di sini. Kalau map belum ada, MapService
@@ -98,46 +99,10 @@ EnemyService.start()
 EnemyService.setRunning(false)
 
 local arena = MapService.getArena()
-if arena ~= nil then
-	CoreService.bindVisual(arena.corePart)
-
-	CombatService.setGate(PrototypeDriver.canAttack)
-	CombatService.start()
-
-	CoreService.onDestroyed:Connect(function()
-		print(string.format("[%s] Core Server hancur", Config.GAME_NAME))
-	end)
-
-	PrototypeDriver.start()
-
-	-- Pemain yang join setelah prototipe mulai tetap muncul di arena: M1 belum
-	-- punya aturan join/rejoin (itu M2, bagian 3.3).
-	local playerSpawn = arena.playerSpawn
-	if playerSpawn ~= nil then
-		local function placeCharacter(character: Model)
-			-- Tunggu HumanoidRootPart ada: PivotTo pada Model yang bagiannya
-			-- belum lengkap memindahkan sebagian saja.
-			if character:WaitForChild("HumanoidRootPart", 5) == nil then
-				return
-			end
-			character:PivotTo(CFrame.new(playerSpawn.Position + Vector3.new(0, 5, 0)))
-		end
-
-		local function watch(player: Player)
-			player.CharacterAdded:Connect(placeCharacter)
-			local existing = player.Character
-			if existing ~= nil then
-				placeCharacter(existing)
-			end
-		end
-
-		Players.PlayerAdded:Connect(watch)
-		for _, player in Players:GetPlayers() do
-			watch(player)
-		end
-	end
-else
-	-- Supaya HUD pemain tidak kosong tanpa penjelasan.
+if arena == nil then
+	-- Supaya HUD pemain tidak kosong tanpa penjelasan. MatchService tidak
+	-- dijalankan: tanpa arena, menekan Ready akan memulai match yang musuhnya
+	-- tidak akan pernah bisa muncul.
 	Remotes.Events.MatchState:FireAllClients({
 		state = "Lobby",
 		wave = 0,
@@ -145,4 +110,58 @@ else
 		coreHp = CoreService.getHp(),
 		coreMaxHp = CoreService.getMaxHp(),
 	})
+	return
 end
+
+CoreService.bindVisual(arena.corePart)
+
+-- Lobby dibaca di sini juga supaya warn-nya (kalau ada) keluar sekali saat
+-- boot, bukan nanti di tengah match saat pemain pertama kembali ke lobby.
+MapService.getLobby()
+
+-- Gerbang `Attack`: state WaveActive dan pemain ada di participants
+-- (bagian 3.6). Disuntik, bukan di-require, supaya CombatService tidak
+-- bergantung ke MatchService dan tidak ada lingkaran require.
+CombatService.setGate(MatchService.canAttack)
+CombatService.start()
+
+-- Musuh berhenti bergerak di luar WaveActive, dan dibersihkan saat kembali ke
+-- lobby. MatchService sendiri sudah memanggil clearAll() di transisinya; ini
+-- yang mengurus gerak.
+MatchService.onStateChanged:Connect(function(next: MatchService.State)
+	EnemyService.setRunning(next == "WaveActive")
+	if next == "Lobby" then
+		CombatService.resetCooldowns()
+	end
+end)
+
+MatchService.start()
+WaveService.start()
+
+CoreService.onDestroyed:Connect(function()
+	print(string.format("[%s] Core Server hancur", Config.GAME_NAME))
+end)
+
+-- Layar hasil. Reward permanen (koin, XP, material, first clear) dihitung
+-- RewardService di M5; sampai itu ada, payload-nya dikirim dengan angka reward
+-- NOL, bukan angka tebakan. Nol di sini jujur: di M2 memang belum ada reward
+-- yang disimpan, dan menampilkan angka yang tidak pernah masuk ke data pemain
+-- jauh lebih buruk daripada menampilkan nol.
+MatchService.onMatchEnded:Connect(
+	function(won: boolean, waveReached: number, _difficultyId: string, userIds: { number })
+		local payload = {
+			won = won,
+			waveReached = waveReached,
+			coins = 0,
+			xp = 0,
+			materials = {},
+			unlocked = {},
+		}
+		for _, userId in userIds do
+			local player = Players:GetPlayerByUserId(userId)
+			if player ~= nil then
+				Remotes.Events.MatchResult:FireClient(player, payload)
+			end
+		end
+	end
+)

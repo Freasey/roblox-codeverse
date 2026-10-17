@@ -208,3 +208,145 @@ for _ = 1, 500 do R.Attack:FireServer(Vector3.new(0, 0, -1)) end -- spam
 
 Diharapkan: **tidak ada error di Output server** untuk semuanya, dan spam tidak
 membuat musuh mati lebih cepat dari cooldown senjata.
+
+---
+
+## M2 — Sistem wave & match
+
+**Yang sudah diverifikasi otomatis:** `MatchRules.luau` punya 18 unit test,
+termasuk yang memastikan pembagian musuh per wave jumlahnya **persis** sama
+dengan `Balance.enemyCount` untuk ke-10 wave x 1 sampai 4 player (pembagian
+naif kehilangan sisa bagi, dan satu musuh hilang per wave tidak akan pernah
+kelihatan dari playtest — yang kelihatan cuma "kok wave-nya terasa lebih
+gampang"). Lint, type check, dan `rojo build` hijau.
+
+**Yang belum diverifikasi sama sekali:** seluruh state machine-nya, karena
+setiap transisinya bergantung pada waktu nyata dan pada pemain yang benar-benar
+join dan keluar.
+
+`PrototypeDriver` dari M1 sudah dihapus. Match sekarang dimulai dengan menekan
+Ready, bukan otomatis 5 detik setelah server boot.
+
+### M2.1 Satu match penuh, solo
+
+1. F5. HUD menampilkan "Wave 0 / 10", "Di lobby". Panel Ready muncul di bawah.
+2. Tekan **Ready**.
+
+Diharapkan, berurutan:
+- State jadi "Match mulai dalam · 10s" dan hitungannya turun tiap detik.
+- Pada 0, state jadi "Bertahan!" dan wave jadi 1. Musuh mulai muncul satu per
+  ~0.9 detik, bergantian lane 1 dan lane 2.
+- Musuh **tercampur tipenya**, tidak semua `basic` dulu lalu semua `fast`
+  (periksa di wave 2 ke atas, yang punya lebih dari satu tipe).
+- Wave bersih → state "Jeda — toko buka · 20s", musuh berhenti bergerak.
+- Setelah 20 detik, wave 2 mulai. Begitu seterusnya.
+- Boss di wave 5 dan 10 **belum ada** (itu M4). Output server mencetak
+  `boss diabaikan (BossService belum ada)` dan wave-nya jalan sebagai wave
+  biasa. Itu yang diharapkan di M2, bukan bug.
+- Wave 10 bersih → layar **"Core Server aman!"** muncul dengan wave tercapai.
+  Koin dan XP **0** — RewardService baru masuk di M5, dan menampilkan angka
+  yang tidak pernah masuk ke data pemain lebih buruk daripada menampilkan nol.
+- 10 detik kemudian layar hilang, state kembali "Di lobby", wave kembali 0.
+
+### M2.2 Kalah
+
+1. F5, tekan Ready, lalu **jangan menyerang sama sekali**.
+
+Diharapkan: Core HP turun sampai 0 → layar **"Core Server jebol"** →
+10 detik → kembali ke lobby. Output server mencetak
+`[MatchService] match selesai: kalah di wave N (normal), 1 peserta`.
+
+### M2.3 Match bisa diulang tanpa restart server
+
+1. Setelah M2.1 atau M2.2 selesai dan kembali ke lobby, tekan **Ready** lagi.
+
+Diharapkan: match kedua jalan dari wave 1 dengan Core HP penuh, dan tidak ada
+musuh sisa dari match sebelumnya. Ini kriteria penerimaan M2 di rencana
+development, dan yang paling mudah bocor: state yang tidak di-reset (wave,
+participants, cooldown serangan, antrian spawn) baru kelihatan di match kedua.
+
+### M2.4 Ready dibatalkan
+
+1. F5, tekan Ready, lalu tekan **"Batal siap"** saat hitung mundur masih jalan.
+
+Diharapkan: hitung mundur berhenti dan state kembali ke "Di lobby". Match tidak
+dimulai.
+
+### M2.5 Join/rejoin (bagian 3.3) — butuh 2 client
+
+Studio: **Test → Clients and Servers → 2 players → Start**.
+
+1. Kedua pemain tekan Ready. Match mulai; keduanya masuk `participants`.
+2. Tutup window client ke-2 di tengah wave.
+
+Diharapkan: match **terus jalan** untuk pemain pertama. Output server tidak
+mencetak pembatalan.
+
+3. Sekarang tutup window client pertama juga (semua peserta keluar).
+
+Diharapkan: Output server mencetak
+`[MatchService] semua peserta keluar, match dibatalkan dan kembali ke Lobby`,
+dan state kembali Lobby. **Ini keputusan yang diambil tanpa menanyakan dulu**
+— lihat tabel keputusan di bawah.
+
+4. Ulangi dari langkah 1, lalu tutup client ke-2 dan **buka lagi** (Studio:
+   mulai sesi 2-player baru tidak bisa rejoin, jadi ini baru bisa dites penuh
+   di server live).
+
+Diharapkan di server live: pemain yang rejoin masuk ke arena di
+`Arena/PlayerSpawn` dan bisa menyerang lagi. Pemain yang **belum pernah** ikut
+match berjalan ditahan di lobby: dia muncul di `Lobby/SpawnLocation` dan
+`Attack`-nya ditolak server (tidak ada damage sama sekali), tapi HUD-nya tetap
+menampilkan state dan wave yang sedang berjalan.
+
+> Catatan: aturan rejoin penuh adalah kriteria **M6**, bukan M2. Yang harus
+> jalan di M2 adalah `participants` berisi UserId dan match tidak ikut mati
+> saat satu peserta keluar.
+
+### M2.6 Skala jumlah player
+
+1. Sesi 2-player, kedua pemain Ready, perhatikan Output server di awal wave 1.
+
+Diharapkan: `[WaveService] wave 1: N musuh biasa di 2 lane, 2 player` dengan N
+lebih besar daripada saat solo (solo wave 1 = 8 musuh; 2 player = 10). HP musuh
+juga naik, tapi itu tidak terlihat dari Output — yang terlihat adalah musuh
+butuh lebih banyak serangan untuk mati.
+
+### M2.7 Remote tidak bisa disalahgunakan
+
+Dari command bar **client**:
+
+```lua
+local R = game:GetService("ReplicatedStorage").Remotes
+R.SetReady:FireServer()                  -- nil
+R.SetReady:FireServer("ya")              -- tipe salah
+R.SelectLoadout:FireServer(1, 2)         -- tipe salah
+R.SelectLoadout:FireServer("weapon_boss_a", "normal") -- belum dimiliki
+R.SelectLoadout:FireServer("weapon_starter", "hard")  -- belum terbuka
+for _ = 1, 200 do R.SetReady:FireServer(true) end     -- spam
+```
+
+Diharapkan: tidak ada error di Output server. Dua baris `SelectLoadout` yang
+terakhir mengembalikan `ActionResult` dengan `ok = false` dan alasannya, dan
+**tidak** mengubah `equippedWeapon`. Spam dibatasi 2 per detik, dan sisanya
+dibuang tanpa error.
+
+Coba juga saat match sedang jalan:
+
+```lua
+R.SetReady:FireServer(true)              -- di luar Lobby/Countdown
+R.SelectLoadout:FireServer("weapon_starter", "normal") -- di luar Lobby
+```
+
+Diharapkan: dua-duanya ditolak. Yang kedua mengirim `ActionResult` "Cuma bisa
+ganti loadout di lobby."
+
+### Keputusan M2 yang diambil tanpa menanyakan dulu
+
+| Keputusan | Yang dipilih | Alasan |
+|---|---|---|
+| Koin match peserta yang disconnect | Tidak bisa hangus, karena **koin match disimpan sebagai satu kolam milik TIM**, bukan per pemain | Rencana development menyarankan "disimpan, jangan hangus". Kolam tim menyelesaikan itu tanpa kode tambahan: tidak ada saldo per pemain yang bisa hilang saat dia disconnect, dan saat rejoin dia langsung melihat saldo tim yang sama. Ini juga yang diminta M3 ("koin match per TIM") dan bagian 3.7 ("tambah koin match ke tim"). |
+| Semua peserta keluar di tengah match | Match **dibatalkan**, state kembali ke `Lobby`, dan `onMatchEnded` **tidak** ditembakkan | Rencana development menyebut konsekuensi kalau tidak dibatalkan: server nyangkut di `WaveActive` tanpa pemain. Pembatalan sengaja bukan kekalahan — kalau `onMatchEnded` ditembakkan, RewardService (M5) akan menghitung reward untuk peserta yang sudah tidak ada di server, padahal reward mereka sudah dibayar satu per satu saat masing-masing keluar (bagian 3.3). |
+| Dua pemain memilih kesulitan berbeda | Ambil yang **paling mudah** di antara pilihan mereka | Tidak disebut rencana development. `hard` harus dibuka dulu per pemain (bagian 3.1), jadi aturan apa pun yang mengambil yang lebih sulit bisa memaksa pemain ikut match pada tingkat yang belum dia buka. Mengambil yang termudah tidak pernah bisa melakukan itu. Diukur dari `hpMult`, bukan urutan tabel, supaya menambah tingkat baru nanti tidak perlu menyentuh fungsinya. |
+| Pemain baru join saat Countdown | Hitung mundur **dibatalkan**, kembali ke Lobby | Syarat masuk Countdown di bagian 3.3 adalah "semua player di server menekan Ready". Pemain yang baru join otomatis belum Ready, jadi syaratnya tidak lagi terpenuhi. Memeriksa syarat itu terus-menerus (bukan sekali saat masuk) adalah tafsir paling lurus dari aturannya, dan mencegah match dimulai dengan pemain yang tidak pernah menyatakan siap. |
+| Tombol Ready ditaruh di mana | `LobbyController`, versi minimal (cuma tombol Ready + teks petunjuk) | Rencana development menaruh tombol Ready di `LobbyController`, yang milestone-nya M5. Tapi tanpa tombol itu tidak ada cara memulai match dan kriteria M2 tidak bisa diverifikasi sama sekali. Jadi file-nya dibuat sekarang dengan isi minimal, dan panel senjata/kesulitan/upgrade/craft menempel ke panel yang sama di M5. |
