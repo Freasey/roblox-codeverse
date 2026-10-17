@@ -51,23 +51,35 @@ gagal, catat apa yang terjadi — itu bug nyata, bukan kesalahan pemakaian.
 > `ProgressionService` di M5 — **tidak bisa diverifikasi** sampai place-nya
 > di-publish satu kali. Gameplay per match tetap bisa dites penuh.
 
-### Membuat `assets/Arena.rbxmx` (wajib sebelum apa pun bisa dites)
+### `assets/Arena.rbxmx` sudah ada — lewati bagian ini
 
-Repo ini **tidak punya** `assets/Arena.rbxmx` dan `assets/Lobby.rbxmx`, dan
-file itu tidak bisa dibuat di luar Studio. Tanpa `Workspace.Arena`, server akan
-boot normal, mengeluarkan **satu** warn dari `MapService`, lalu tidak
-menjalankan gameplay apa pun. Itu perilaku yang disengaja, bukan crash.
+Arena graybox-nya **sudah ada di repo**, sudah ter-mount ke `Workspace.Arena`,
+dan strukturnya sudah diverifikasi terhadap kontrak penanda di bagian 3.4:
+`CoreServer` adalah Model dengan `PrimaryPart` bernama `Core`, `Lanes` berisi
+`Lane1` dan `Lane2` yang masing-masing punya tujuh waypoint bernama `1` sampai
+`7` berurutan, dan `PlayerSpawn` adalah SpawnLocation. Place hasil `rojo build`
+sudah dibaca ulang untuk memastikan semuanya sampai utuh.
+
+`assets/Lobby.rbxmx` yang belum ada — itu dibuat di M5.0.
+
+Perlu **mengubah** layout arena (jumlah waypoint, jaraknya, ukuran lantai)?
+Setel konstanta di bagian atas `scripts/build_arena.luau`, lalu:
 
 1. View → **Command Bar**.
-2. Tempel seluruh isi `scripts/build_arena.luau`, Enter. (File itu datang dari
-   PR terpisah; kalau belum ada di branch ini, ambil dari PR "generator arena
-   graybox".)
-3. Script memilih `Workspace.Arena` otomatis. Klik kanan → **Save to File** →
-   simpan sebagai `assets/Arena.rbxmx` di root repo.
-4. Commit filenya.
+2. Tempel seluruh isi `scripts/build_arena.luau`, Enter. Script-nya idempoten:
+   `Workspace.Arena` yang lama dihapus dulu, jadi aman dijalankan berkali-kali.
+3. Script memilih `Workspace.Arena` otomatis. Klik kanan → **Save to File**.
+4. Simpan sebagai `assets/Arena.rbxmx`, dan **pastikan tipe filenya `.rbxmx`,
+   bukan `.rbxm`.** Studio sering memilih `.rbxm` (binary) sebagai default, dan
+   kalau itu yang kepilih, dua hal gagal tanpa satu pun peringatan: file-nya
+   kena aturan `*.rbxm` di `.gitignore` jadi tidak akan pernah ter-commit, dan
+   mapping Rojo mencari `.rbxmx` jadi arena-nya tidak akan pernah muncul. Ini
+   sudah pernah kejadian sekali di project ini.
+5. Commit filenya.
 
-Setelah file itu ada, `rojo build` dan live sync akan otomatis me-mount-nya ke
-`Workspace.Arena` — mapping-nya sudah ada di `default.project.json`.
+Tanpa `Workspace.Arena`, server tetap boot normal, mengeluarkan **satu** warn
+dari `MapService`, lalu tidak menjalankan gameplay apa pun. Itu disengaja, bukan
+crash — dan justru itu yang dites di M1.1.
 
 > **Prosedur edit map, jangan dilewati.** Rojo satu arah: begitu
 > `assets/Arena.rbxmx` ter-mount, apa pun yang kamu ubah pada `Workspace.Arena`
