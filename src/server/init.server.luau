@@ -22,6 +22,7 @@ local Remotes = require(Shared.Remotes)
 local Waves = require(Shared.Modules.Waves)
 
 local Services = script.Services
+local BossService = require(Services.BossService)
 local CombatService = require(Services.CombatService)
 local CoreService = require(Services.CoreService)
 local EnemyService = require(Services.EnemyService)
@@ -141,8 +142,23 @@ MatchService.onStateChanged:Connect(function(next: MatchService.State)
 end)
 
 MatchService.start()
+
+-- Pengait boss disuntik ke WaveService, bukan di-require olehnya: WaveService
+-- sudah di-require BossService secara tidak langsung lewat MatchService, dan
+-- arah require yang satu arah itu yang menjaga tidak ada lingkaran.
+WaveService.setBossHooks({
+	spawnForWave = BossService.spawnForWave,
+	isBossAlive = BossService.isBossAlive,
+})
 WaveService.start()
 ShopService.start()
+BossService.start()
+
+-- Boss mati bisa berarti wave sudah bersih (kalau musuh biasanya sudah habis
+-- lebih dulu). Diperiksa lewat jalur yang sama dengan musuh terakhir mati.
+BossService.onBossDefeated:Connect(function()
+	WaveService.checkClear()
+end)
 
 CoreService.onDestroyed:Connect(function()
 	print(string.format("[%s] Core Server hancur", Config.GAME_NAME))

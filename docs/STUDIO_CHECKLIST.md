@@ -455,3 +455,125 @@ server live): `R.BuyShopItem:FireServer("shop_barrier")` harus ditolak dengan
 | Posisi turret | Ditentukan **server**, mengelilingi Core, sudutnya dari nomor pembelian | Alasan yang sama dengan penghalang: payload-nya cuma `itemId`. Sudut dari nomor pembelian memastikan turret kedua tidak muncul menumpuk di atas yang pertama. |
 | Pengali efek: linear atau berlipat | **Linear** (5 x +10% = 1.5x, bukan 1.61x), dengan lantai cooldown 0.4 | Harga item tetap, jadi efek yang berlipat akan meledak di pembelian terakhir. Linear juga bisa dihitung sendiri oleh pemain. Lantainya ada supaya menaikkan step nanti tidak bisa membuat cooldown senjata hilang sama sekali. |
 | Siapa yang boleh membeli | Hanya pemain yang ada di `participants` | Tidak disebut bagian 3.6, tapi mengikuti aturan yang sama dengan `Attack`: pemain yang ditahan di lobby bukan bagian dari match yang sedang berjalan (bagian 3.3), jadi dia tidak boleh membelanjakan koin tim. |
+
+---
+
+## M4 — Boss
+
+**Yang sudah diverifikasi otomatis:** `BossRules.luau` punya 16 unit test. Tiga
+di antaranya menutup kasus pinggir yang masing-masing membuat boss kehilangan
+satu fase **tanpa ada yang error** dan tidak akan pernah kelihatan dari playtest
+biasa: satu serangan besar yang melewati 66% dan 33% sekaligus (harus memicu
+dua-duanya, bukan satu), ambang yang terpicu berulang setiap kali boss dipukul
+(harus sekali saja), dan boss yang mati langsung dari HP penuh (semua ambang
+harus tetap terpicu). Plus validasi data: tiap boss punya `dropMaterial`, kartu
+info dengan judul, isi, dan daftar pencegahan. Lint, type check, `rojo build`
+hijau.
+
+**Yang belum diverifikasi sama sekali:** apakah boss-nya benar-benar muncul,
+apakah bar HP-nya tampil di tempat yang benar, apakah toko benar-benar terkunci,
+dan apakah material masuk ke data pemain.
+
+### M4.1 Splitter di wave 5
+
+Supaya tidak perlu memainkan empat wave dulu tiap kali: sementara ubah
+`src/shared/Modules/Waves.luau`, pindahkan `bossId = "boss_splitter"` ke wave 1
+(dan `wave = 1` di `Bosses.luau`), sync, tes, lalu **balikkan lagi sebelum
+commit**. Validasi `Waves.validate()` memeriksa `boss.wave` cocok dengan wave
+yang memakainya, jadi kalau lupa mengubah keduanya server akan mencetak warn
+saat boot.
+
+1. F5, Ready, masuk wave yang ada boss-nya.
+
+Diharapkan:
+- Kubus merah besar (9x9x9) muncul **lebih dulu** dari musuh biasa, di lane 1.
+- Panel **bar HP boss** muncul di bawah HUD utama dengan tulisan
+  "Splitter — Worm" dan persentase HP.
+- Persentase turun saat boss diserang, dan **tidak lebih sering dari 5 kali per
+  detik** (HP disiarkan paling cepat tiap 0.2 detik dan cuma kalau angkanya
+  berubah — kalau bar-nya berkedip tiap frame, dua pembatas itu tidak bekerja).
+- Saat HP menyentuh **66%**: 4 musuh `fast` muncul **di posisi boss saat itu**,
+  menyebar melingkar, dan langsung melanjutkan ke Core dari waypoint yang sama
+  dengan boss — bukan dari awal lane.
+- Saat HP menyentuh **33%**: 4 musuh `fast` lagi.
+- Serang boss dengan damage besar sekaligus (sementara naikkan
+  `Balance.DAMAGE_PER_LEVEL` atau `Weapons.weapon_starter.baseDamage`) sehingga
+  HP-nya turun dari 70% ke 20% dalam satu serangan. **Harus muncul 8 musuh**,
+  bukan 4: dua ambang terlewati sekaligus.
+- Boss mati → bar HP boss hilang → **kartu info malware** muncul di tengah
+  layar: judul "Worm", satu paragraf penjelasan, dan tiga butir cara mencegah.
+- Kartu bisa ditutup dengan tombol **Tutup**, dan hilang sendiri setelah
+  18 detik kalau dibiarkan.
+- Wave **belum** dinyatakan bersih sampai musuh pecahannya juga habis.
+
+### M4.2 Locker di wave 10
+
+Cara yang sama: pindahkan `bossId = "boss_locker"` ke wave 1 untuk mengetesnya.
+
+1. Masuk wave yang ada Locker-nya.
+
+Diharapkan:
+- Kubus merah sangat besar (11x11x11) muncul, bar HP boss bertulisan
+  "Locker — Ransomware".
+- Output server mencetak `[Locker] toko dikunci, memanggil 3 basic tiap 8 detik`.
+- Tiap 8 detik, 3 musuh `basic` muncul **dari awal lane** (beda dari Splitter
+  dengan sengaja: Locker memanggil bantuan dari luar, bukan memecah dirinya).
+- Selesaikan wave sebelumnya supaya masuk jeda, lalu masuk wave Locker:
+  **panel toko tetap terlihat saat jeda** tapi headernya bertulisan
+  **"Dikunci — kalahkan boss-nya dulu"** dengan warna merah, dan semua
+  tombolnya mati. Panelnya sengaja tidak disembunyikan — kalau disembunyikan,
+  pemain tidak tahu bedanya "belum waktunya" dan "dikunci Locker", padahal yang
+  kedua adalah mekanik yang harus dia sadari.
+- Mencoba `R.BuyShopItem:FireServer("shop_barrier")` dari command bar client
+  saat terkunci harus ditolak dengan `ActionResult` "Toko dikunci. Kalahkan
+  boss-nya dulu."
+- Boss mati → Output mencetak `[Locker] boss mati, toko dibuka lagi`, minion
+  berhenti dipanggil, kartu info "Ransomware" muncul.
+
+### M4.3 Kunci toko tidak nyangkut (ini yang paling mudah bocor)
+
+1. Masuk wave Locker, lalu **jangan bunuh boss-nya** — biarkan Core hancur.
+2. Setelah kembali ke lobby, tekan Ready lagi dan selesaikan wave 1.
+
+Diharapkan: saat jeda setelah wave 1 match kedua, toko **buka normal**. Kalau
+masih bertulisan "Dikunci", kunci dari Locker tidak dilepas lewat jalur
+kematian-selain-dibunuh, dan tidak ada pemain yang bisa membukanya lagi.
+
+Ulangi dengan cara keluar lain: saat wave Locker berjalan, tutup semua client
+(match dibatalkan). Hasilnya harus sama.
+
+### M4.4 Drop material ke SEMUA peserta — butuh 2 client
+
+1. Sesi 2-player, kedua pemain Ready, kalahkan boss.
+
+Diharapkan:
+- **Kedua** pemain dapat material, bukan cuma yang menyerang paling banyak.
+  Output server mencetak `[BossService] drop material_a x1 ke 2 peserta`.
+- Periksa di command bar **server**:
+  `print(game:GetService("ServerScriptService").Server.Services)` lalu baca
+  data pemain lewat remote `GetProfile` dari masing-masing client:
+  `game:GetService("ReplicatedStorage").Remotes.GetProfile:InvokeServer().materials`
+  harus memuat `material_a = 1`.
+- **Catatan penting:** sebelum place-nya di-publish sekali, material ini ada di
+  memori saja dan hilang saat server mati. Itu bukan bug di M4 — lihat kotak
+  DataStore di bagian Persiapan.
+
+2. Ulangi, tapi tutup client ke-2 **sebelum** boss mati, lalu (di server live)
+   join lagi dengan akun yang sama.
+
+Diharapkan: material-nya dibayarkan saat dia rejoin, dan Output mencetak
+`[BossService] material tertunda dibayarkan ke <nama>`. Peserta yang disconnect
+boleh rejoin dan melanjutkan (bagian 3.3), jadi dropnya tidak boleh hilang hanya
+karena dia sedang tidak di server saat boss mati.
+
+### Keputusan M4 yang diambil tanpa menanyakan dulu
+
+| Keputusan | Yang dipilih | Alasan |
+|---|---|---|
+| Jalur HP boss ke client | Remote baru `BossState` | M4 minta "HP bar boss di HUD", dan payload `MatchState` yang sudah dipatok tabel bagian 3.6 tidak punya tempat untuk HP boss. Ini penambahan, bukan penggantian nama, jadi tidak ada yang bergeser dari tabel itu. |
+| Material untuk peserta yang sedang disconnect saat boss mati | Dicatat sebagai **tertunda** dan dibayarkan saat dia rejoin | Bagian 3.3 mengizinkan peserta rejoin dan melanjutkan, jadi dropnya tidak boleh hilang hanya karena dia sedang tidak di server pada detik boss mati. Pembukuannya juga dipakai mengisi payload `MatchResult` di M5. |
+| Posisi musuh pecahan Splitter | Dari **posisi boss saat itu**, melanjutkan dari waypoint yang sama | Inti mekaniknya adalah ancaman yang tiba-tiba dekat (Worm yang menyebar), bukan gelombang baru dari jauh. Disebar melingkar 6 stud karena musuh digerakkan lewat CFrame dan tidak bertabrakan satu sama lain — tanpa sebaran mereka menumpuk jadi satu dan pemain cuma melihat satu musuh dengan HP bar bertumpuk. |
+| Posisi minion Locker | Dari **awal lane** | Beda dari Splitter dengan sengaja: Locker memanggil payload tambahan dari luar, bukan memecah dirinya sendiri. Bedanya juga membuat dua mekanik itu terasa berbeda saat dimainkan, bukan cuma beda angka. |
+| Musuh pecahan saat boss mati | **Dibiarkan hidup** | Wave belum bersih sampai mereka juga habis, dan itu memang bagian dari mekaniknya. Menghapusnya saat boss mati akan membuat ambang 33% tidak ada konsekuensinya kalau pemain langsung membunuh boss sesudahnya. |
+| Boss dibedakan dari apa | `mechanic.kind`, bukan id boss | `Types.BossMechanic` sudah ditulis sebagai tagged union untuk ini. Menambah boss baru yang memakai mekanik yang sama jadi tidak perlu menyentuh `BossService`. |
+| Kartu info ditutup bagaimana | Tombol **Tutup** DAN hilang sendiri setelah 18 detik | Kartu muncul tepat setelah boss mati, dan saat itu bisa masih ada musuh pecahan berjalan ke Core. Pemain yang ingin terus bertarung tidak boleh dipaksa membaca dulu, tapi yang ingin membaca juga tidak boleh kehilangan kartunya karena salah klik. |
