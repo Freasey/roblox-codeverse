@@ -41,6 +41,24 @@ local purchases: { [string]: number } = {}
 local locked = false
 local started = false
 
+-- Mekanik boss Locker (M4, analogi ransomware): selama dia hidup, upgrade tim
+-- yang SUDAH dibeli disandera — damage dan attack speed kembali ke nilai dasar
+-- sampai boss-nya mati.
+--
+-- Kenapa menyandera yang sudah dibeli, bukan melarang membeli: melarang
+-- membeli tidak menolak apa pun. Toko cuma buka saat `Intermission`, Locker
+-- cuma hidup saat `WaveActive`, dan wave 10 — wave-nya Locker — adalah wave
+-- terakhir v1 sehingga tidak ada `Intermission` sesudahnya. Jadi kunci toko
+-- selalu benar secara hampa. Menyandera yang sudah dimiliki justru lebih dekat
+-- ke ransomware aslinya, dan efeknya terjadi di `WaveActive` tempat Locker
+-- memang hidup.
+--
+-- Pembukuan `purchases` TIDAK dihapus saat disandera. Yang dikosongkan cuma
+-- masukan ke perhitungan di `getModifiers`, jadi begitu Locker mati seluruh
+-- upgrade kembali tanpa perlu dicatat ulang di mana pun.
+local suspended = false
+local NO_PURCHASES: { [string]: number } = {}
+
 -- Penghalang yang dibeli saat Intermission berlaku di wave BERIKUTNYA, bukan
 -- sekarang: saat Intermission tidak ada musuh yang berjalan, jadi memasangnya
 -- langsung berarti efeknya habis sebelum ada yang perlu ditahan.
@@ -88,6 +106,10 @@ local function broadcastShopState()
 		-- modul tetap jalan yang salah — satu pemanggil yang menyimpannya bisa
 		-- mengubah pembukuan toko dari luar.
 		purchases = table.clone(purchases),
+		-- Pemain WAJIB diberi tahu kalau upgrade-nya sedang disandera. Tanpa
+		-- ini damage-nya turun tanpa penjelasan dan itu terasa seperti bug,
+		-- bukan seperti mekanik boss.
+		suspended = suspended,
 	})
 end
 
@@ -107,6 +129,11 @@ function ShopService.reset()
 	coins = 0
 	purchases = {}
 	locked = false
+	-- Jaring pengaman antar match. Kalau Locker mati lewat jalur yang tidak
+	-- memanggil onDefeated maupun cleanup (Core hancur di detik yang sama,
+	-- match dibatalkan), sanderanya tidak boleh ikut terbawa ke match
+	-- berikutnya — itu akan terlihat sebagai damage yang diam-diam mengecil.
+	suspended = false
 	clearEffects()
 	broadcastCoins()
 	broadcastShopState()
@@ -134,13 +161,32 @@ function ShopService.isLocked(): boolean
 	return locked
 end
 
+-- Dipanggil mekanik boss Locker. Lihat alasan lengkapnya di deklarasi
+-- `suspended` di atas.
+function ShopService.setSuspended(value: boolean)
+	if suspended == value then
+		return
+	end
+	suspended = value
+	broadcastShopState()
+end
+
+function ShopService.isSuspended(): boolean
+	return suspended
+end
+
 -- Pengali tim untuk CombatService. Dihitung dari pembukuan pembelian, bukan
 -- disimpan sebagai angka yang di-increment: kalau disimpan, satu reset yang
 -- terlewat membuat buff match sebelumnya ikut terbawa, dan itu tidak akan
 -- kelihatan sampai ada yang mengukur damage-nya.
+--
+-- Saat disandera Locker, yang dioper adalah tabel kosong — bukan `purchases`
+-- yang dihapus. `ShopRules.modifiers` itu fungsi murni dan pembelian kosong
+-- menghasilkan pengali dasar, jadi penangguhannya tidak butuh logika baru
+-- sama sekali, dan pemulihannya tidak butuh pembukuan cadangan.
 function ShopService.getModifiers(): ShopRules.Modifiers
 	return ShopRules.modifiers(
-		purchases,
+		if suspended then NO_PURCHASES else purchases,
 		Balance.SHOP_DAMAGE_STEP,
 		Balance.SHOP_FIRE_RATE_STEP,
 		Balance.SHOP_COOLDOWN_FLOOR

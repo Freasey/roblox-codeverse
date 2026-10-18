@@ -29,6 +29,9 @@ export type ShopState = {
 	open: boolean,
 	locked: boolean,
 	purchases: { [string]: number },
+	-- Upgrade tim sedang disandera boss Locker: pembeliannya masih tercatat di
+	-- `purchases`, tapi efeknya nol sampai boss-nya mati.
+	suspended: boolean,
 }
 
 export type BossState = {
@@ -45,7 +48,7 @@ MatchStore.onBossState = Signal.new() :: Signal.Signal<BossState>
 
 local matchState: MatchState? = nil
 local coins = 0
-local shopState: ShopState = { open = false, locked = false, purchases = {} }
+local shopState: ShopState = { open = false, locked = false, purchases = {}, suspended = false }
 local bossState: BossState? = nil
 local started = false
 

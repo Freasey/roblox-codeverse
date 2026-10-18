@@ -101,6 +101,18 @@ local function renderMatch()
 		state.Text = description
 	end
 
+	-- Sandera upgrade oleh boss Locker ditempel ke baris ini, bukan dibikin
+	-- label sendiri, dan BUKAN di panel toko: panel toko cuma muncul saat
+	-- `Intermission`, sementara Locker cuma hidup saat `WaveActive` — jadi
+	-- pemain tidak akan pernah melihatnya di sana. Baris state ini satu-satunya
+	-- teks HUD yang selalu terlihat sepanjang match.
+	--
+	-- Tanpa pemberitahuan apa pun, damage tim yang tiba-tiba kembali ke nilai
+	-- dasar terasa seperti bug, bukan seperti mekanik boss.
+	if MatchStore.getShopState().suspended then
+		state.Text = state.Text .. " · upgrade tim disandera"
+	end
+
 	UiKit.setBar(
 		bar,
 		payload.coreHp,
@@ -162,6 +174,10 @@ function HudController.start()
 	MatchStore.onMatchState:Connect(renderMatch)
 	MatchStore.onCoins:Connect(renderCoins)
 	MatchStore.onBossState:Connect(renderBoss)
+	-- `MatchState` berdetak tiap timer berubah, tapi sandera bisa dipasang dan
+	-- dilepas di tengah wave tanpa `MatchState` ikut berubah. Tanpa baris ini,
+	-- teksnya baru menyusul di detik berikutnya.
+	MatchStore.onShopState:Connect(renderMatch)
 end
 
 return HudController

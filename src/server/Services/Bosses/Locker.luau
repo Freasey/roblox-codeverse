@@ -1,15 +1,23 @@
 --!strict
 -- Locker.luau — mekanik boss wave 10 (CONCEPT.md: analogi Ransomware).
 --
--- Ransomware mengunci file korban lalu meminta tebusan. Mekaniknya meniru itu
--- dengan mengunci Toko Match: selama Locker hidup, tidak ada yang bisa dibeli.
--- Sambil itu dia memanggil minion terus-menerus, jadi menunggu bukan pilihan.
+-- Ransomware tidak melarang korban berbelanja; dia menyandera yang sudah
+-- dimiliki korban lalu meminta tebusan. Mekaniknya meniru itu dengan
+-- MENYANDERA UPGRADE TIM yang sudah dibeli: selama Locker hidup, damage dan
+-- attack speed kembali ke nilai dasar. Sambil itu dia memanggil minion
+-- terus-menerus, jadi menunggu bukan pilihan.
 --
--- Kunci toko dipasang di `onSpawned` dan dilepas di `onDefeated`. Dua-duanya
--- WAJIB berpasangan: kalau boss mati lewat jalur yang tidak memanggil
--- onDefeated (match dibatalkan, Core hancur), toko akan tetap terkunci sampai
--- match berikutnya — jadi BossService juga melepasnya saat state keluar dari
--- WaveActive. Lihat komentar di sana.
+-- Kunci toko (`setLocked`) juga dipasang, tapi sadari bahwa dia tidak menolak
+-- apa pun: toko cuma buka saat `Intermission`, Locker cuma hidup saat
+-- `WaveActive`, dan wave 10 adalah wave terakhir v1 sehingga tidak ada
+-- `Intermission` sesudahnya. Jadi kunci itu cuma membuat pesan penolakannya
+-- benar; yang betulan mengikat adalah sanderanya.
+--
+-- Pasang dan lepas WAJIB berpasangan. Kalau boss mati lewat jalur yang tidak
+-- memanggil `onDefeated` (match dibatalkan, Core hancur di detik yang sama),
+-- sanderanya akan terbawa ke match berikutnya dan terlihat sebagai damage yang
+-- diam-diam mengecil. Dua jaring pengamannya: `Locker.cleanup` di bawah, dan
+-- `ShopService.reset()` yang dipanggil saat match mulai.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -40,6 +48,7 @@ end
 function Locker.onSpawned(state: State, mechanic: Types.LockerMechanic, boss: EnemyService.Enemy)
 	if mechanic.locksShop then
 		ShopService.setLocked(true)
+		ShopService.setSuspended(true)
 	end
 
 	stopSummoning(state)
@@ -85,15 +94,19 @@ function Locker.onDefeated(state: State, mechanic: Types.LockerMechanic)
 	stopSummoning(state)
 	if mechanic.locksShop then
 		ShopService.setLocked(false)
+		ShopService.setSuspended(false)
 	end
-	print("[Locker] boss mati, toko dibuka lagi")
+	print("[Locker] boss mati, upgrade tim dipulihkan")
 end
 
 -- Dipanggil juga saat match dibatalkan atau Core hancur, lewat jalur yang
--- bukan kematian boss.
+-- bukan kematian boss. Tanpa dua baris ini, sandera upgrade bisa terbawa ke
+-- match berikutnya; `ShopService.reset()` saat match mulai adalah jaring
+-- pengaman keduanya.
 function Locker.cleanup(state: State)
 	stopSummoning(state)
 	ShopService.setLocked(false)
+	ShopService.setSuspended(false)
 end
 
 return Locker

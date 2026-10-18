@@ -305,4 +305,34 @@ table.insert(cases, {
 	end,
 })
 
+table.insert(cases, {
+	name = "pembelian kosong menghasilkan pengali dasar — mekanik sandera Locker bergantung ini",
+	run = function()
+		-- Ini bukan test duplikat. Mekanik boss Locker menyandera upgrade tim
+		-- dengan cara mengoper tabel KOSONG ke fungsi ini, bukan dengan
+		-- menghapus `purchases` atau menyimpan pengali cadangan — lihat
+		-- `ShopService.getModifiers` dan `suspended` di sana.
+		--
+		-- Artinya "pembelian kosong == pengali dasar" bukan lagi sekadar sifat
+		-- yang kebetulan benar, tapi kontrak yang disandari satu mekanik boss.
+		-- Kalau suatu hari fungsi ini diubah sehingga tabel kosong menghasilkan
+		-- sesuatu selain 1x — misalnya diberi bonus dasar — sanderanya berhenti
+		-- bekerja tanpa satu pun error, dan test inilah yang memberi tahu.
+		local mods = ShopRules.modifiers(
+			{},
+			Balance.SHOP_DAMAGE_STEP,
+			Balance.SHOP_FIRE_RATE_STEP,
+			Balance.SHOP_COOLDOWN_FLOOR
+		)
+		assert(
+			mods.damageMult == 1,
+			string.format("damageMult tabel kosong %.4f, harus tepat 1", mods.damageMult)
+		)
+		assert(
+			mods.cooldownMult == 1,
+			string.format("cooldownMult tabel kosong %.4f, harus tepat 1", mods.cooldownMult)
+		)
+	end,
+})
+
 return cases
