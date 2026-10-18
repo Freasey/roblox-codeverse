@@ -24,7 +24,14 @@ Arti kolom Dasar:
 
 ## Rekap
 
-| | Jumlah | Dari 126 |
+> ⚠️ **Angka di bawah dihitung terhadap `docs/TEST_CASES.md` versi 126 case,
+> sebelum dokumen itu digabung dengan `STUDIO_CHECKLIST.md`.** Dokumen sekarang
+> berisi 162 case, jadi penyebutnya sudah historis dan persentasenya **bukan**
+> cakupan terkini. Yang masih berlaku apa adanya: daftar per-ID di bawah, dan
+> alasan setiap label. Menghitung ulang berarti menilai ~36 case baru satu per
+> satu terhadap kode — pekerjaan tersendiri, belum dikerjakan.
+
+| | Jumlah | Dari 126 (historis) |
 |---|---|---|
 | BISA | 16 | 13% |
 | SEBAGIAN | 11 | 9% |
