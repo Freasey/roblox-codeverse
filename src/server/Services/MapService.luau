@@ -10,7 +10,7 @@
 -- dan apa yang harus dilakukan.
 --
 -- `assets/Arena.rbxmx` dan `assets/Lobby.rbxmx` harus keluar dari Roblox Studio
--- (lihat docs/STUDIO_CHECKLIST.md), jadi di repo yang baru di-clone map-nya
+-- (lihat docs/TEST_CASES.md bagian 2), jadi di repo yang baru di-clone map-nya
 -- MEMANG tidak ada dan modul ini memang akan mengembalikan nil. Itu bukan bug;
 -- gameplay tinggal tidak jalan sampai map-nya ada.
 
@@ -46,7 +46,7 @@ export type Lobby = {
 	spawn: BasePart?,
 }
 
-local HELP = "Buat map-nya di Studio (lihat docs/STUDIO_CHECKLIST.md dan "
+local HELP = "Buat map-nya di Studio (lihat docs/TEST_CASES.md dan "
 	.. "scripts/build_arena.luau), simpan lewat klik kanan > Save to File, lalu "
 	.. "commit filenya."
 

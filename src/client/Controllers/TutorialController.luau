@@ -3,8 +3,8 @@
 --
 -- M5 mengizinkan tutorial berupa "wave latihan dengan teks panduan". Yang
 -- dipilih di sini adalah teks panduan saja, TANPA wave latihan, dan itu
--- keputusan yang diambil sadar — alasannya ada di docs/STUDIO_CHECKLIST.md
--- bagian M5. Ringkasnya: wave latihan butuh state baru di MatchService, dan
+-- keputusan yang diambil sadar — alasannya ada di docs/TEST_CASES.md bagian
+-- 20.5. Ringkasnya: wave latihan butuh state baru di MatchService, dan
 -- bagian 3.3 eksplisit bahwa service lain tidak boleh menambah atau mengubah
 -- state. Menambah state keenam demi tutorial menyentuh bagian paling rapuh
 -- dari seluruh sistem untuk keuntungan yang bisa didapat dengan teks.

@@ -33,15 +33,26 @@ ShopRules.OPEN_STATE = "Intermission"
 -- lewat `ActionResult` supaya pemain tahu kenapa tombolnya tidak bekerja —
 -- tanpa itu penolakan server terlihat sama seperti tombol yang rusak.
 --
--- Urutan pemeriksaannya penting untuk pesan yang masuk akal: state dulu (kalau
--- tokonya memang tutup, "koin kurang" menyesatkan), lalu kunci boss, lalu
--- keberadaan item, lalu jatah, baru koin.
+-- Urutan pemeriksaannya penting untuk pesan yang masuk akal: kunci boss dulu,
+-- lalu state, lalu keberadaan item, lalu jatah, baru koin.
+--
+-- Kunci boss sebelum state, bukan sesudahnya: Locker (boss wave 10) cuma
+-- mengunci toko selama dia hidup, dan selama dia hidup state-nya selalu
+-- `WaveActive` — wave tidak bisa dinyatakan bersih sebelum boss mati, jadi
+-- tidak pernah ada Intermission sambil toko terkunci. Kalau state diperiksa
+-- lebih dulu, cabang `locked` di bawahnya tidak pernah tercapai dan pemain
+-- yang kena mekanik boss justru dibilang "tunggu jeda" — padahal jeda itu
+-- baru datang setelah boss-nya mati.
+--
+-- Di bawah kunci, state tetap sebelum koin: kalau tokonya memang tutup,
+-- "koin kurang" menyesatkan dan membuat pemain mengumpulkan koin untuk
+-- masalah yang bukan masalahnya.
 function ShopRules.canBuy(def: Types.ShopItemDef?, context: Context): (boolean, string?)
-	if context.state ~= ShopRules.OPEN_STATE then
-		return false, "Toko cuma buka saat jeda antar wave."
-	end
 	if context.locked then
 		return false, "Toko dikunci. Kalahkan boss-nya dulu."
+	end
+	if context.state ~= ShopRules.OPEN_STATE then
+		return false, "Toko cuma buka saat jeda antar wave."
 	end
 	if def == nil then
 		return false, "Item itu tidak ada."

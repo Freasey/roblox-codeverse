@@ -1,12 +1,12 @@
 --!strict
 -- ShopController.luau — UI Toko Match.
 --
--- Panel ini cuma muncul saat `ShopState.open`, dan tombolnya dinonaktifkan
--- kalau koin tim kurang atau jatah item habis. Dua-duanya murni presentasi:
--- server tetap memeriksa ulang semuanya di ShopService (bagian 1.2), dan kalau
--- cache client ketinggalan, yang terjadi paling buruk adalah tombol terlihat
--- aktif lalu pembeliannya ditolak dengan alasan yang jelas lewat
--- `ActionResult`.
+-- Panel ini muncul saat jeda antar wave DAN saat toko dikunci boss Locker,
+-- dan tombolnya dinonaktifkan kalau koin tim kurang atau jatah item habis.
+-- Semuanya murni presentasi: server tetap memeriksa ulang semuanya di
+-- ShopService (bagian 1.2), dan kalau cache client ketinggalan, yang terjadi
+-- paling buruk adalah tombol terlihat aktif lalu pembeliannya ditolak dengan
+-- alasan yang jelas lewat `ActionResult` — yang juga ditampilkan di sini.
 --
 -- Harga dan sisa jatah dibaca dari modul shared yang sama dengan server
 -- (`ShopItems`, `ShopRules`), bukan dikirim per update: angkanya data statis
@@ -39,6 +39,16 @@ local panel: Frame? = nil
 local statusLabel: TextLabel? = nil
 local rows: { [string]: Row } = {}
 local started = false
+
+-- Balasan `ActionResult` terakhir, ditahan di baris status selama beberapa
+-- detik. Perlu ditahan dengan penanda waktu, bukan cuma ditulis sekali:
+-- `MatchState` dikirim server tiap 0.2 detik dan tiap paketnya memanggil
+-- render(), jadi tanpa ini pesannya ketimpa "N koin tim" sebelum pemain
+-- selesai membacanya.
+local NOTICE_SECONDS = 4
+local noticeText: string? = nil
+local noticeOk = false
+local noticeUntil = 0
 
 local function build()
 	if gui ~= nil then
@@ -138,9 +148,22 @@ local function render()
 	-- Panel tetap terlihat saat toko terkunci boss, dengan alasannya. Kalau
 	-- disembunyikan, pemain tidak tahu bedanya "belum waktunya" dan "dikunci
 	-- Locker" — padahal yang kedua adalah mekanik yang harus dia sadari.
-	frame.Visible = stateName == ShopRules.OPEN_STATE
+	--
+	-- `shop.locked` perlu disebut terpisah dari state: Locker cuma hidup saat
+	-- `WaveActive` dan wave tidak bisa dinyatakan bersih selama dia hidup,
+	-- jadi tidak akan pernah ada Intermission sambil toko terkunci. Tanpa
+	-- cabang ini kuncinya tidak terlihat di UI sama sekali.
+	frame.Visible = stateName == ShopRules.OPEN_STATE or shop.locked
 
-	if shop.locked then
+	if noticeText ~= nil and os.clock() >= noticeUntil then
+		noticeText = nil
+	end
+
+	local notice = noticeText
+	if notice ~= nil then
+		status.Text = notice
+		status.TextColor3 = if noticeOk then UiKit.COLOR_GOOD else UiKit.COLOR_BAD
+	elseif shop.locked then
 		status.Text = "Dikunci — kalahkan boss-nya dulu"
 		status.TextColor3 = UiKit.COLOR_BAD
 	else
@@ -189,6 +212,42 @@ function ShopController.start()
 	MatchStore.onShopState:Connect(render)
 	MatchStore.onMatchState:Connect(render)
 	MatchStore.onCoins:Connect(render)
+
+	-- Penolakan pembelian ditampilkan di baris status panel toko. Tanpa ini
+	-- tidak ada yang menampilkannya di mana pun: satu-satunya pendengar
+	-- `ActionResult` yang lain adalah LobbyController, dan panel lobby
+	-- disembunyikan di luar state Lobby/Countdown — persis saat toko buka.
+	-- Tombol yang ditolak server jadi terlihat sama seperti tombol yang rusak.
+	--
+	-- Disaring lewat `payload.action`: aksi lobby (SelectLoadout, upgrade,
+	-- beli, craft senjata) bukan urusan panel ini dan sudah ada tempatnya
+	-- sendiri.
+	Remotes.Events.ActionResult.OnClientEvent:Connect(function(raw: unknown)
+		if type(raw) ~= "table" then
+			return
+		end
+		local payload = raw :: { [string]: unknown }
+		if payload.action ~= "BuyShopItem" or type(payload.ok) ~= "boolean" then
+			return
+		end
+
+		noticeOk = payload.ok :: boolean
+		if noticeOk then
+			noticeText = "Pembelian berhasil."
+		else
+			noticeText = if type(payload.reason) == "string"
+				then payload.reason :: string
+				else "Ditolak server."
+		end
+		noticeUntil = os.clock() + NOTICE_SECONDS
+		render()
+
+		-- Dikembalikan ke teks biasa setelah beberapa detik supaya pesan
+		-- penolakan lama tidak menempel selamanya. render() yang dipicu
+		-- `MatchState` biasanya sudah melakukannya lebih dulu; ini jaringnya
+		-- kalau paket itu berhenti datang (match selesai).
+		task.delay(NOTICE_SECONDS, render)
+	end)
 end
 
 return ShopController

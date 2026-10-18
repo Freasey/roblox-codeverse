@@ -5,7 +5,7 @@
 -- kurang, dicoba lewat remote manual". Daftar syarat seperti itu jauh lebih
 -- murah diperiksa di sini daripada mengetik lima panggilan remote di command
 -- bar Studio setiap kali ada yang diubah — dan yang di Studio tetap dilakukan,
--- lihat docs/STUDIO_CHECKLIST.md bagian M3.
+-- lihat docs/TEST_CASES.md kelompok SHOP.
 
 local Balance = require("../src/shared/Modules/Balance")
 local ShopItems = require("../src/shared/Modules/ShopItems")
@@ -150,6 +150,39 @@ table.insert(cases, {
 		assert(
 			reason ~= nil and string.find(reason, "jeda") ~= nil,
 			string.format("alasan harus soal state, dapat '%s'", tostring(reason))
+		)
+	end,
+})
+
+table.insert(cases, {
+	name = "kunci boss diperiksa sebelum state, kalau tidak pesannya tidak pernah terpakai",
+	run = function()
+		-- Locker cuma mengunci toko selama dia hidup, dan selama dia hidup
+		-- state-nya selalu WaveActive: wave tidak bisa dinyatakan bersih
+		-- sebelum boss mati, jadi tidak pernah ada Intermission sambil toko
+		-- terkunci. Kalau state diperiksa lebih dulu, pesan "Toko dikunci"
+		-- tidak akan pernah dilihat pemain dan dia dibilang "tunggu jeda" —
+		-- padahal jeda itu baru datang setelah boss-nya mati.
+		local ok, reason = ShopRules.canBuy(item, context({ state = "WaveActive", locked = true }))
+		assert(not ok, "toko terkunci saat WaveActive seharusnya ditolak")
+		assert(
+			reason ~= nil and string.find(reason, "ikunci") ~= nil,
+			string.format("alasan harus soal kunci boss, dapat '%s'", tostring(reason))
+		)
+	end,
+})
+
+table.insert(cases, {
+	name = "kunci boss tetap menang atas koin kurang",
+	run = function()
+		-- Urutan di atas kunci tidak boleh membuat kunci kalah dari koin:
+		-- pemain yang kebetulan koinnya kurang saat Locker hidup tetap harus
+		-- diberi tahu sebab yang sebenarnya.
+		local _, reason =
+			ShopRules.canBuy(item, context({ state = "WaveActive", locked = true, coins = 0 }))
+		assert(
+			reason ~= nil and string.find(reason, "ikunci") ~= nil,
+			string.format("alasan harus soal kunci boss, dapat '%s'", tostring(reason))
 		)
 	end,
 })
