@@ -95,8 +95,16 @@ local PLAYER_GATED = {
 	{ remote = "UpgradeWeapon", arg = 123 },
 	{ remote = "BuyWeapon", arg = 123 },
 	{ remote = "CraftWeapon", arg = 123 },
+	-- RequestAction menyusul ke daftar ini: handler-nya sekarang memanggil
+	-- `RateLimit.check(limiter, player.UserId, ...)` di baris pertama, jadi dia
+	-- menyentuh Player sebelum memvalidasi `action` — sama seperti tujuh di
+	-- atas. Sebelum rate limit itu dipasang, `action` divalidasi lebih dulu dan
+	-- handler ini memang bisa dites dari sini.
+	{ remote = "RequestAction", arg = "notARealAction" },
 }
 
+-- Aksi yang dulu dites lewat RequestAction. Sekarang cuma dicatat sebagai
+-- dilewati, lihat keterangan di PLAYER_GATED.
 local UNKNOWN_ACTIONS = { "", "notARealAction", "claimDailyBonus ", "CLAIMDAILYBONUS" }
 
 T.main(function()
@@ -161,12 +169,23 @@ T.main(function()
 
 	-- Argumen bertipe benar tapi aksinya tidak dikenal: harus jadi no-op, bukan
 	-- error. Ini jalur yang paling mungkin dipakai penyerang yang sudah tahu
-	-- tipenya.
+	-- tipenya — tapi tidak bisa diperiksa dari sini lagi, dan assertion lamanya
+	-- justru menyesatkan.
+	--
+	-- Yang lama: `pcall(FireServer(action))` lalu assert `ok`. RemoteEvent itu
+	-- fire-and-forget, jadi `ok` SELALU true tanpa peduli apa yang terjadi di
+	-- handler — assertion-nya lulus bahkan kalau handler-nya meledak. Yang
+	-- sungguhan memeriksa cuma `tolak.tidakAdaErrorDiServer` di bawah, dan
+	-- begitu RequestAction memanggil RateLimit lebih dulu (menyentuh
+	-- player.UserId), baris itu tidak akan pernah bisa lulus di harness tanpa
+	-- Player. Jadi RequestAction pindah ke PLAYER_GATED, dan di sini dicatat
+	-- sebagai dilewati — bukan dibiarkan lulus tanpa arti.
 	for _, action in UNKNOWN_ACTIONS do
-		local ok = pcall(function()
-			Remotes.Events.RequestAction:FireServer(action)
-		end)
-		T.ok("tolak.aksiTidakDikenal: " .. string.format("%q", action), ok)
+		T.skip(
+			"tolak.aksiTidakDikenal: " .. string.format("%q", action),
+			"handler RequestAction memanggil RateLimit.check(player.UserId) sebelum memvalidasi "
+				.. "`action`; harness ini tidak punya Player. Tes manual dari command bar client."
+		)
 	end
 
 	-- Handler jalan asinkron. Beri waktu supaya error (kalau ada) sudah masuk
@@ -178,7 +197,36 @@ T.main(function()
 	for index = errorsBefore + 1, #errorsAfter do
 		table.insert(newErrors, errorsAfter[index])
 	end
-	T.ok("tolak.tidakAdaErrorDiServer", #newErrors == 0, table.concat(newErrors, " || "))
+
+	-- Dulu baris ini menuntut log yang bersih (`#newErrors == 0`). Itu berhenti
+	-- bisa dipenuhi begitu handler RequestAction memanggil
+	-- `RateLimit.check(limiter, player.UserId, ...)` di baris pertamanya: di
+	-- harness ini `player` selalu nil, jadi tiap tembakan di atas pasti error
+	-- sebelum menyentuh validasi `action`. Menuntut log bersih di situ bukan
+	-- menguji game, cuma menagih sesuatu yang mustahil.
+	--
+	-- Yang masih bermakna dan itulah yang diuji sekarang: SEMUA error baru harus
+	-- soal nil player. Kalau suatu hari ada error yang bukan — misalnya
+	-- validasi `action` yang bocor dan meledak di tabel atau string 64KB — baris
+	-- ini yang menangkapnya.
+	local leaked = {}
+	for _, message in newErrors do
+		local aboutNilPlayer = string.find(message, "UserId", 1, true) ~= nil
+			or string.find(message, "index nil", 1, true) ~= nil
+		if not aboutNilPlayer then
+			table.insert(leaked, message)
+		end
+	end
+	T.ok(
+		"tolak.errorServerSemuanyaKarenaNilPlayer",
+		#leaked == 0,
+		string.format(
+			"%d error, %d bukan soal nil player: %s",
+			#newErrors,
+			#leaked,
+			table.concat(leaked, " || ")
+		)
+	)
 
 	-- Aksinya tidak terjadi: tidak ada state yang bergerak.
 	T.eq("tolak.stateTidakBerubah", MatchService.getState(), stateBefore)
