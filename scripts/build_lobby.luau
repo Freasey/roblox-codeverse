@@ -5,7 +5,7 @@
 	tempel SELURUH isi file ini, tekan Enter. Script ini membangun
 	`Workspace.Lobby` secara terprogram lalu memilihnya, supaya kamu bisa
 	langsung klik kanan > Save to File > `assets/Lobby.rbxmx`.
-	Langkah lengkapnya ada di `docs/STUDIO_CHECKLIST.md` bagian M5.
+	Langkah lengkapnya ada di `docs/TEST_CASES.md` bagian 2.
 
 	Ini BUKAN modul dan BUKAN script yang di-sync Rojo — folder `scripts/`
 	tidak di-mount di `default.project.json`. File ini alat sekali pakai,
