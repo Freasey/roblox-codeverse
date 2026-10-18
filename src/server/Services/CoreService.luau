@@ -69,6 +69,26 @@ function CoreService.reset(newMaxHp: number?)
 	CoreService.onChanged:Fire(hp, maxHp)
 end
 
+-- Satu tempat untuk memvalidasi jumlah HP, dipakai `damage` dan `heal`.
+--
+-- Dulu pengecekan ini ditulis dua kali, dan itu sebabnya celahnya juga ada dua
+-- kali: keduanya menolak bukan-angka, NaN (`amount ~= amount`), dan nilai <= 0,
+-- tapi keduanya meloloskan `math.huge`. Infinity itu angka, sama dengan dirinya
+-- sendiri, dan lebih besar dari nol, jadi lolos ketiga penjaga. Akibatnya
+-- `hp - math.huge` jadi `-inf`, `math.max(0, -inf)` jadi 0, dan Core hancur
+-- seketika tanpa jejak apa pun di log.
+--
+-- Belum bisa dipicu pemain: `damage` cuma dipanggil EnemyService dengan
+-- `enemy.coreDamage` dari modul definisi, dan `heal` dengan konstanta Balance.
+-- Tapi begitu salah satu angka itu lahir dari pembagian atau pengali berantai,
+-- infinity bisa muncul tanpa ada yang sengaja menulisnya.
+local function isValidAmount(amount: unknown): boolean
+	return type(amount) == "number"
+		and amount == amount -- bukan NaN
+		and amount > 0
+		and amount ~= math.huge
+end
+
 -- Mengembalikan HP yang benar-benar hilang. Argumen divalidasi di sini, bukan
 -- di pemanggil: angka negatif akan jadi "serangan yang menyembuhkan" dan NaN
 -- membuat HP tidak pernah bisa dibandingkan lagi.
@@ -76,7 +96,7 @@ function CoreService.damage(amount: number): number
 	if destroyed then
 		return 0
 	end
-	if type(amount) ~= "number" or amount ~= amount or amount <= 0 then
+	if not isValidAmount(amount) then
 		return 0
 	end
 
@@ -99,7 +119,7 @@ function CoreService.heal(amount: number): number
 	if destroyed then
 		return 0
 	end
-	if type(amount) ~= "number" or amount ~= amount or amount <= 0 then
+	if not isValidAmount(amount) then
 		return 0
 	end
 
