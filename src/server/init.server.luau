@@ -18,6 +18,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
+local RateLimit = require(Shared.Modules.RateLimit)
 local Remotes = require(Shared.Remotes)
 local Waves = require(Shared.Modules.Waves)
 
@@ -72,15 +73,42 @@ RewardService.start()
 
 PlayerDataService.start()
 
+-- Rate limit dua remote yang wiring-nya ada di file ini, bukan di service
+-- (bagian 3.6 mewajibkannya untuk SEMUA remote C -> S). Batasnya 2/detik
+-- seperti remote non-`Attack` lainnya: dua-duanya dipicu interaksi UI, bukan
+-- tombol tembak, jadi burst dua panggilan per detik sudah lebih longgar
+-- daripada yang bisa dilakukan pemain sungguhan.
+local limiter = RateLimit.newRegistry({
+	GetProfile = 2,
+	RequestAction = 2,
+}, 2)
+
+Players.PlayerRemoving:Connect(function(player)
+	RateLimit.forget(limiter, player.UserId)
+end)
+
 -- Client minta snapshot datanya sendiri. Perhatikan: tidak ada parameter dari
 -- client di sini — server menentukan data siapa yang dikembalikan, bukan client.
+--
+-- Kena throttle dibalas `nil`, bukan error dan bukan data basi: ini
+-- RemoteFunction, jadi client menunggu nilai balik, dan `error()` di dalam
+-- OnServerInvoke muncul sebagai error di client yang tidak bisa dia tangani
+-- dengan rapi. `nil` aman karena `ProfileStore` di client sudah memperlakukan
+-- balasan nil sebagai "data belum ada" dan tetap menunggu `DataLoaded` —
+-- jalur yang sama dengan pemain yang datanya memang belum selesai dimuat.
 Remotes.Functions.GetProfile.OnServerInvoke = function(player: Player)
+	if not RateLimit.check(limiter, player.UserId, "GetProfile", os.clock()) then
+		return nil
+	end
 	return PlayerDataService.waitFor(player)
 end
 
 -- Contoh aksi dari client. SELALU validasi di server: argumen dari client
 -- bisa apa saja (angka negatif, tabel, nil, string 1MB).
 Remotes.Events.RequestAction.OnServerEvent:Connect(function(player: Player, action: unknown)
+	if not RateLimit.check(limiter, player.UserId, "RequestAction", os.clock()) then
+		return
+	end
 	if type(action) ~= "string" then
 		return
 	end
@@ -175,27 +203,3 @@ end)
 CoreService.onDestroyed:Connect(function()
 	print(string.format("[%s] Core Server hancur", Config.GAME_NAME))
 end)
-
--- Layar hasil. Reward permanen (koin, XP, material, first clear) dihitung
--- RewardService di M5; sampai itu ada, payload-nya dikirim dengan angka reward
--- NOL, bukan angka tebakan. Nol di sini jujur: di M2 memang belum ada reward
--- yang disimpan, dan menampilkan angka yang tidak pernah masuk ke data pemain
--- jauh lebih buruk daripada menampilkan nol.
-MatchService.onMatchEnded:Connect(
-	function(won: boolean, waveReached: number, _difficultyId: string, userIds: { number })
-		local payload = {
-			won = won,
-			waveReached = waveReached,
-			coins = 0,
-			xp = 0,
-			materials = {},
-			unlocked = {},
-		}
-		for _, userId in userIds do
-			local player = Players:GetPlayerByUserId(userId)
-			if player ~= nil then
-				Remotes.Events.MatchResult:FireClient(player, payload)
-			end
-		end
-	end
-)

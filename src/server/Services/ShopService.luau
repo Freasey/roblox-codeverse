@@ -159,7 +159,7 @@ end
 -- Efek tiap item
 -- --------------------------------------------------------------------------
 
-local function placeBarrier(laneIndex: number, position: Vector3)
+local function placeBarrier(laneIndex: number, position: Vector3, duration: number)
 	local part = Instance.new("Part")
 	part.Name = string.format("Barrier%d", laneIndex)
 	part.Size = Vector3.new(16, 8, 2)
@@ -175,7 +175,12 @@ local function placeBarrier(laneIndex: number, position: Vector3)
 	-- dibiarkan lalu dibersihkan saat match selesai: pemain harus melihat
 	-- penghalangnya hilang tepat saat musuh mulai bergerak lagi, kalau tidak
 	-- dia tidak tahu kapan efeknya habis.
-	task.delay(Balance.BARRIER_DURATION, function()
+	--
+	-- Durasinya dioper pemanggil, bukan dibaca dari Balance di sini: beberapa
+	-- pembelian menumpuk durasi blokirnya (lihat applyBarriers), dan dinding
+	-- yang hilang di detik 6 sementara musuh masih tertahan sampai detik 12
+	-- membuat pemain mengira efeknya sudah habis.
+	task.delay(duration, function()
 		part:Destroy()
 	end)
 end
@@ -210,7 +215,7 @@ local function applyBarriers()
 			-- Core penghalangnya tidak terlihat sebagai penahan, dan di ujung
 			-- spawn musuh belum sampai ke sana.
 			local middle = lane.waypoints[math.max(1, #lane.waypoints // 2)]
-			placeBarrier(laneIndex, middle)
+			placeBarrier(laneIndex, middle, duration)
 		end
 	end
 end

@@ -3,6 +3,19 @@
 Roblox experience. Source of truth ada di folder ini — Roblox Studio cuma
 dipakai sebagai viewer/playtest lewat Rojo live sync.
 
+## Dokumen
+
+| File | Isi |
+|---|---|
+| [docs/CONCEPT.md](docs/CONCEPT.md) | Konsep game, daftar fitur v1 |
+| [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md) | Keputusan arsitektur, spesifikasi teknis, milestone M0-M8 |
+| [docs/TEST_CASES.md](docs/TEST_CASES.md) | **Satu-satunya dokumen pengujian manual.** Persiapan Studio, test case bernomor, pemetaan ke kriteria "Selesai kalau", dan catatan keputusan implementasi |
+| [docs/ARENA.md](docs/ARENA.md) | Struktur arena graybox dan cara meng-export-nya |
+
+Kode M1 sampai M5 **belum pernah dijalankan di Roblox Studio** — yang hijau baru
+CI (lint, type check, unit test Lune, build). Sebelum menyentuh fitur baru, baca
+`docs/TEST_CASES.md`: dokumen itu gerbang pertama yang sebenarnya.
+
 ## Setup pertama kali
 
 ```bash
@@ -81,16 +94,21 @@ Lupa langkah 2 = kerjaannya hilang. Mitigasinya kebiasaan, bukan tooling:
 kerjakan map di sesi terpisah dari coding, dan commit tiap kali selesai satu
 sesi.
 
-Mapping `assets/` **belum ada** di `default.project.json` (dikerjakan di M1),
-jadi prosedur di atas baru berlaku setelah blok seperti ini masuk — ditulis di
-sini sebagai referensi saja:
+Mapping `assets/` **sudah ada** di `default.project.json` sejak M1, jadi
+prosedur di atas berlaku sekarang:
 
 ```json
 "Workspace": {
   "Arena": { "$path": "assets/Arena.rbxmx" },
-  "Lobby": { "$path": "assets/Lobby.rbxmx" }
+  "Lobby": { "$path": { "optional": "assets/Lobby.rbxmx" } }
 }
 ```
+
+`assets/Arena.rbxmx` sudah ada di repo; `assets/Lobby.rbxmx` **belum** dan
+dibuat sekali lewat `scripts/build_lobby.luau` — langkahnya ada di
+[docs/TEST_CASES.md](docs/TEST_CASES.md) bagian 2.6. Bentuk `optional` dipakai
+karena `"$path"` biasa membuat `rojo build` gagal keras selama filenya belum
+ada; alasan lengkapnya di bagian 20 dokumen itu.
 
 ## Aset 3D
 

@@ -47,6 +47,27 @@ type WeaponRow = {
 	equip: TextButton,
 }
 
+-- Aksi yang balasannya milik panel ini. `ActionResult` dipakai bersama panel
+-- toko (ShopService mengirim `BuyShopItem` lewat remote yang sama), jadi tanpa
+-- daftar ini panel lobby ikut menampilkan penolakan pembelian toko — di state
+-- yang panelnya sendiri sudah disembunyikan.
+local OWN_ACTIONS: { [string]: true } = {
+	SelectLoadout = true,
+	UpgradeWeapon = true,
+	BuyWeapon = true,
+	CraftWeapon = true,
+}
+
+-- Balasan `ActionResult` terakhir, ditahan di baris petunjuk selama beberapa
+-- detik. Perlu penanda waktu, bukan sekadar ditulis sekali: `MatchState`
+-- dikirim server tiap 0.2 detik dan tiap paketnya memanggil render(), yang
+-- menulis ulang baris petunjuk — tanpa penahan ini pesannya hilang sebelum
+-- pemain selesai membacanya.
+local NOTICE_SECONDS = 4
+local noticeText: string? = nil
+local noticeOk = false
+local noticeUntil = 0
+
 local gui: ScreenGui? = nil
 local panel: Frame? = nil
 local readyButton: TextButton? = nil
@@ -350,12 +371,23 @@ local function render()
 	button.Text = if isReady then "Batal siap" else "Ready"
 	UiKit.setButtonEnabled(button, true)
 
-	if stateName == "Countdown" then
-		hint.Text = "Semua pemain siap. Tekan lagi untuk membatalkan."
-	elseif isReady then
-		hint.Text = "Kamu siap. Menunggu pemain lain."
+	if noticeText ~= nil and os.clock() >= noticeUntil then
+		noticeText = nil
+	end
+
+	local notice = noticeText
+	if notice ~= nil then
+		hint.Text = notice
+		hint.TextColor3 = if noticeOk then UiKit.COLOR_GOOD else UiKit.COLOR_BAD
 	else
-		hint.Text = "Match baru jalan kalau semua pemain di server siap."
+		hint.TextColor3 = UiKit.COLOR_MUTED
+		if stateName == "Countdown" then
+			hint.Text = "Semua pemain siap. Tekan lagi untuk membatalkan."
+		elseif isReady then
+			hint.Text = "Kamu siap. Menunggu pemain lain."
+		else
+			hint.Text = "Match baru jalan kalau semua pemain di server siap."
+		end
 	end
 end
 
@@ -379,32 +411,36 @@ function LobbyController.start()
 		render()
 	end)
 
-	-- Penolakan dari server ditampilkan di baris petunjuk. Tanpa ini,
-	-- pembelian yang ditolak terlihat sama seperti tombol yang rusak.
+	-- Penolakan dari server ditampilkan di baris petunjuk. Tanpa ini, aksi yang
+	-- ditolak terlihat sama seperti tombol yang rusak.
 	Remotes.Events.ActionResult.OnClientEvent:Connect(function(raw: unknown)
 		if type(raw) ~= "table" then
 			return
 		end
 		local payload = raw :: { [string]: unknown }
-		local hint = hintLabel
-		if hint == nil or type(payload.ok) ~= "boolean" then
+		if type(payload.action) ~= "string" or type(payload.ok) ~= "boolean" then
 			return
 		end
-		if payload.ok then
-			hint.Text = "Berhasil."
-			hint.TextColor3 = UiKit.COLOR_GOOD
+		if not OWN_ACTIONS[payload.action :: string] then
+			return
+		end
+
+		noticeOk = payload.ok :: boolean
+		if noticeOk then
+			noticeText = "Berhasil."
 		else
-			hint.Text = if type(payload.reason) == "string"
+			noticeText = if type(payload.reason) == "string"
 				then payload.reason :: string
 				else "Ditolak server."
-			hint.TextColor3 = UiKit.COLOR_BAD
 		end
+		noticeUntil = os.clock() + NOTICE_SECONDS
+		render()
+
 		-- Dikembalikan ke teks biasa setelah beberapa detik supaya pesan
-		-- penolakan lama tidak menempel selamanya.
-		task.delay(4, function()
-			hint.TextColor3 = UiKit.COLOR_MUTED
-			render()
-		end)
+		-- penolakan lama tidak menempel selamanya. render() yang dipicu
+		-- `MatchState` biasanya sudah melakukannya lebih dulu; ini jaringnya
+		-- kalau paket itu berhenti datang.
+		task.delay(NOTICE_SECONDS, render)
 	end)
 end
 
