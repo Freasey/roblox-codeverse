@@ -51,13 +51,33 @@ export type WeaponDef = {
 	acquire: WeaponAcquire,
 }
 
+-- Profil target per TIPE musuh, bukan per musuh. Satu tabel kecil yang dibaca
+-- EnemyAI; menaruhnya di definisi berarti menambah tipe musuh baru tidak
+-- menyentuh satu baris pun logika AI.
+--
+-- `prefer` menentukan ke mana musuh berjalan kalau tidak ada target di
+-- jangkauan. `aggroRadius` jarak mulai mengejar player; `leashRadius` jarak
+-- berhenti mengejar, dan dia HARUS lebih besar dari aggro -- kalau sama,
+-- musuh akan bergetar masuk-keluar status mengejar di batasnya.
+export type TargetProfile = {
+	prefer: "base" | "player",
+	aggroRadius: number,
+	leashRadius: number,
+}
+
 export type EnemyDef = {
 	id: string,
 	name: string,
 	analogy: string, -- jenis malware yang diwakili
 	baseHp: number,
 	speed: number, -- stud per detik
-	coreDamage: number, -- HP Core yang hilang kalau musuh sampai
+	-- Damage SEKALI PUKUL, bukan sekali sampai. Musuh yang mencapai base tidak
+	-- lagi hilang: dia berhenti dan memukul tiap `attackInterval` detik sampai
+	-- dibunuh pemain. Angka mentah ini dipakai untuk player; untuk base dia
+	-- dikali Balance.BASE_DAMAGE_MULT.
+	attackDamage: number,
+	attackInterval: number, -- detik antar pukulan
+	targeting: TargetProfile,
 	matchCoins: number, -- koin match yang dijatuhkan
 }
 
@@ -94,7 +114,9 @@ export type BossDef = {
 	wave: number,
 	baseHp: number,
 	speed: number,
-	coreDamage: number,
+	attackDamage: number,
+	attackInterval: number,
+	targeting: TargetProfile,
 	matchCoins: number,
 	dropMaterial: string,
 	mechanic: BossMechanic,

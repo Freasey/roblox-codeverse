@@ -16,7 +16,13 @@ local Bosses: { [string]: BossDef } = {
 		wave = 5,
 		baseHp = 2500,
 		speed = 7,
-		coreDamage = 25,
+		attackDamage = 80,
+		attackInterval = 2.0,
+		-- Boss berjalan lurus ke base dan tidak memburu pemain. Aggro kecil,
+		-- bukan nol: tetap memukul yang menghalanginya tepat di depan base.
+		-- Rancangan tidak menetapkan angka boss, jadi dua baris ini pilihan
+		-- implementasi, bukan keputusan desain.
+		targeting = { prefer = "base", aggroRadius = 10, leashRadius = 15 },
 		matchCoins = 120,
 		dropMaterial = "material_a",
 		mechanic = {
@@ -44,7 +50,9 @@ local Bosses: { [string]: BossDef } = {
 		wave = 10,
 		baseHp = 6000,
 		speed = 6,
-		coreDamage = 40,
+		attackDamage = 120,
+		attackInterval = 2.0,
+		targeting = { prefer = "base", aggroRadius = 10, leashRadius = 15 },
 		matchCoins = 250,
 		dropMaterial = "material_b",
 		mechanic = {

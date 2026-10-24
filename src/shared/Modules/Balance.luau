@@ -46,6 +46,31 @@ Balance.SPAWN_INTERVAL = 0.9
 -- akan menghitung jumlah player dua kali.
 Balance.CORE_MAX_HP = 1000
 
+-- Pengali damage serangan musuh. Musuh punya SATU angka `attackDamage`, dan
+-- dua pengali ini yang membuat satu angka itu berarti berbeda untuk dua sasaran
+-- yang HP-nya terpaut 50x (base 1000, player 100).
+--
+-- 0.2 bukan angka kosmetik: dia yang membuat base efektif 5000 HP, dan dari
+-- situlah aritmetika kebocoran di Enemies.luau dihitung -- satu `basic` lolos
+-- sepanjang wave memakan seperempat base. Menaikkannya mempersingkat match
+-- jauh lebih cepat daripada yang terlihat.
+Balance.BASE_DAMAGE_MULT = 0.2
+-- 1.0 sekarang, dan dia ada sebagai titik masuk: pengurang damage dari upgrade
+-- atau item nanti dipasang di sini, bukan disebar ke pemanggil.
+Balance.PLAYER_DAMAGE_MULT = 1.0
+
+-- Slot cincin di sekitar base. Musuh tidak punya collision (CanCollide = false)
+-- dan tidak punya pathfinding, jadi dua puluh musuh yang berhenti di titik yang
+-- sama akan bertumpuk jadi satu gumpalan yang tidak bisa dibidik satu-satu.
+-- Tiap musuh yang mencapai base mengambil satu slot di cincin.
+--
+-- 12 slot di radius 10 memberi jarak antar slot sekitar 5.2 stud, cukup untuk
+-- memisahkan musuh terbesar (`tank` 6x6x6). Yang ke-13 dan seterusnya masuk
+-- cincin kedua, bukan menumpuk di cincin pertama.
+Balance.BASE_RING_SLOTS = 12
+Balance.BASE_RING_RADIUS = 10
+Balance.BASE_RING_RADIUS_OUTER = 14
+
 -- Musuh dianggap sampai di sebuah waypoint kalau jaraknya di bawah ini. Harus
 -- lebih besar dari perpindahan satu frame musuh tercepat (16 stud/detik pada 60
 -- fps = 0.27 stud), kalau tidak musuh bisa melewati waypoint dan berputar-putar.
