@@ -35,6 +35,13 @@ jobs:
         run: |
           mkdir -p build
           wally install
+          # Sama dengan ci.yml: `wally install` menghapus Packages/ kalau
+          # [dependencies] kosong, termasuk .gitkeep yang ada di repo. Sesudah
+          # itu $path "Packages" di default.project.json menunjuk ke direktori
+          # yang tidak ada dan rojo berhenti. Artinya publish gagal di langkah
+          # build, bukan di langkah upload, dengan pesan yang tidak menyebut
+          # wally sama sekali.
+          mkdir -p Packages
           rojo build default.project.json --output build/codeverse.rbxl
 
       - name: Upload via Open Cloud

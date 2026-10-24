@@ -81,7 +81,8 @@ ditukar, dan alasannya ditulis di tempatnya masing-masing.
 **Lapis 0 — sebelum Studio dibuka.**
 
 ```bash
-cd "C:\Web Programoblox-codeverse"
+cd "C:\Web Program
+oblox-codeverse"
 lune run tests/run          # 149 unit test, beberapa detik
 lune run tests/studio/run   # harness Studio, ~85 detik
 ```
@@ -201,6 +202,64 @@ test:
   sudah ada dan sudah divalidasi terhadap kontrak marker bagian 3.4.
 - **Place harus di-publish sekali** sebelum test DataStore atau persistensi apa
   pun (M5.7). DataStore tidak jalan di place yang belum pernah di-publish.
+  Prosedurnya di bagian 5.1.
+
+### 5.1 Publish, dan main di client Roblox alih-alih di Studio
+
+Studio terasa berat saat F5 bukan karena game-nya berat. Di playtest Studio,
+**server dan client jalan di satu proses di laptopmu**: loop `Heartbeat` yang
+menggerakkan sampai 40 musuh lewat `CFrame` dan rendering 40 bar HP BillboardGui
+jatuh ke CPU yang sama. Di client Roblox, server-nya jalan di mesin Roblox dan
+yang tinggal di laptopmu cuma rendering. Jadi publish bukan jalan memutar untuk
+menghindari lag; dia memang menghilangkan separuh bebannya.
+
+**Publish pertama harus dari Studio**, dan itu tidak bisa dihindari: Open Cloud
+API butuh universe dan place yang sudah ada, jadi tidak ada yang bisa dibuatnya
+dari nol. **File -> Publish to Roblox As...**, buat experience baru. Experience
+baru default-nya privat, dan itu sudah cukup untuk kamu mainkan sendiri — tidak
+perlu dipublikkan. Sesudahnya centang **Game Settings -> Security -> Enable
+Studio Access to API Services**, restart Studio, dan warn
+`[PlayerDataService] ... data default di memori` harus hilang.
+
+**Update berikutnya tidak perlu Studio lagi.** `.github/workflows/publish.yml`
+sudah lengkap; yang belum ada tiga nilai, dan ketiganya baru bisa diisi setelah
+place-nya ada:
+
+| Di GitHub | Nama | Dari mana |
+|---|---|---|
+| Secret (environment `roblox`) | `ROBLOX_API_KEY` | Creator Dashboard -> Open Cloud API Keys, izin **Place Management** untuk universe ini |
+| Variable | `ROBLOX_UNIVERSE_ID` | Creator Dashboard, halaman experience-nya |
+| Variable | `ROBLOX_PLACE_ID` | URL place-nya |
+
+Workflow-nya manual (`workflow_dispatch`) dan punya pilihan `Saved` atau
+`Published`: `Saved` mengunggah tanpa mengubah yang sedang dimainkan orang,
+`Published` yang membuatnya live. Pakai `Saved` dulu, cek, baru `Published`.
+
+**Apa yang berubah untuk testing.** Di client tidak ada jendela Output. Yang
+menggantikannya **F9 -> Developer Console -> tab Server**, dan print server cuma
+terlihat di situ kalau kamu pemilik place-nya. Semua baris test yang bilang
+"lihat Output server" dibaca dari sana.
+
+**Yang tetap harus di Studio**, dan ini yang menentukan kamu tidak bisa pindah
+seluruhnya:
+
+- **Network Simulation cuma ada di Studio.** Dua case berkode `LAG` —
+  `COMBAT-05` dan `COMBAT-06` — permanen di Studio. `COMBAT-05` itu syarat
+  selesainya M1, jadi Studio tidak bisa ditinggalkan sama sekali.
+- **Delapan case berkode `EDIT`** (`BOOT-03`, `BOOT-06`, `WAVE-10`, `SHOP-11`,
+  `SHOP-15`, `BOSS-14`, `PROG-12`, `HUD-08`) mengubah kode atau data sementara
+  dan mengandalkan sync Rojo, jadi butuh Studio yang ter-Connect.
+- **Command bar** (seluruh bagian 16, SEC) cuma ada di Studio.
+
+Dari 18 case M1 yang masih manual, **15 bisa dipindah ke client**; yang tinggal
+di Studio `COMBAT-05`, `BOOT-03`, dan `BOOT-06`.
+
+**Yang justru terbuka setelah publish:** 15 case yang sekarang terkunci. Delapan
+berkode `PUB` (`PROG-14`, `PROG-15`, `DATA-02`, `DATA-03`, `DATA-04`, `DATA-05`,
+`DATA-07`, `DATA-08`) dan delapan berkode `LIVE` (`MATCH-16`, `SHOP-13`,
+`BOSS-13`, `MP-06`, `MP-07`, `MP-08`, `MP-11`, `DATA-04`) — `DATA-04` masuk
+keduanya. Yang `LIVE` itu test rejoin, dan Studio memang tidak bisa
+mensimulasikan satu pemain keluar lalu **join lagi** ke sesi yang sama.
 
 ## 6. Milestone yang belum dikerjakan
 
