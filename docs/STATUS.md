@@ -99,15 +99,23 @@ pemain: `everyoneReady()` benar kalau semua pemain yang hadir ready), countdown
 10 detik, lalu wave 1 jalan. Kerjakan dengan Output jendela server terlihat:
 
 ```
-CORE-01 CORE-04  →  sebelum wave mulai
-WAVE-03 WAVE-07 WAVE-11 WAVE-12 WAVE-13 WAVE-15
+CORE-01                                          →  sebelum wave mulai
+WAVE-03 WAVE-07 WAVE-13 WAVE-15
 COMBAT-01 COMBAT-02 COMBAT-03 COMBAT-04 COMBAT-13 COMBAT-15
-CORE-02 CORE-06  →  biarkan musuh lolos, sengaja
-COMBAT-10        →  biarkan karakter mati
-CORE-03          →  biarkan Core sampai 0, ini mengakhiri match
+CORE-02                                          →  biarkan satu `basic` lolos
+COMBAT-10                                        →  biarkan karakter mati
+CORE-03                                          →  biarkan Core sampai 0
 ```
 
 `CORE-03` ditaruh terakhir di lapis ini karena dia **mengakhiri match**.
+
+Empat baris yang dulu ada di lapis ini sudah tidak ada lagi: WAVE-11, WAVE-12,
+CORE-04, dan CORE-06 `OK` lewat harness. Dan tiga yang masih di sini tinggal
+sepotong — CORE-02 cuma perlu kamu lihat **bar Core di HUD** turun 5 (kelima
+angka damage per tipe sudah dipatok), WAVE-07 cuma **jumlah serangan** (angka
+HP-nya sudah dipatok), dan BOOT-02 di lapis 1 cuma **posisi karakter** (hitungan
+barisnya sudah otomatis). Rinciannya per case di `docs/TEST_CASES.md` bagian
+3.2.
 
 **Lapis 3 — `COMBAT-05`, satu pass sendiri.** Nyalakan **Test → Network
 Simulation → Bad Internet**, jalankan hanya case ini, lalu **matikan lagi**.
@@ -208,7 +216,7 @@ menggantung selamanya, jadi tidak ada lebih baik daripada ada tapi mati. Lihat
   dihitung sebelum `STUDIO_CHECKLIST.md` dilebur ke `TEST_CASES.md`; sekarang
   dokumennya memuat 160 case. Pembilangnya juga sudah lewat: dia ditulis untuk
   tiga case harness dengan 82 assertion, sementara sekarang ada empat case
-  dengan 145 dan empat baris M1 yang naik jadi `OK`. Rasio maupun pembilangnya
+  dengan 183 dan empat baris M1 yang naik jadi `OK`. Rasio maupun pembilangnya
   belum dihitung ulang; `docs/TEST_CASES.md` bagian 3.2 adalah sumber yang
   benar untuk cakupan harness.
 
