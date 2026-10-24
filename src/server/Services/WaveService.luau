@@ -90,6 +90,17 @@ end
 -- sudah mati. Tiga syarat, bukan satu: boss di-spawn lewat jalur terpisah dan
 -- musuh yang dipanggil mekanik boss (Locker memanggil minion terus-menerus)
 -- bisa masuk ke daftar aktif setelah antrian wave sudah habis.
+-- Nol musuh aktif TIDAK lagi dijamin terjadi, dan itu desain, bukan regresi.
+-- Dulu musuh yang mencapai Core menghilang sendiri, jadi arena pasti bersih
+-- cepat atau lambat. Sekarang musuh yang lolos berhenti di base dan memukul
+-- sampai dibunuh pemain, jadi wave tidak bisa selesai selama masih ada
+-- kebocoran yang hidup -- Intermission dan Toko Match ikut tertunda.
+--
+-- Itu hukuman kedua untuk kebocoran, selain HP yang hilang, dan sengaja tidak
+-- ditambal dengan "musuh di base tidak dihitung". Dan dia tidak bisa
+-- menggantung permanen: kalau pemain benar-benar tidak mampu, Core habis dan
+-- MatchService.endMatch(false) jalan. Macet yang berujung selesai, bukan macet
+-- yang butuh restart server. Rancangan bagian 5.
 local function isWaveClear(): boolean
 	if not EnemyService.isClear() then
 		return false

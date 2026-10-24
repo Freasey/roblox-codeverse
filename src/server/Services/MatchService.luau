@@ -21,6 +21,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
+local Balance = require(Shared.Modules.Balance)
 local Config = require(Shared.Config)
 local Difficulties = require(Shared.Modules.Difficulties)
 local MatchRules = require(Shared.Modules.MatchRules)
@@ -462,6 +463,12 @@ function MatchService.start()
 			endMatch(false)
 		end
 	end)
+
+	-- Pemain sekarang benar-benar bisa mati, jadi waktu respawn jadi angka
+	-- gameplay dan bukan lagi detail yang tidak pernah terpakai. Disetel sekali
+	-- di sini, bukan per pemain: ini properti layanan, dan menyetelnya di
+	-- CharacterAdded berarti menyetelnya ulang puluhan kali tanpa guna.
+	Players.RespawnTime = Balance.RESPAWN_SECONDS
 
 	local function watch(player: Player)
 		player.CharacterAdded:Connect(function()

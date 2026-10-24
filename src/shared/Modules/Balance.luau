@@ -59,6 +59,19 @@ Balance.BASE_DAMAGE_MULT = 0.2
 -- atau item nanti dipasang di sini, bukan disebar ke pemanggil.
 Balance.PLAYER_DAMAGE_MULT = 1.0
 
+-- Respawn pemain. Sebelum musuh bisa menyerang, kematian pemain tidak punya
+-- konsekuensi apa pun dan angka ini tidak berarti; sekarang dia salah satu knob
+-- kesulitan yang paling langsung terasa.
+--
+-- Ditulis eksplisit, bukan dibiarkan memakai default Roblox yang kebetulan juga
+-- 5 detik: kalau defaultnya berubah atau ada plugin yang menyetelnya, kesulitan
+-- game ini bergeser tanpa satu baris pun di repo ini berubah.
+--
+-- Tanpa sistem nyawa di v1 (rancangan bagian 5): mati cuma berarti kehilangan
+-- waktu, dan waktu itu mahal karena musuh terus memukul base selama pemain
+-- tidak ada.
+Balance.RESPAWN_SECONDS = 5
+
 -- Slot cincin di sekitar base. Musuh tidak punya collision (CanCollide = false)
 -- dan tidak punya pathfinding, jadi dua puluh musuh yang berhenti di titik yang
 -- sama akan bertumpuk jadi satu gumpalan yang tidak bisa dibidik satu-satu.
