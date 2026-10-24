@@ -9,6 +9,11 @@ viewer lewat Rojo.
 > 1.4, 3.1, 3.2, 3.3, dan 3.7; serta mengubah M0 dan M1. Alasan tiap perubahan
 > ditulis di tempatnya, bukan dikumpulkan di satu daftar.
 
+Dokumen ini adalah **rencana**. Untuk keadaan sebenarnya sekarang — milestone
+mana yang sudah tutup, apa yang sudah terverifikasi dan dengan cara apa, dan apa
+langkah berikutnya — lihat [STATUS.md](STATUS.md). Kalau keduanya berbeda,
+STATUS.md yang benar.
+
 ## 0. Asumsi dan keputusan
 
 Tiga asumsi di bawah ini dipakai sepanjang dokumen. Kalau ada yang salah,

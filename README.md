@@ -7,6 +7,7 @@ dipakai sebagai viewer/playtest lewat Rojo live sync.
 
 | File | Isi |
 |---|---|
+| [docs/STATUS.md](docs/STATUS.md) | **Mulai dari sini.** Di mana proyeknya sekarang, apa yang sudah terverifikasi dan dengan cara apa, dan langkah berikutnya |
 | [docs/CONCEPT.md](docs/CONCEPT.md) | Konsep game, daftar fitur v1 |
 | [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md) | Keputusan arsitektur, spesifikasi teknis, milestone M0-M8 |
 | [docs/TEST_CASES.md](docs/TEST_CASES.md) | **Satu-satunya dokumen pengujian manual.** Persiapan Studio, test case bernomor, pemetaan ke kriteria "Selesai kalau", dan catatan keputusan implementasi |
