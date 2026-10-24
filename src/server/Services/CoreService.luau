@@ -78,10 +78,15 @@ end
 -- `hp - math.huge` jadi `-inf`, `math.max(0, -inf)` jadi 0, dan Core hancur
 -- seketika tanpa jejak apa pun di log.
 --
--- Belum bisa dipicu pemain: `damage` cuma dipanggil EnemyService dengan
--- `enemy.coreDamage` dari modul definisi, dan `heal` dengan konstanta Balance.
--- Tapi begitu salah satu angka itu lahir dari pembagian atau pengali berantai,
--- infinity bisa muncul tanpa ada yang sengaja menulisnya.
+-- Belum bisa dipicu pemain, tapi jalurnya sekarang lebih panjang dari dulu dan
+-- itu justru alasan penjaga ini tetap ada. `damage` dipanggil EnemyService
+-- lewat `EnemyAI.baseDamage(def.attackDamage, Balance.BASE_DAMAGE_MULT)` --
+-- sebuah PENGALI, bukan lagi satu angka yang diambil apa adanya dari modul
+-- definisi. `EnemyAI.baseDamage` sudah menyaring inf dan NaN sendiri, jadi
+-- sekarang ada dua lapis; tapi dua lapis itulah yang pantas untuk nilai yang
+-- lahir dari perkalian, karena satu pengali yang suatu hari dihitung dari
+-- pembagian bisa melahirkan infinity tanpa ada yang sengaja menulisnya.
+-- `heal` masih dipanggil dengan konstanta Balance.
 local function isValidAmount(amount: unknown): boolean
 	return type(amount) == "number"
 		and amount == amount -- bukan NaN
