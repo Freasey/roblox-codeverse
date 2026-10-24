@@ -61,12 +61,75 @@ CORE-01 CORE-02 CORE-03 CORE-04 CORE-06
 COMBAT-01 COMBAT-02 COMBAT-03 COMBAT-04 COMBAT-05 COMBAT-10 COMBAT-13 COMBAT-15
 ```
 
-Urutan yang disarankan:
+### Urutan menjalankannya
 
-1. `lune run tests/studio/run` — sekitar 45 detik, menutup case `BISA` tanpa
-   membuka Studio.
-2. Blok M1 di `docs/TEST_CASES.md`, dari atas.
-3. Sisipkan `SHOP-16` begitu sampai wave 10 (alasannya di bagian 4).
+Urutan di bawah bukan selera. Tiga hal di dalamnya akan merusak hasil kalau
+ditukar, dan alasannya ditulis di tempatnya masing-masing.
+
+**Lapis 0 — sebelum Studio dibuka.**
+
+```bash
+lune run tests/run          # 149 unit test, beberapa detik
+lune run tests/studio/run   # harness Studio, ~45 detik
+```
+
+Harness ini **harus jalan sebelum Studio dibuka**. Dia membuka instalasi Studio
+sendiri (place salinan di `%TEMP%`), merebut fokus sekitar 10 detik, lalu
+menutup diri. Perilakunya saat Studio sudah terbuka duluan belum pernah diuji
+— lihat `tests/studio/README.md`. Exit code 0 berarti lulus.
+
+**Lapis 1 — BOOT, sebelum apa pun yang lain.** `BOOT-01`, `BOOT-02`. Kalau BOOT
+gagal, tidak ada gunanya menjalankan sisanya; yang kelihatan seperti belasan bug
+gameplay biasanya satu map yang tidak ter-mount.
+
+**Lapis 2 — main solo, F5.** Tekan **Ready** di panel lobby (solo cukup satu
+pemain: `everyoneReady()` benar kalau semua pemain yang hadir ready), countdown
+10 detik, lalu wave 1 jalan. Kerjakan dengan Output jendela server terlihat:
+
+```
+CORE-01 CORE-04  →  sebelum wave mulai
+WAVE-03 WAVE-07 WAVE-11 WAVE-12 WAVE-13 WAVE-15
+COMBAT-01 COMBAT-02 COMBAT-03 COMBAT-04 COMBAT-13 COMBAT-15
+CORE-02 CORE-06  →  biarkan musuh lolos, sengaja
+COMBAT-10        →  biarkan karakter mati
+CORE-03          →  biarkan Core sampai 0, ini mengakhiri match
+```
+
+`CORE-03` ditaruh terakhir di lapis ini karena dia **mengakhiri match**.
+
+**Lapis 3 — `COMBAT-05`, satu pass sendiri.** Nyalakan **Test → Network
+Simulation → Bad Internet**, jalankan hanya case ini, lalu **matikan lagi**.
+Jangan digabung dengan lapis 2: dengan lag menyala semua case lain ikut terasa
+aneh dan kamu akan mengejar bug yang tidak ada.
+
+**Lapis 4 — dua case `EDIT`, paling akhir.** `BOOT-03` (rename
+`assets/Arena.rbxmx`) dan `BOOT-06` (set `DEBUG_VISIBLE_WAYPOINTS = true`).
+Keduanya mengubah file di working tree, jadi menjalankannya lebih awal berarti
+seluruh sisa playtest dikerjakan di atas repo yang sudah kotor. Setelah selesai,
+`git status` harus bersih lagi — itu caranya tahu kedua perubahan sudah
+dibalikkan.
+
+Prakondisi `BOOT-06` tertulis "Lobby sudah ada", dan itu **lebih ketat dari yang
+dia butuh sebenarnya**: yang dia uji adalah urutan waypoint di arena. Tanpa
+lobby, pemain muncul di spawn arena (`BOOT-04`) dan case ini tetap bisa
+dijalankan.
+
+**Sisipkan `SHOP-16`** begitu sampai wave 10 di sesi mana pun — alasannya di
+bagian 4.
+
+### Dua hal yang jangan dicatat sebagai GAGAL
+
+Keduanya prasyarat yang belum dipenuhi, bukan bug, dan satu baris GAGAL palsu
+akan menenggelamkan yang sungguhan:
+
+- Warn `[PlayerDataService] ... jalan dengan data default di memori` — place
+  belum di-publish. Lihat bagian 5.
+- Warn `[MapService] Lobby tidak lengkap` — `assets/Lobby.rbxmx` belum dibuat.
+  Itu justru hasil yang diharapkan `BOOT-04`.
+
+Isi kolom **Status** di `docs/TEST_CASES.md` sambil jalan: `OK`, `GAGAL` (tulis
+apa yang terjadi), `BLOK` (prasyarat belum ada), `N/A`. Sebagian sesuai **bukan**
+`OK`.
 
 **`COMBAT-05` adalah satu-satunya case M1 yang jangan di-skip.** Dia menguji
 apakah serangan terasa kena saat ping tinggi, dan itu syarat selesainya M1 di
