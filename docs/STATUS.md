@@ -34,7 +34,7 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 | --- | --- | --- |
 | Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit | **149 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
-| Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, damage ke Core per tipe musuh, skala HP per wave | **183 assertion lulus, 0 gagal, 16 di-skip** |
+| Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave | **222 assertion lulus, 0 gagal, 17 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
 
 ### Kenapa CI hijau tidak cukup
@@ -58,13 +58,14 @@ Ini bukan masalah yang bisa dipecahkan dengan usaha lebih; itu batas alatnya.
 Tapi batas itu lebih jauh dari yang disangka semula. Apa pun yang dikerjakan
 server sendiri bisa dijangkau: musuh digerakkan server lewat `CFrame`, jadi
 urutan waypoint, pembagian lane, HP Core, dan warna Part Core semuanya terukur
-tanpa Player. Case `core_wave` menutup itu dan membuat **WAVE-11, WAVE-12,
-CORE-04, dan CORE-06 jadi `OK` tanpa tangan manusia.** Yang benar-benar mentok
+tanpa Player. Case `core_wave` menutup itu dan membuat **WAVE-12, CORE-04, dan
+CORE-06 jadi `OK` tanpa tangan manusia.** (WAVE-11 sempat ikut, lalu turun lagi
+ke `-` setelah rancangan ulang arena mengubah harapannya.) Yang benar-benar mentok
 cuma yang butuh karakter atau client: menyerang, bar HP, kamera, input.
 
 ## 3. Playtest M1 (tugas Daffa) — DITUNDA, lihat bagian 1
 
-Tinggal **18 case bertanda M1** di `docs/TEST_CASES.md` (WAVE-11, WAVE-12, CORE-04, dan CORE-06 sudah `OK` lewat harness):
+Tinggal **24 case bertanda M1** di `docs/TEST_CASES.md` (WAVE-12, CORE-04, dan CORE-06 sudah `OK` lewat harness). Naik dari 18, bukan karena ada yang gagal: lima case M1 baru lahir dari rancangan ulang arena (WAVE-17, WAVE-18, WAVE-19, COMBAT-16, COMBAT-17), dan WAVE-11 kembali manual karena harapannya berubah:
 
 ```
 BOOT-02 BOOT-03 BOOT-06
@@ -91,7 +92,7 @@ ditukar, dan alasannya ditulis di tempatnya masing-masing.
 cd "C:\Web Program
 oblox-codeverse"
 lune run tests/run          # 149 unit test, beberapa detik
-lune run tests/studio/run   # harness Studio, ~85 detik
+lune run tests/studio/run   # harness Studio, ~110 detik
 ```
 
 Baris `cd` itu bukan basa-basi. Tool di repo ini dikelola rokit, dan rokit
@@ -117,17 +118,27 @@ pemain: `everyoneReady()` benar kalau semua pemain yang hadir ready), countdown
 
 ```
 CORE-01                                          →  sebelum wave mulai
-WAVE-03 WAVE-07 WAVE-13 WAVE-15
+WAVE-03 WAVE-07 WAVE-11 WAVE-13 WAVE-15
 COMBAT-01 COMBAT-02 COMBAT-03 COMBAT-04 COMBAT-13 COMBAT-15
-CORE-02                                          →  biarkan satu `basic` lolos
-COMBAT-10                                        →  biarkan karakter mati
+WAVE-18                                          →  siapa yang keluar lane
+CORE-02 WAVE-17                                  →  biarkan satu `basic` lolos
+WAVE-19                                          →  biarkan 6+ lolos sekaligus
+COMBAT-16 COMBAT-17                              →  biarkan dirimu dibunuh
+COMBAT-10                                        →  serang saat sedang mati
 CORE-03                                          →  biarkan Core sampai 0
 ```
 
+Lima baris terakhir itu lahir dari rancangan ulang arena dan belum pernah
+dijalankan siapa pun. Urutannya bukan selera: `WAVE-17` dan `WAVE-19` menuntut
+kamu **sengaja membiarkan musuh lolos**, dan sejak musuh yang lolos tidak lagi
+menghilang, itu berarti wave-nya tidak akan selesai sampai kamu membunuhnya —
+jadi kerjakan keduanya setelah case yang butuh wave berjalan normal, bukan
+sebelum.
+
 `CORE-03` ditaruh terakhir di lapis ini karena dia **mengakhiri match**.
 
-Empat baris yang dulu ada di lapis ini sudah tidak ada lagi: WAVE-11, WAVE-12,
-CORE-04, dan CORE-06 `OK` lewat harness. Dan tiga yang masih di sini tinggal
+Tiga baris yang dulu ada di lapis ini sudah tidak ada lagi: WAVE-12, CORE-04,
+dan CORE-06 `OK` lewat harness. WAVE-11 kembali ke lapis ini. Dan tiga yang masih di sini tinggal
 sepotong — CORE-02 cuma perlu kamu lihat **bar Core di HUD** turun 5 (kelima
 angka damage per tipe sudah dipatok), WAVE-07 cuma **jumlah serangan** (angka
 HP-nya sudah dipatok), dan BOOT-02 di lapis 1 cuma **posisi karakter** (hitungan
@@ -258,7 +269,7 @@ seluruhnya:
   dan mengandalkan sync Rojo, jadi butuh Studio yang ter-Connect.
 - **Command bar** (seluruh bagian 16, SEC) cuma ada di Studio.
 
-Dari 18 case M1 yang masih manual, **15 bisa dipindah ke client**; yang tinggal
+Dari 24 case M1 yang masih manual, **21 bisa dipindah ke client**; yang tinggal
 di Studio `COMBAT-05`, `BOOT-03`, dan `BOOT-06`.
 
 **Yang justru terbuka setelah publish:** 15 case yang sekarang terkunci. Delapan
@@ -291,7 +302,7 @@ menggantung selamanya, jadi tidak ada lebih baik daripada ada tapi mati. Lihat
   dihitung sebelum `STUDIO_CHECKLIST.md` dilebur ke `TEST_CASES.md`; sekarang
   dokumennya memuat 160 case. Pembilangnya juga sudah lewat: dia ditulis untuk
   tiga case harness dengan 82 assertion, sementara sekarang ada empat case
-  dengan 183 dan empat baris M1 yang naik jadi `OK`. Rasio maupun pembilangnya
+  dengan 222 dan tiga baris M1 yang naik jadi `OK`. Rasio maupun pembilangnya
   belum dihitung ulang; `docs/TEST_CASES.md` bagian 3.2 adalah sumber yang
   benar untuk cakupan harness.
 

@@ -242,16 +242,20 @@ T.main(function()
 	for _, badId in { -1, 0, 999999, 1.5 } do
 		T.eq("tolak.damageIdTidakAda: " .. tostring(badId), EnemyService.damage(badId, 10, nil), 0)
 	end
-	-- Perhatikan `math.huge` di daftar ini. Komentar di CoreService.damage
-	-- menyebut dua hal yang dijaga — angka negatif dan NaN — dan memang
-	-- keduanya dijaga. Tapi infinity lolos ketiga syaratnya: dia number, dia
-	-- sama dengan dirinya sendiri (jadi bukan NaN), dan dia lebih besar dari
-	-- nol. Hasilnya `math.max(0, hp - math.huge)` = 0, alias Core langsung
-	-- hancur dalam satu panggilan. Assertion di bawah ini SENGAJA dibiarkan
-	-- gagal: inilah temuan nyata dari spike ini, dan src/ tidak disentuh di
-	-- cabang ini. CombatService sudah memeriksa `magnitude == math.huge` untuk
-	-- arah serangan, jadi polanya memang dikenal di repo ini — cuma terlewat di
-	-- sini. Lihat tests/studio/README.md.
+	-- Perhatikan `math.huge` di daftar ini, dan kenapa dia pantas dites
+	-- walaupun terlihat berlebihan. Dulu infinity lolos seluruh validasi
+	-- `CoreService.damage`: dia number, dia sama dengan dirinya sendiri (jadi
+	-- bukan NaN), dan dia lebih besar dari nol. Hasilnya
+	-- `math.max(0, hp - math.huge)` = 0, alias Core hancur dalam satu panggilan
+	-- tanpa jejak apa pun di log. Itu temuan pertama harness ini, dan sudah
+	-- ditutup di `CoreService.isValidAmount` — keempat assertion di bawah
+	-- sekarang PASS.
+	--
+	-- Tetap di sini sebagai penjaga regresi, dan sekarang justru lebih berarti:
+	-- jalur masuknya bukan lagi satu angka yang diambil apa adanya dari modul
+	-- definisi, tapi `EnemyAI.baseDamage(attackDamage, BASE_DAMAGE_MULT)` —
+	-- sebuah perkalian. Nilai yang lahir dari pengali lebih mudah melahirkan
+	-- infinity daripada konstanta yang ditulis tangan.
 	for _, badAmount in { -5, 0, 0 / 0, math.huge } do
 		T.eq(
 			"tolak.coreDamageAngkaTidakWajar: " .. tostring(badAmount),

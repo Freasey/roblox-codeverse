@@ -225,7 +225,7 @@ Humanoid, tidak ada input, tidak ada kamera, dan tidak ada satu pun
 menyebut HUD, panel, bar HP, klik, atau posisi karakter berada di luar
 jangkauannya secara permanen — bukan karena harness-nya belum selesai.
 
-Run terakhir: **183 assertion lulus, 0 gagal, 16 dilewati, exit 0**, dari case
+Run terakhir: **222 assertion lulus, 0 gagal, 17 dilewati, exit 0**, dari case
 `boot`, `enemy_core`, `remote_reject`, dan `core_wave`. Yang 13 dilewati itu **bukan lulus**:
 kedelapan handler remote C → S memanggil `RateLimit.check(player.UserId)`
 sebelum memvalidasi argumennya, jadi tanpa Player mereka error karena nil player
@@ -235,8 +235,11 @@ memanggil `PlayerDataService.waitFor(player)`. Itu milik
 [bagian 16](#16-keamanan-remote-sec) dan tetap harus dijalankan dari command bar
 client.
 
-Akibatnya untuk kolom Status: **empat baris M1 dibuktikan seluruhnya dan sudah
-`OK`** — WAVE-11, WAVE-12, CORE-04, dan CORE-06. Keempatnya kebetulan tidak
+Akibatnya untuk kolom Status: **tiga baris M1 dibuktikan seluruhnya dan sudah
+`OK`** — WAVE-12, CORE-04, dan CORE-06. WAVE-11 sempat `OK` dan turun lagi ke
+`-` setelah rancangan ulang arena: harapannya sekarang menuntut musuh yang
+sampai **berhenti dan tetap ada** di cincin sekitar Core, dan bagian "bar HP-nya
+masih di atasnya" tidak bisa dibuktikan tanpa client. Ketiga yang `OK` tidak
 punya bagian client di kolom harapannya: yang diuji gerak musuh, pembagian lane,
 HP Core, dan warna sebuah Part, semuanya milik server.
 
@@ -259,8 +262,8 @@ berdiri sendiri, supaya kerja tangannya lebih pendek dan bukan diulang dari nol.
 | WAVE-03 | Musuh `basic` berjalan mengikuti lane mendekat ke Core (`gerak.*`, sama dengan BOOT-06), dan HP-nya dipatok per wave: 100 / 115 / 160 / 235 di wave 1 / 2 / 5 / 10, dengan `maxHp == hp` (`skalaHp.*`) | Angka 8 stud/detik — harness jalan sekitar 8 Hz, jadi durasi absolut dari sana tidak bisa dibandingkan dengan playtest. Dan jumlah serangan sampai mati: menyerang butuh karakter |
 | WAVE-07 | HP `basic` dipatok di empat wave sekaligus — 100 / 115 / 160 / 235 di wave 1 / 2 / 5 / 10, naik monoton, dan rasio wave 5 berbanding wave 1 tepat 1.600 (`skalaHp.*`). Patokannya dirangkai ulang dari `Enemies.basic.baseHp` dan `Balance.HP_PER_WAVE`, bukan dari `Balance.enemyHp` yang dipakai kode spawn itu sendiri — kalau patokannya fungsi yang sama, yang terbukti cuma 1 == 1 | Jumlah serangan sampai mati (4 di wave 1, 7 di wave 5): menyerang butuh karakter. Angka HP-nya sendiri tidak perlu dihitung lagi |
 | CORE-01 | HP Core 1000 / 1000 dan Core belum hancur tepat setelah boot (`boot.coreHpPenuh`, `boot.coreTidakHancur`, `prasyarat.coreHpPenuh`) | Bahwa HUD menampilkannya: "Core 1000 / 1000" dan bar penuh adalah UI client |
-| CORE-02 | **Kelima angka damage ke Core sudah dipatok**, semuanya lewat jalur asli `step()` → `arriveAtCore()` → `CoreService.damage()`: `basic` 5 (`damage.besarDamagePersis`), lalu `fast` 4, `tank` 15, Splitter 25, dan Locker 40 (`damageTipe.*`). Musuhnya hilang dari arena setelah sampai, dan tidak men-damage dua kali (`damage.musuhDibersihkanSetelahSampai`, `damage.tidakDamageBerulang`). Plus satu patokan yang menjawab pertanyaan yang mudah salah: `tank` di `hard` + 4 player tetap 15 — `coreDamage` **tidak** dikali pengali difficulty, cuma HP yang dikali (`damageTipe.hard4Player.*`) | Cuma tampilan **bar Core** di HUD. Menggiring `tank` dan dua boss sampai ke Core — yang menuntut mencapai wave 5 dan 10 — sudah tidak perlu |
-| CORE-03 | HP berhenti **tepat di 0** dan tidak pernah negatif walau di-damage tiga kali HP yang ada, `onDestroyed` menyala tepat sekali dengan HP sudah 0, damage dan heal sesudahnya ditolak, dan musuh yang sampai lewat jalur normal (`step` → `arriveAtCore`) tidak menembus 0 (`habis.*`) | Transisi state ke `Ended` dan pembersihan arena: keduanya di `MatchService.endMatch`, yang cuma terpanggil dari handler `onDestroyed` saat state `WaveActive` atau `Intermission` — dan state tidak bisa keluar dari `Lobby` tanpa Player |
+| CORE-02 | **Kelima angka damage ke base per pukulan sudah dipatok**, semuanya lewat jalur asli `step()` → `enterAttackingBase()` → `CoreService.damage()`, dan terukur di engine persis `attackDamage * 0.2`: `basic` 5, `fast` 3, `tank` 12, Splitter 16, Locker 24 (`damageTipe.*.hpCoreTurunSebesarSatuPukulan`). **Pukulan yang berulang** juga dipatok, bukan cuma yang pertama (`damage.pukulanBerulang`, `.besarPukulanKedua`, `.pukulanKetigaDanSeterusnya`), begitu juga musuhnya yang **tetap hidup** setelah sampai (`damage.musuhTetapHidupSetelahSampai`, `.stateAttackingBase`, `.ringSlotTerisi`). Plus patokan yang menjawab pertanyaan yang mudah salah: `tank` di `hard` + 4 player tetap memukul 12 sementara HP-nya ikut naik jadi 1476 (`damageTipe.hard4Player.hpCoreTurunAngkaDasar`, `.hpIkutPengali`) — jadi "tidak ada pengali yang sampai ke entitas ini" tidak bisa jadi penjelasan alternatif | Cuma tampilan **bar Core** di HUD. Menggiring `tank` dan dua boss sampai ke Core — yang menuntut mencapai wave 5 dan 10 — sudah tidak perlu |
+| CORE-03 | HP berhenti **tepat di 0** dan tidak pernah negatif walau di-damage tiga kali HP yang ada, `onDestroyed` menyala tepat sekali dengan HP sudah 0, damage dan heal sesudahnya ditolak, dan musuh yang sampai lewat jalur normal (`step` → `enterAttackingBase`) tetap memukul tanpa pernah menembus 0 — `isClear()` juga tetap false walaupun Core sudah hancur, jadi tidak ada yang bisa diam-diam membuatnya true sebagai jalan pintas (`habis.*`) | Transisi state ke `Ended` dan pembersihan arena: keduanya di `MatchService.endMatch`, yang cuma terpanggil dari handler `onDestroyed` saat state `WaveActive` atau `Intermission` — dan state tidak bisa keluar dari `Lobby` tanpa Player |
 
 Tiga belas baris M1 sisanya **tidak disentuh harness sama sekali** dan dikerjakan
 dari nol: BOOT-03 (butuh map-nya dihilangkan, dan menilai HUD), WAVE-07, WAVE-13,

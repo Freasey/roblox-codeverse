@@ -19,6 +19,7 @@
 --
 -- Lima kelompok:
 --   waypoint.*  WAVE-11 + BOOT-06 — satu musuh melewati waypoint 1..7 BERURUTAN
+--               lalu MENEMPEL di base (docs/ARENA_REDESIGN.md bagian 4)
 --   warna.*     CORE-06 — Part Core bergeser ke merah seiring HP turun
 --   lobby.*     CORE-04 — di luar WaveActive HP Core tidak berkurang
 --   habis.*     CORE-03 — Core habis: HP tepat 0, tidak negatif, tidak lanjut
@@ -43,10 +44,17 @@
 -- diamati, tapi 4x lebih ketat dari jarak yang bisa membuatnya ambigu.
 local WAYPOINT_TOLERANCE = 5
 
--- Lama maksimum mengikuti satu musuh dari awal lane sampai Core. Lane-nya 144
+-- Lama maksimum mengikuti satu musuh dari awal lane sampai base. Lane-nya 144
 -- stud (CORE_CLEARANCE 24 + 6 x 20) dan `basic` 8 stud/detik, jadi ~15 detik
 -- murni jalan; 45 detik memberi ruang untuk frame yang tersendat tanpa
 -- menyentuh deadline 150 detik milik case ini.
+--
+-- Angka ini sekarang SEMATA-MATA pagar, bukan lama jalan yang sesungguhnya.
+-- Dulu loop pengikutnya berhenti saat `enemy.dead` — musuh yang sampai di Core
+-- dihapus, jadi itu memang penanda "sampai". Setelah rancangan bagian 4, musuh
+-- yang sampai TETAP HIDUP, jadi `enemy.dead` tidak pernah true dan loop-nya
+-- berjalan sampai habis 45 detik tiap run (wall time case ini naik 35,8 jadi
+-- 75,1 detik). Penandanya sekarang transisi state ke `attacking_base`.
 local FOLLOW_TIMEOUT = 45
 local FOLLOW_INTERVAL = 0.05
 
@@ -184,6 +192,7 @@ T.main(function()
 	local nearest: { number } = {}
 	local nearestAt: { number } = {}
 	local samples = 0
+	local menempel = false
 	local deadline = os.clock() + FOLLOW_TIMEOUT
 	while os.clock() < deadline do
 		samples += 1
@@ -198,6 +207,14 @@ T.main(function()
 				nearestAt[position] = samples
 			end
 		end
+		-- Dua penanda berhenti, dan yang pertama yang biasa dipakai. `dead`
+		-- dipertahankan karena musuh ini TETAP bisa mati — misal kalau nanti ada
+		-- turret di arena — dan loop yang cuma menunggu `attacking_base` akan
+		-- menggantung sampai 45 detik untuk musuh yang mati di tengah lane.
+		if enemy.state == "attacking_base" then
+			menempel = true
+			break
+		end
 		if enemy.dead then
 			break
 		end
@@ -205,10 +222,33 @@ T.main(function()
 	end
 
 	T.ok("waypoint.cukupSampel", samples >= 20, samples)
+	-- Dulu assertion ini `enemy.dead`: musuh yang sampai di Core men-damage lalu
+	-- dihapus, jadi "hilang" memang berarti "sampai". Sekarang yang menandai
+	-- kedatangan transisi state-nya, dan "hilang" justru yang TIDAK boleh terjadi
+	-- — dua baris di bawah ini mengunci sisi itu.
 	T.ok(
-		"waypoint.musuhSampaiDiCore",
-		enemy.dead,
-		string.format("%d sampel, waypointIndex %d", samples, enemy.waypointIndex)
+		"waypoint.musuhSampaiDiBase",
+		menempel and enemy.state == "attacking_base",
+		string.format(
+			"%d sampel, state %s, waypointIndex %d",
+			samples,
+			tostring(enemy.state),
+			enemy.waypointIndex
+		)
+	)
+	T.eq("waypoint.musuhTetapHidupSetelahSampai", enemy.dead, false)
+	T.eq("waypoint.musuhMasihDihitungAktif", EnemyService.activeCount(), 1)
+	T.ok("waypoint.ringSlotTerisi", enemy.ringSlot ~= nil, tostring(enemy.ringSlot))
+	-- Perjalanan penuh lewat lane berakhir dengan Core yang benar-benar kena.
+	-- enemy_core.luau yang memeriksa BESAR pukulannya; yang di sini cuma
+	-- memastikan jalur panjangnya bermuara ke sana, bukan ke musuh yang berhenti
+	-- di ujung lane tanpa pernah memukul.
+	T.ok(
+		"waypoint.coreKenaSetelahMusuhMenempel",
+		T.waitUntil(function()
+			return CoreService.getHp() < CoreService.getMaxHp()
+		end, 10),
+		string.format("%d / %d", CoreService.getHp(), CoreService.getMaxHp())
 	)
 
 	local trace: { string } = {}
@@ -446,23 +486,63 @@ T.main(function()
 
 	-- "Tidak terus menyerang Core" dari sisi yang bisa dijangkau: musuh yang
 	-- benar-benar SAMPAI di Core setelah Core hancur tidak membuat HP turun di
-	-- bawah nol. Musuhnya dijalankan lewat jalur normal (`step` -> `arriveAtCore`
-	-- -> `CoreService.damage`), bukan dengan memanggil damage langsung.
+	-- bawah nol. Musuhnya dijalankan lewat jalur normal (`step` ->
+	-- `enterAttackingBase` -> `CoreService.damage`), bukan dengan memanggil
+	-- damage langsung.
+	--
+	-- Sekarang jalur itu memukul BERULANG, bukan sekali: musuhnya menempel di
+	-- cincin dan mencoba lagi tiap `attackInterval` sampai dibunuh. Jadi yang
+	-- diuji di bawah bukan satu panggilan damage yang ditolak, tapi DERETAN
+	-- panggilan yang semuanya ditolak.
 	local reached = 0
 	local sampai = EnemyService.onReachedCore:Connect(function()
 		reached += 1
 	end)
-	EnemyService.spawnAt("basic", 1, lastWaypoint, #expected)
+	local penyerang = EnemyService.spawnAt("basic", 1, lastWaypoint, #expected)
 	EnemyService.setRunning(true)
 	local habisDiserang = T.waitUntil(function()
 		return reached >= 1
+	end, 20)
+	-- Pukulan yang DITOLAK tetap menjadwalkan pukulan berikutnya: `step` menulis
+	-- `enemy.nextStrikeAt` di luar hasil `CoreService.damage`. Jadi deretan
+	-- percobaan itu bisa DITUNGGU, bukan di-`task.wait` buta selama beberapa
+	-- interval dan diharapkan cukup — tiga jadwal yang berbeda berarti tiga
+	-- percobaan memukul, dan HP yang dibaca sesudahnya sudah melewati ketiganya.
+	local jadwal: { number } = {}
+	local tigaPercobaan = T.waitUntil(function()
+		if penyerang == nil then
+			return true
+		end
+		local at = penyerang.nextStrikeAt
+		if jadwal[#jadwal] ~= at then
+			table.insert(jadwal, at)
+		end
+		return #jadwal >= 3
 	end, 20)
 	EnemyService.setRunning(false)
 	sampai:Disconnect()
 
 	T.ok("habis.musuhTetapSampaiDiCore", habisDiserang, reached)
+	T.ok(
+		"habis.musuhTerusMencobaMemukul",
+		tigaPercobaan and #jadwal >= 3,
+		string.format("%d jadwal pukulan berbeda terlihat", #jadwal)
+	)
 	T.eq("habis.hpTetapNolSetelahDiserangLagi", CoreService.getHp(), 0)
 	T.ok("habis.hpTetapTidakNegatif", CoreService.getHp() >= 0, CoreService.getHp())
+	-- Musuhnya sendiri tidak ikut hilang karena pukulannya ditolak: Core yang
+	-- hancur bukan jalan keluar dari `attacking_base`.
+	T.eq("habis.musuhTetapHidupDiBase", if penyerang ~= nil then penyerang.dead else nil, false)
+	T.eq(
+		"habis.stateTetapAttackingBase",
+		if penyerang ~= nil then penyerang.state else nil,
+		"attacking_base"
+	)
+	-- Keputusan rancangan bagian 5 dari sisi yang paling mudah dilupakan: arena
+	-- yang berisi musuh hidup TIDAK bersih, walaupun Core sudah hancur dan tidak
+	-- ada lagi yang bisa dirusak. Dipatok di sini supaya `isClear()` tidak
+	-- diam-diam dibuat "true kalau Core hancur" demi wave yang bisa selesai.
+	T.eq("habis.isClearFalseWalaupunCoreHancur", EnemyService.isClear(), false)
 
 	-- Yang TIDAK bisa diuji di sini, dan kenapa. Dua-duanya ada di
 	-- `MatchService.endMatch`, yang cuma dipanggil dari handler

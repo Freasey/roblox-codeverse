@@ -98,7 +98,9 @@ lune run tests/studio/run
 
 ## Apa yang BISA dites di sini
 
-Diverifikasi dengan empat case di `cases/`, 183 assertion (183 lulus, 0 gagal, 16 dilewati):
+Diverifikasi dengan empat case di `cases/`, 239 assertion (222 lulus, 0 gagal, 17
+dilewati — `boot` 29/0/0, `enemy_core` 89/0/1, `remote_reject` 33/0/13,
+`core_wave` 71/0/3):
 
 - **Seluruh rantai boot `init.server.luau` di engine sungguhan** — urutan
   `require` yang melingkar, API web yang dipanggil di module scope, nama
@@ -111,6 +113,13 @@ Diverifikasi dengan empat case di `cases/`, 183 assertion (183 lulus, 0 gagal, 1
   sebagai `Model` di `Workspace`, bergerak lewat `primary.CFrame`, dan jaraknya
   ke Core diukur dari CFrame itu, bukan dari field tabel Lua. Jejak nyata dari
   satu run: `141.9 → 135.9 → 130.9 → 126.1 → 121.3` stud.
+- **Musuh yang MENEMPEL di base** (`docs/ARENA_REDESIGN.md` bagian 4 dan 5):
+  bahwa musuh yang sampai di ujung lane tetap hidup, mengambil slot cincin
+  masing-masing sehingga tidak bertumpuk di satu titik, memukul berulang tiap
+  `attackInterval`, dan membuat `isClear()` tidak pernah true sampai dibunuh.
+  Keputusan AI-nya sendiri (transisi state, pemilihan target, jadwal pukulan,
+  offset cincin) ada di modul murni `EnemyAI` dan dites Lune di CI; yang di sini
+  membuktikan WIRING-nya sampai ke CFrame Instance dan ke HP Core.
 - **Validasi argumen pada satu remote** (`RequestAction`), lihat batasnya di
   bawah.
 
@@ -168,15 +177,37 @@ jadi bukan NaN, dan dia lebih besar dari nol. Lalu
 `math.max(0, hp - math.huge)` = 0: **Core hancur dalam satu panggilan, dan match
 langsung kalah.** `CoreService.heal()` punya celah yang identik.
 
-Seberapa serius: **belum bisa dieksploitasi dari client.** Satu-satunya pemanggil
-`damage()` adalah `arriveAtCore()`, yang mengirim `enemy.coreDamage` — angka
-berhingga yang diambil apa adanya dari `Enemies.luau`/`Bosses.luau`, tanpa
-pengali difficulty sama sekali (berbeda dari HP musuh, yang lewat
-`Balance.enemyHp`; dipatok di `damageTipe.hard4Player.*`). Jadi ini celah laten di
-fungsi yang komentarnya sendiri mengklaim memvalidasi argumennya, bukan lubang
-yang terbuka hari ini. Tetap layak ditutup: `CombatService` sudah memeriksa
-`magnitude == math.huge` untuk arah serangan, jadi polanya memang dikenal di
-repo ini — cuma terlewat di `CoreService`.
+Seberapa serius: **belum bisa dieksploitasi dari client.** Tetap layak ditutup:
+`CombatService` sudah memeriksa `magnitude == math.huge` untuk arah serangan,
+jadi polanya memang dikenal di repo ini — cuma terlewat di `CoreService`.
+
+**Jalur masuknya sudah berubah sejak itu, dan arah perubahannya penting.** Dulu
+satu-satunya pemanggil `damage()` adalah `arriveAtCore()`, yang mengirim
+`enemy.coreDamage` — angka berhingga yang diambil apa adanya dari
+`Enemies.luau`/`Bosses.luau`. Sejak `docs/ARENA_REDESIGN.md` bagian 4, fungsi itu
+tidak ada lagi dan `coreDamage` juga tidak: musuh yang mencapai ujung lane
+menempel di base dan `EnemyService.step` memanggil
+
+```lua
+CoreService.damage(EnemyAI.baseDamage(enemy.attackDamage, Balance.BASE_DAMAGE_MULT))
+```
+
+tiap `attackInterval` detik sampai musuhnya dibunuh. Angkanya sekarang lahir dari
+PERKALIAN, bukan dibaca apa adanya — dan perkalian itu justru bentuk yang bisa
+melahirkan infinity tanpa ada yang sengaja menulisnya, cukup satu pengali yang
+suatu hari dihitung dari pembagian.
+
+Yang membuat ini tetap "celah laten, bukan lubang": `EnemyAI.baseDamage`
+**menyaring inf dan NaN sendiri** (`isFinitePositive` di `EnemyAI.luau`,
+dipatok unit test Lune di `tests/EnemyAI.spec.luau`) dan mengembalikan 0 sebelum
+hasilnya pernah menyentuh `CoreService.damage`. Jadi ada dua lapis sekarang, dan
+keduanya pantas ada: yang di `EnemyAI` menjaga nilai yang dia lahirkan sendiri,
+yang di `CoreService` menjaga SEMUA pemanggil — hari ini cuma satu, tapi
+`CoreService` sengaja tidak tahu siapa mereka.
+
+Satu hal yang TIDAK berubah: damage ke Core tetap tidak lewat pengali difficulty
+sama sekali, berbeda dari HP musuh yang lewat `Balance.enemyHp`. Itu yang dipatok
+`damageTipe.hard4Player.*` di `cases/enemy_core.luau`.
 
 Ditutup di `CoreService.isValidAmount`, yang sekarang menolak `math.huge`
 bersama NaN, non-number, dan angka <= 0 dalam satu gerbang. Ketiga assertion di
@@ -217,7 +248,18 @@ run:
 | Durasi per case | 11–16 detik (wall clock) |
 | Menutup diri sendiri | Ya, tidak ada proses tertinggal |
 | Place yang dibuka | Salinan di `%TEMP%`, bukan `build/codeverse.rbxl` |
-| Studio sudah terbuka duluan | Belum diuji — jalankan saat Studio tertutup |
+| Studio sudah terbuka duluan | Jalan, tapi jauh lebih lambat — lihat di bawah |
+
+**Studio yang sudah terbuka tidak membuat runner gagal, tapi menggandakan
+waktunya.** Satu suite penuh dijalankan dengan satu jendela Studio milik
+pengembang tetap terbuka: keempat case lulus, tidak ada yang menyentuh deadline,
+dan tidak ada jejak yang tertinggal di place yang terbuka itu (`run-in-roblox`
+membuka salinannya sendiri di `%TEMP%`). Yang berubah cuma biaya start: 22–29
+detik wall clock per case, dengan 0,2–27 detik di antaranya benar-benar
+menjalankan test (`host elapsedSeconds`). Sisanya Studio kedua yang boot sambil
+berbagi CPU dengan yang pertama. Jadi jalankan saat Studio tertutup kalau
+angkanya mau dibandingkan dengan tabel di atas; kalau cuma mau tahu merah atau
+hijau, tidak perlu.
 
 **Frame rate hanya sekitar 8 Hz**, bukan 60 Hz. `EnemyService.step()` memakai
 `deltaTime` jadi logikanya tetap benar, tapi granularitasnya kasar: jangan
