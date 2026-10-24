@@ -18,7 +18,20 @@
 --    ditahan, tidak dibuang: kalau dibuang, wave yang jumlah musuhnya di atas
 --    batas tidak akan pernah bisa diselesaikan karena hitungan "musuh sisa"
 --    tidak akan pernah mencapai nol.
+--
+-- Dan satu keputusan dari docs/ARENA_REDESIGN.md bagian 4 yang mengubah bentuk
+-- step(): musuh yang sampai di ujung lane TIDAK hilang lagi. Dia mengambil satu
+-- slot cincin di sekitar Core dan memukul tiap `attackInterval` detik sampai
+-- dibunuh pemain, dan musuh dengan profil `prefer = "player"` bisa keluar lane
+-- untuk memburu pemain. Seluruh keputusan state dan targetnya ada di
+-- Shared.Modules.EnemyAI — modul murni yang bisa dites tanpa Studio; yang di
+-- bawah cuma menerjemahkan hasilnya ke CFrame, TakeDamage, dan CoreService.
+--
+-- Konsekuensinya disengaja dan disebut bagian 5: `isClear()` tidak lagi dijamin
+-- tercapai sendiri. Wave tidak selesai selama masih ada kebocoran yang hidup di
+-- base, dan selama itu Core terus kehilangan HP.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -27,6 +40,7 @@ local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Modules.Balance)
 local Bosses = require(Shared.Modules.Bosses)
 local Enemies = require(Shared.Modules.Enemies)
+local EnemyAI = require(Shared.Modules.EnemyAI)
 local Remotes = require(Shared.Remotes)
 local Signal = require(Shared.Modules.Signal)
 local Types = require(Shared.Modules.Types)
@@ -45,13 +59,32 @@ export type Enemy = {
 	hp: number,
 	maxHp: number,
 	speed: number,
-	coreDamage: number,
+	-- Damage SEKALI PUKUL, bukan sekali sampai: musuh yang mencapai base tidak
+	-- hilang lagi, dia berhenti dan memukul tiap `attackInterval` detik. Angka
+	-- mentahnya dipakai untuk player; ke base dia dikali
+	-- Balance.BASE_DAMAGE_MULT (lihat EnemyAI.baseDamage).
+	attackDamage: number,
+	attackInterval: number,
+	targeting: Types.TargetProfile,
 	matchCoins: number,
 	laneIndex: number,
 	-- Index waypoint yang sedang dituju. Mulai dari 2 karena musuh di-spawn
 	-- tepat di waypoint 1.
 	waypointIndex: number,
 	position: Vector3,
+	-- State AI. Seluruh keputusan transisinya ada di EnemyAI, bukan di sini;
+	-- yang di bawah cuma menerjemahkan hasilnya ke CFrame dan TakeDamage.
+	state: EnemyAI.State,
+	-- Waktu (os.clock) pukulan berikutnya. 0 berarti "pukul begitu sampai":
+	-- pukulan pertama musuh yang baru menempel tidak menunggu satu interval.
+	nextStrikeAt: number,
+	-- Target dipegang antar frame, bukan dipilih ulang tiap frame: dengan dua
+	-- player berjarak mirip, memilih ulang membuat musuh bergetar di antara
+	-- keduanya. Yang dipegang id-nya, bukan Candidate-nya, karena Candidate
+	-- dibangun ulang tiap frame dari posisi terbaru.
+	targetUserId: number?,
+	-- Slot cincin di sekitar base, di-set sekali saat masuk attacking_base.
+	ringSlot: number?,
 	model: Model,
 	primary: BasePart,
 	healthFill: Frame?,
@@ -62,7 +95,10 @@ export type Enemy = {
 -- pemain (misal dihapus saat match dibatalkan tidak menembakkan sinyal ini
 -- sama sekali; lihat clearAll).
 EnemyService.onDied = Signal.new() :: Signal.Signal<Enemy, Player?>
--- Musuh sampai di Core. HP Core sudah dikurangi saat sinyal ini menyala.
+-- Musuh sampai di ujung lane dan MULAI menyerang base. Ditembakkan tepat sekali
+-- per musuh, saat transisi masuk `attacking_base` — bukan tiap pukulan. HP Core
+-- BELUM berkurang saat sinyal ini menyala; pukulan pertamanya jatuh sesaat
+-- sesudahnya di frame yang sama.
 EnemyService.onReachedCore = Signal.new() :: Signal.Signal<Enemy>
 -- Ditembakkan saat musuh terakhir hilang DAN antrian habis, sekali per wave.
 EnemyService.onAllClear = Signal.new() :: Signal.Signal<()>
@@ -136,6 +172,14 @@ local running = false
 local folder: Folder? = nil
 local heartbeat: RBXScriptConnection? = nil
 local announcedClear = true
+
+-- Nomor slot cincin berikutnya di sekitar base. Naik terus, tidak pernah dipakai
+-- ulang: slot yang dibebaskan musuh mati tidak boleh langsung diberikan ke musuh
+-- lain, kalau tidak dua musuh bisa berdiri di titik yang sama persis saat yang
+-- pertama mati tepat sebelum yang kedua sampai. Harganya, cincinnya melebar
+-- selama wave berjalan. Direset di clearAll() — tanpa itu wave kedua mulai dari
+-- slot 40 dan musuhnya berdiri jauh di cincin keempat.
+local ringSlotNext = 0
 
 local context: Context = {
 	wave = 1,
@@ -290,7 +334,9 @@ local function spawnFromEntry(entry: QueueEntry): Enemy?
 
 	local hp: number
 	local speed: number
-	local coreDamage: number
+	local attackDamage: number
+	local attackInterval: number
+	local targeting: Types.TargetProfile
 	local matchCoins: number
 
 	if entry.isBoss then
@@ -301,7 +347,9 @@ local function spawnFromEntry(entry: QueueEntry): Enemy?
 		end
 		hp = Balance.bossHp(def, context.difficulty, context.playerCount)
 		speed = def.speed
-		coreDamage = def.coreDamage
+		attackDamage = def.attackDamage
+		attackInterval = def.attackInterval
+		targeting = def.targeting
 		matchCoins = def.matchCoins
 	else
 		local def = Enemies[entry.defId]
@@ -311,7 +359,9 @@ local function spawnFromEntry(entry: QueueEntry): Enemy?
 		end
 		hp = Balance.enemyHp(def, context.wave, context.difficulty, context.playerCount)
 		speed = def.speed
-		coreDamage = def.coreDamage
+		attackDamage = def.attackDamage
+		attackInterval = def.attackInterval
+		targeting = def.targeting
 		matchCoins = def.matchCoins
 	end
 
@@ -331,11 +381,17 @@ local function spawnFromEntry(entry: QueueEntry): Enemy?
 		hp = hp,
 		maxHp = hp,
 		speed = speed,
-		coreDamage = coreDamage,
+		attackDamage = attackDamage,
+		attackInterval = attackInterval,
+		targeting = targeting,
 		matchCoins = matchCoins,
 		laneIndex = laneIndex,
 		waypointIndex = 2,
 		position = spawnPosition,
+		state = "walking",
+		nextStrikeAt = 0,
+		targetUserId = nil,
+		ringSlot = nil,
 		model = model,
 		primary = primary,
 		healthFill = fill,
@@ -351,10 +407,106 @@ local function spawnFromEntry(entry: QueueEntry): Enemy?
 	return enemy
 end
 
-local function arriveAtCore(enemy: Enemy)
-	CoreService.damage(enemy.coreDamage)
+-- EnemyAI bekerja dengan Vec3 (tabel {x,y,z} milik HitTest), bukan Vector3,
+-- supaya modulnya bisa dites tanpa Roblox. Konversinya sama bentuknya dengan
+-- CombatService.toVec; keduanya sengaja sepele.
+local function toVec(v: Vector3): EnemyAI.Vec3
+	return { x = v.X, y = v.Y, z = v.Z }
+end
+
+-- Waypoint lane sebagai Vec3, di-cache per tabel lane. Kuncinya tabel lane-nya
+-- sendiri, bukan nomor lane: MapService.invalidate() menghasilkan tabel lane
+-- baru, jadi cache-nya otomatis tidak kena dan tidak ada yang perlu
+-- membatalkannya manual.
+local laneVecCache: { [MapService.Lane]: { EnemyAI.Vec3 } } = {}
+
+local function laneVecs(lane: MapService.Lane): { EnemyAI.Vec3 }
+	local cached = laneVecCache[lane]
+	if cached ~= nil then
+		return cached
+	end
+	local converted: { EnemyAI.Vec3 } = {}
+	for index, waypoint in lane.waypoints do
+		converted[index] = toVec(waypoint)
+	end
+	laneVecCache[lane] = converted
+	return converted
+end
+
+-- Daftar player untuk SATU frame, dikumpulkan sekali di luar loop musuh.
+--
+-- Kenapa bukan per musuh: dengan 40 musuh aktif, memanggil Players:GetPlayers()
+-- lalu mencari Humanoid dan root part 40 kali per frame berarti ratusan
+-- pembacaan properti Instance per frame untuk menjawab pertanyaan yang sama.
+-- `byUserId` ada supaya musuh bisa menemukan lagi target yang dipegangnya tanpa
+-- menyapu daftar, dan `humanoids` supaya pemukulan tidak perlu mencari karakter
+-- ulang.
+type PlayerFrame = {
+	candidates: { EnemyAI.Candidate },
+	byUserId: { [number]: EnemyAI.Candidate },
+	humanoids: { [number]: Humanoid },
+}
+
+local function collectPlayers(): PlayerFrame
+	local candidates: { EnemyAI.Candidate } = {}
+	local byUserId: { [number]: EnemyAI.Candidate } = {}
+	local humanoids: { [number]: Humanoid } = {}
+
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		if character == nil then
+			continue
+		end
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid == nil then
+			continue
+		end
+		local root = character.PrimaryPart or character:FindFirstChild("HumanoidRootPart")
+		if root == nil or not root:IsA("BasePart") then
+			continue
+		end
+
+		-- Player yang mati tetap masuk daftar dengan alive=false, bukan dibuang:
+		-- EnemyAI.lostTarget memakai flag itu untuk melepas target yang baru
+		-- mati, dan pickTarget melewatinya sendiri.
+		local candidate: EnemyAI.Candidate = {
+			userId = player.UserId,
+			position = toVec(root.Position),
+			alive = humanoid.Health > 0,
+		}
+		table.insert(candidates, candidate)
+		byUserId[player.UserId] = candidate
+		humanoids[player.UserId] = humanoid
+	end
+
+	return { candidates = candidates, byUserId = byUserId, humanoids = humanoids }
+end
+
+-- Musuh sampai di ujung lane: dia BERHENTI di sana dan mulai memukul base.
+-- Tidak ada removeEnemy di sini lagi — satu-satunya yang mengakhiri musuh ini
+-- adalah pemain yang membunuhnya (lihat docs/ARENA_REDESIGN.md bagian 5: itu
+-- juga berarti wave tidak selesai selama masih ada kebocoran yang hidup).
+local function enterAttackingBase(enemy: Enemy, corePosition: Vector3)
+	enemy.state = "attacking_base"
+	enemy.targetUserId = nil
+
+	local slot = ringSlotNext
+	ringSlotNext += 1
+	enemy.ringSlot = slot
+
+	local offset = EnemyAI.ringSlotOffset(
+		slot,
+		Balance.BASE_RING_SLOTS,
+		Balance.BASE_RING_RADIUS,
+		Balance.BASE_RING_RADIUS_OUTER
+	)
+	-- Y diambil dari musuh, bukan dari Core: pusat Core adalah pusat Part-nya
+	-- dan bisa berada beberapa stud di atas tanah. Memakai Y Core akan membuat
+	-- seluruh cincin musuh mengapung.
+	enemy.position =
+		Vector3.new(corePosition.X + offset.x, enemy.position.Y, corePosition.Z + offset.z)
+
 	EnemyService.onReachedCore:Fire(enemy)
-	removeEnemy(enemy)
 end
 
 local function step(deltaTime: number)
@@ -390,14 +542,12 @@ local function step(deltaTime: number)
 	end
 
 	local now = os.clock()
+	local corePosition = arena.corePosition
+	-- Sekali per frame, di luar loop musuh. Lihat collectPlayers.
+	local frame = collectPlayers()
 
 	for _, enemy in active do
 		if enemy.dead then
-			continue
-		end
-
-		local blockedUntil = laneBlockedUntil[enemy.laneIndex]
-		if blockedUntil ~= nil and now < blockedUntil then
 			continue
 		end
 
@@ -405,47 +555,156 @@ local function step(deltaTime: number)
 		if lane == nil then
 			continue
 		end
-
-		local budget = enemy.speed * deltaTime
-		-- Loop: satu frame bisa melewati lebih dari satu waypoint kalau
-		-- waypoint-nya rapat atau frame-nya panjang (server hiccup). Tanpa
-		-- loop, musuh akan tersendat satu waypoint per frame.
 		local waypointCount = #lane.waypoints
-		while budget > 0 do
-			-- Waypoint habis = musuh sudah melewati waypoint terakhir, yang
-			-- menurut bagian 3.4 ada di dekat Core.
-			if enemy.waypointIndex > waypointCount then
-				arriveAtCore(enemy)
-				break
-			end
-			local target = lane.waypoints[enemy.waypointIndex]
 
-			local offset = target - enemy.position
-			local distance = offset.Magnitude
+		local enemyVec = toVec(enemy.position)
+		local profile = enemy.targeting
 
-			if distance <= math.max(budget, Balance.WAYPOINT_REACH) then
-				enemy.position = target
-				enemy.waypointIndex += 1
-				budget -= distance
+		-- Target: pertahankan yang lama selama belum lepas leash, baru cari yang
+		-- baru. Musuh yang sudah menempel di base tidak mencari apa pun —
+		-- EnemyAI.nextState tidak akan pernah mengeluarkannya dari state itu,
+		-- jadi pekerjaan mencarinya akan terbuang.
+		local target: EnemyAI.Candidate? = nil
+		if enemy.state ~= "attacking_base" then
+			local heldId = enemy.targetUserId
+			local held = if heldId ~= nil then frame.byUserId[heldId] else nil
+			if held ~= nil and not EnemyAI.lostTarget(profile, enemyVec, held) then
+				target = held
 			else
+				target = EnemyAI.pickTarget(profile, enemyVec, frame.candidates)
+			end
+			enemy.targetUserId = if target ~= nil then target.userId else nil
+		end
+
+		-- Dua anotasi `EnemyAI.State` di bawah WAJIB, bukan gaya: local tanpa
+		-- anotasi yang diisi union literal dilebarkan jadi `string` oleh type
+		-- checker, dan nilainya lalu tidak bisa dipakai lagi di tempat yang
+		-- menuntut State -- termasuk parameter EnemyAI.nextState sendiri.
+		local previous: EnemyAI.State = enemy.state
+		-- `atLaneEnd` dihitung di sini, bukan di EnemyAI: modul itu tidak tahu
+		-- apa pun soal lane.
+		local atLaneEnd = enemy.waypointIndex > waypointCount
+		local state: EnemyAI.State =
+			EnemyAI.nextState(profile, previous, enemyVec, target, atLaneEnd)
+
+		if state == "attacking_base" and previous ~= "attacking_base" then
+			enterAttackingBase(enemy, corePosition)
+		else
+			enemy.state = state
+		end
+
+		-- Pulang ke lane setelah pengejaran selesai. minIndex = waypointIndex
+		-- musuh saat ini, jadi dia tidak bisa dipancing MUNDUR: tanpa batas itu,
+		-- pemain bisa menarik satu musuh maju-mundur selamanya dan wave-nya —
+		-- yang baru selesai saat arena bersih — tidak akan pernah berakhir.
+		if state == "walking" and (previous == "chasing" or previous == "attacking_player") then
+			enemy.waypointIndex =
+				EnemyAI.rejoinWaypointIndex(enemyVec, laneVecs(lane), enemy.waypointIndex)
+		end
+
+		-- Penghalang Toko Match (M3) menahan musuh yang BERJALAN, bukan yang
+		-- sudah menempel: musuh di base dan musuh yang sedang memukul pemain
+		-- tidak terpengaruh. State-nya sendiri sudah diperbarui di atas, jadi
+		-- musuh yang terblokir tetap bisa mulai memukul pemain yang mendekat.
+		local blockedUntil = laneBlockedUntil[enemy.laneIndex]
+		-- Dua boolean, bukan satu `if` berantai: perbandingan `state` di dalam
+		-- kondisi `continue` ikut menyempitkan tipe `state` untuk seluruh sisa
+		-- iterasi, dan cabang-cabang di bawah lalu dianggap mustahil.
+		local blocked = blockedUntil ~= nil and now < blockedUntil
+		local moving = state == "walking" or state == "chasing"
+		if blocked and moving then
+			continue
+		end
+
+		-- Titik yang dihadapi musuh. Yang menyerang menghadap sasarannya, yang
+		-- berjalan menghadap waypoint berikutnya.
+		local lookAt: Vector3? = nil
+
+		if state == "walking" then
+			local budget = enemy.speed * deltaTime
+			-- Loop: satu frame bisa melewati lebih dari satu waypoint kalau
+			-- waypoint-nya rapat atau frame-nya panjang (server hiccup). Tanpa
+			-- loop, musuh akan tersendat satu waypoint per frame.
+			while budget > 0 do
+				-- Waypoint habis = musuh sudah melewati waypoint terakhir, yang
+				-- menurut bagian 3.4 ada di dekat Core.
+				if enemy.waypointIndex > waypointCount then
+					break
+				end
+				local waypoint = lane.waypoints[enemy.waypointIndex]
+
+				local offset = waypoint - enemy.position
+				local distance = offset.Magnitude
+
+				if distance <= math.max(budget, Balance.WAYPOINT_REACH) then
+					enemy.position = waypoint
+					enemy.waypointIndex += 1
+					budget -= distance
+				else
+					enemy.position += offset.Unit * budget
+					budget = 0
+				end
+			end
+
+			if enemy.waypointIndex > waypointCount then
+				-- Ujung lane tercapai di frame INI. Transisinya dikerjakan
+				-- sekarang, bukan ditunda ke frame berikutnya, supaya musuh
+				-- tidak pernah berdiri satu frame di luar cincin.
+				enterAttackingBase(enemy, corePosition)
+				state = "attacking_base"
+			else
+				lookAt = lane.waypoints[enemy.waypointIndex]
+			end
+		elseif state == "chasing" and target ~= nil then
+			-- Garis lurus ke target, HORIZONTAL saja: posisi yang dipakai
+			-- adalah root part pemain yang tingginya beberapa stud di atas
+			-- tanah, dan mengejar titik itu dalam 3D akan membuat musuh
+			-- mengapung lalu kembali turun saat pemain melompat.
+			local goal = Vector3.new(target.position.x, enemy.position.Y, target.position.z)
+			local offset = goal - enemy.position
+			local distance = offset.Magnitude
+			local budget = enemy.speed * deltaTime
+			if distance > budget then
 				enemy.position += offset.Unit * budget
-				budget = 0
+			elseif distance > 1e-3 then
+				enemy.position = goal
+			end
+			lookAt = goal
+		end
+
+		if state == "attacking_player" and target ~= nil then
+			lookAt = Vector3.new(target.position.x, enemy.position.Y, target.position.z)
+			if EnemyAI.readyToStrike(now, enemy.nextStrikeAt) then
+				local humanoid: Humanoid? = frame.humanoids[target.userId]
+				if humanoid ~= nil then
+					humanoid:TakeDamage(
+						EnemyAI.playerDamage(enemy.attackDamage, Balance.PLAYER_DAMAGE_MULT)
+					)
+					enemy.nextStrikeAt = EnemyAI.scheduleNextStrike(now, enemy.attackInterval)
+				end
+			end
+		elseif state == "attacking_base" then
+			lookAt = Vector3.new(corePosition.X, enemy.position.Y, corePosition.Z)
+			if EnemyAI.readyToStrike(now, enemy.nextStrikeAt) then
+				CoreService.damage(EnemyAI.baseDamage(enemy.attackDamage, Balance.BASE_DAMAGE_MULT))
+				enemy.nextStrikeAt = EnemyAI.scheduleNextStrike(now, enemy.attackInterval)
 			end
 		end
 
-		if not enemy.dead then
-			-- Musuh menghadap arah jalannya. CFrame.lookAt butuh dua titik yang
-			-- berbeda, jadi targetnya dihitung dari posisi waypoint berikutnya
-			-- kalau ada.
-			local hasLookTarget = enemy.waypointIndex <= waypointCount
-			local lookTarget = if hasLookTarget
-				then lane.waypoints[enemy.waypointIndex]
-				else enemy.position
-			if hasLookTarget and (lookTarget - enemy.position).Magnitude > 0.05 then
-				enemy.primary.CFrame = CFrame.lookAt(enemy.position, lookTarget)
-			else
-				enemy.primary.CFrame = CFrame.new(enemy.position)
-			end
+		-- CoreService.damage di atas bisa menghancurkan Core, dan MatchService
+		-- menjawab itu dengan clearAll() SEKARANG, di tengah loop ini: musuhnya
+		-- sudah dead dan Part-nya sudah di-Destroy. Jadi pengecekan ini bukan
+		-- kehati-hatian kosong.
+		if enemy.dead then
+			continue
+		end
+
+		-- CFrame.lookAt butuh dua titik yang berbeda.
+		local look = lookAt
+		if look ~= nil and (look - enemy.position).Magnitude > 0.05 then
+			enemy.primary.CFrame = CFrame.lookAt(enemy.position, look)
+		else
+			enemy.primary.CFrame = CFrame.new(enemy.position)
 		end
 	end
 
@@ -603,6 +862,7 @@ function EnemyService.clearAll()
 	queueHead = 1
 	spawnTimer = 0
 	announcedClear = true
+	ringSlotNext = 0
 	table.clear(laneBlockedUntil)
 end
 
