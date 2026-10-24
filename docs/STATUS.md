@@ -81,9 +81,18 @@ ditukar, dan alasannya ditulis di tempatnya masing-masing.
 **Lapis 0 — sebelum Studio dibuka.**
 
 ```bash
+cd "C:\Web Programoblox-codeverse"
 lune run tests/run          # 149 unit test, beberapa detik
 lune run tests/studio/run   # harness Studio, ~85 detik
 ```
+
+Baris `cd` itu bukan basa-basi. Tool di repo ini dikelola rokit, dan rokit
+mencari versi tiap tool di `rokit.toml` milik folder tempat kamu berdiri (atau
+induknya). Dijalankan dari `~`, `lune` gagal dengan *Failed to find tool 'lune'
+in any project manifest file* — yang terbaca seperti lune belum terpasang,
+padahal dia terpasang dan cuma tidak ada manifest yang menyebut versinya.
+Berlaku untuk semua perintah di dokumen ini, `rojo serve` dan `git status`
+termasuk.
 
 Harness ini **harus jalan sebelum Studio dibuka**. Dia membuka instalasi Studio
 sendiri (place salinan di `%TEMP%`), merebut fokus sekitar 10 detik, lalu
