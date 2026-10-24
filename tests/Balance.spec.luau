@@ -7,6 +7,7 @@ local Enemies = require("../src/shared/Modules/Enemies")
 local Bosses = require("../src/shared/Modules/Bosses")
 local Weapons = require("../src/shared/Modules/Weapons")
 local Difficulties = require("../src/shared/Modules/Difficulties")
+local Waves = require("../src/shared/Modules/Waves")
 
 local normal = Difficulties.normal
 local hard = Difficulties.hard
@@ -209,6 +210,115 @@ table.insert(cases, {
 				perFrameAt30Fps
 			)
 		)
+	end,
+})
+
+-- --------------------------------------------------------------------------
+-- Hadiah koin match per wave
+-- --------------------------------------------------------------------------
+
+local function isBossWave(wave: number): boolean
+	local def = Waves.get(wave)
+	return def ~= nil and def.bossId ~= nil
+end
+
+table.insert(cases, {
+	name = "pengali jumlah pemain: solo x4, duo x2, 3 atau lebih x1",
+	run = function()
+		assert(Balance.playerCountMultiplier(1) == 4, "solo x4")
+		assert(Balance.playerCountMultiplier(2) == 2, "duo x2")
+		assert(Balance.playerCountMultiplier(3) == 1, "trio x1")
+		assert(Balance.playerCountMultiplier(4) == 1, "empat x1")
+	end,
+})
+
+table.insert(cases, {
+	name = "jumlah pemain tidak masuk akal diperlakukan sebagai solo, bukan nol",
+	run = function()
+		-- Hadiah yang terlalu besar langsung terlihat saat playtest; hadiah yang
+		-- diam-diam hilang tidak.
+		for _, bad in { 0, -3, 0 / 0 } do
+			assert(
+				Balance.playerCountMultiplier(bad) == 4,
+				string.format("playerCount %s harus jatuh ke x4", tostring(bad))
+			)
+		end
+	end,
+})
+
+table.insert(cases, {
+	name = "kurva hadiah per wave cocok dengan rancangan, dengan wave boss dikali dua",
+	run = function()
+		-- Dites pada pengali x1 (3-4 pemain) supaya yang diuji kurvanya sendiri,
+		-- bukan kurva dikali pengali pemain.
+		local expected = { 200, 250, 300, 350, 800, 450, 500, 550, 600, 1300 }
+		for wave, want in expected do
+			local got = Balance.waveReward(wave, 3, isBossWave(wave))
+			assert(got == want, string.format("wave %d harus %d koin, dapat %d", wave, want, got))
+		end
+	end,
+})
+
+table.insert(cases, {
+	name = "wave boss dikenali dari Waves, bukan dari nomor yang ditulis tangan",
+	run = function()
+		-- Kalau boss baru ditambahkan nanti dengan mengisi `bossId`, hadiahnya
+		-- ikut terkali dua tanpa menyentuh Balance. Yang diuji di sini: wave
+		-- yang punya bossId memang dapat dua kali wave tetangganya yang tidak.
+		for wave = 1, 10 do
+			if isBossWave(wave) then
+				local withBoss = Balance.waveReward(wave, 3, true)
+				local withoutBoss = Balance.waveReward(wave, 3, false)
+				assert(
+					withBoss == withoutBoss * 2,
+					string.format("wave boss %d harus dua kali wave biasa", wave)
+				)
+			end
+		end
+	end,
+})
+
+table.insert(cases, {
+	name = "total sepuluh wave: 5300 untuk tim besar, 21200 untuk solo",
+	run = function()
+		-- Angka inti rancangan bagian 6. 21.200 solo itu yang membuat batas
+		-- jumlah di Toko Match harus diganti harga yang naik -- toko yang semua
+		-- itemnya dibatasi cuma bisa menyerap 3.450.
+		local function total(playerCount: number): number
+			local sum = 0
+			for wave = 1, 10 do
+				sum += Balance.waveReward(wave, playerCount, isBossWave(wave))
+			end
+			return sum
+		end
+		assert(total(3) == 5300, string.format("tim 3-4 harus 5300, dapat %d", total(3)))
+		assert(total(2) == 10600, string.format("duo harus 10600, dapat %d", total(2)))
+		assert(total(1) == 21200, string.format("solo harus 21200, dapat %d", total(1)))
+	end,
+})
+
+table.insert(cases, {
+	name = "hadiah naik monoton antar wave biasa, dan tidak pernah negatif",
+	run = function()
+		local previous = 0
+		for wave = 1, 10 do
+			local reward = Balance.waveReward(wave, 3, false)
+			assert(reward > previous, string.format("wave %d harus di atas sebelumnya", wave))
+			previous = reward
+		end
+	end,
+})
+
+table.insert(cases, {
+	name = "nomor wave tidak wajar memberi nol, bukan angka negatif atau NaN",
+	run = function()
+		for _, bad in { 0, -5, 0 / 0, math.huge } do
+			local reward = Balance.waveReward(bad, 1, false)
+			assert(
+				reward == 0,
+				string.format("wave %s harus 0, dapat %s", tostring(bad), tostring(reward))
+			)
+		end
 	end,
 })
 

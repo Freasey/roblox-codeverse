@@ -21,6 +21,10 @@ local function context(overrides)
 		locked = false,
 		coins = 10000,
 		purchases = {},
+		-- WAJIB ada. Tanpa field ini `priceFor` jatuh ke harga dasar lewat
+		-- guard-nya, dan seluruh test di file ini akan diam-diam menguji harga
+		-- tetap sementara game memakai harga yang naik.
+		priceGrowth = Balance.SHOP_PRICE_GROWTH,
 	}
 	for key, value in overrides or {} do
 		base[key] = value
@@ -115,16 +119,41 @@ table.insert(cases, {
 table.insert(cases, {
 	name = "ditolak kalau jatah pembelian habis",
 	run = function()
-		local used = { [item.id] = item.maxPurchases }
-		local ok, reason = ShopRules.canBuy(item, context({ purchases = used }))
+		-- `shop_barrier` satu-satunya item yang batasnya dipertahankan. Empat
+		-- item lain sekarang tak terbatas dan dibatasi harga yang naik, jadi
+		-- jalur "jatah habis" ini cuma bisa diuji lewat dia -- dan tetap harus
+		-- diuji, karena jalur itu masih hidup di canBuy.
+		local capped = ShopItems.get("shop_barrier")
+		assert(capped ~= nil and capped.maxPurchases > 0, "shop_barrier harus masih dibatasi")
+		local used = { [capped.id] = capped.maxPurchases }
+		local ok, reason = ShopRules.canBuy(capped, context({ purchases = used }))
 		assert(not ok, "jatah habis seharusnya ditolak")
 		assert(reason ~= nil, "harus ada alasan")
 
-		local almost = { [item.id] = item.maxPurchases - 1 }
+		local almost = { [capped.id] = capped.maxPurchases - 1 }
 		assert(
-			ShopRules.canBuy(item, context({ purchases = almost })),
+			ShopRules.canBuy(capped, context({ purchases = almost, coins = 100000 })),
 			"satu jatah terakhir harus masih boleh"
 		)
+	end,
+})
+
+table.insert(cases, {
+	name = "item tak terbatas tidak pernah ditolak karena jatah, berapa pun yang sudah dibeli",
+	run = function()
+		-- Yang membatasinya harga, bukan tembok. Koin dibuat sangat besar supaya
+		-- yang diuji benar-benar jalur jatah dan bukan jalur koin.
+		for _, id in { "shop_damage_up", "shop_fire_rate", "shop_core_repair", "shop_turret" } do
+			local def = ShopItems.get(id)
+			assert(def ~= nil, id)
+			assert(
+				(def :: any).maxPurchases == 0,
+				string.format("item '%s' harusnya tak terbatas", id)
+			)
+			local ok, reason =
+				ShopRules.canBuy(def, context({ purchases = { [id] = 40 }, coins = 1e12 }))
+			assert(ok, string.format("item '%s' ditolak: %s", id, tostring(reason)))
+		end
 	end,
 })
 
@@ -190,12 +219,15 @@ table.insert(cases, {
 table.insert(cases, {
 	name = "sisa jatah dihitung benar, dan 0 berarti tak terbatas",
 	run = function()
-		assert(ShopRules.remaining(item, {}) == item.maxPurchases, "sisa awal harus maxPurchases")
+		local capped = ShopItems.get("shop_barrier")
+		assert(capped ~= nil, "shop_barrier")
+		local def = capped :: any
+		assert(ShopRules.remaining(def, {}) == def.maxPurchases, "sisa awal harus maxPurchases")
 		assert(
-			ShopRules.remaining(item, { [item.id] = 1 }) == item.maxPurchases - 1,
+			ShopRules.remaining(def, { [def.id] = 1 }) == def.maxPurchases - 1,
 			"sisa harus berkurang"
 		)
-		assert(ShopRules.remaining(item, { [item.id] = 999 }) == 0, "sisa tidak boleh negatif")
+		assert(ShopRules.remaining(def, { [def.id] = 999 }) == 0, "sisa tidak boleh negatif")
 
 		local unlimited = { id = "x", name = "X", description = "", cost = 1, maxPurchases = 0 }
 		assert(
@@ -331,6 +363,107 @@ table.insert(cases, {
 		assert(
 			mods.cooldownMult == 1,
 			string.format("cooldownMult tabel kosong %.4f, harus tepat 1", mods.cooldownMult)
+		)
+	end,
+})
+
+-- --------------------------------------------------------------------------
+-- Harga yang naik, pengganti batas jumlah
+-- --------------------------------------------------------------------------
+
+table.insert(cases, {
+	name = "harga naik per pembelian item yang sama, dan monoton",
+	run = function()
+		local def = ShopItems.get("shop_damage_up")
+		assert(def ~= nil, "shop_damage_up")
+		local growth = Balance.SHOP_PRICE_GROWTH
+		assert(ShopRules.priceFor(def, {}, growth) == def.cost, "belum pernah beli = harga dasar")
+
+		local previous = ShopRules.priceFor(def, {}, growth)
+		for used = 1, 15 do
+			local price = ShopRules.priceFor(def, { shop_damage_up = used }, growth)
+			assert(
+				price > previous,
+				string.format(
+					"harga ke-%d (%d) harus lebih dari sebelumnya (%d)",
+					used,
+					price,
+					previous
+				)
+			)
+			previous = price
+		end
+	end,
+})
+
+table.insert(cases, {
+	name = "sepuluh tumpuk damage up memakan 6647 koin, bukan 2000",
+	run = function()
+		-- Angka inti dari rancangan bagian 6: inilah yang membuat kelebihan koin
+		-- solo (sekitar 21.200) punya tujuan alih-alih menumpuk tanpa guna.
+		--
+		-- Rancangan menulis 6.650; yang benar 6.647. Selisih 3 koin itu bukan
+		-- salah hitung di salah satu pihak: jumlah geometris eksaknya 6650.58,
+		-- dan `priceFor` membulatkan ke bawah SETIAP pembelian, bukan sekali di
+		-- akhir. Dipatok di angka yang benar-benar dibayar pemain.
+		--
+		-- Kalau growth atau harga dasar disetel ulang, angka di sini yang harus
+		-- diperbarui -- bukan assertion-nya yang dilemahkan jadi rentang.
+		local def = ShopItems.get("shop_damage_up")
+		assert(def ~= nil, "shop_damage_up")
+		local total = 0
+		for used = 0, 9 do
+			total += ShopRules.priceFor(def, { shop_damage_up = used }, Balance.SHOP_PRICE_GROWTH)
+		end
+		assert(total == 6647, string.format("total 10 tumpuk harus 6647, dapat %d", total))
+		assert(def.cost * 10 == 2000, "harga tetap akan jadi 2000 -- itu yang dihindari")
+	end,
+})
+
+table.insert(cases, {
+	name = "pengali harga yang rusak tidak membuat barang murah atau gratis",
+	run = function()
+		-- Pengali di bawah 1 akan membuat barang makin MURAH tiap dibeli, dan
+		-- nol membuatnya gratis. Dua-duanya harus jatuh ke harga dasar: toko
+		-- yang bisa diborong tanpa biaya lebih buruk daripada toko yang mahal.
+		local def = ShopItems.get("shop_damage_up")
+		assert(def ~= nil, "shop_damage_up")
+		for _, bad in { 0, 0.5, -2, 0 / 0, math.huge } do
+			local price = ShopRules.priceFor(def, { shop_damage_up = 5 }, bad)
+			assert(
+				price == def.cost,
+				string.format("growth %s harus jatuh ke harga dasar", tostring(bad))
+			)
+		end
+	end,
+})
+
+table.insert(cases, {
+	name = "harga satu item tidak terpengaruh pembelian item lain",
+	run = function()
+		local def = ShopItems.get("shop_turret")
+		assert(def ~= nil, "shop_turret")
+		local price = ShopRules.priceFor(def, { shop_damage_up = 9 }, Balance.SHOP_PRICE_GROWTH)
+		assert(price == def.cost, "pembelian item lain tidak boleh menaikkan harga ini")
+	end,
+})
+
+table.insert(cases, {
+	name = "koin diperiksa terhadap harga sekarang, bukan harga dasar",
+	run = function()
+		-- Kalau canBuy membandingkan koin dengan `def.cost`, pembelian yang
+		-- tidak terbayar akan lolos dan ShopService memotong koin sebesar harga
+		-- sekarang -- saldo tim bisa jadi negatif.
+		local def = ShopItems.get("shop_damage_up")
+		assert(def ~= nil, "shop_damage_up")
+		local used = { shop_damage_up = 5 }
+		local price = ShopRules.priceFor(def, used, Balance.SHOP_PRICE_GROWTH)
+		assert(price > def.cost, "harga ke-6 harus di atas harga dasar")
+		local ok = ShopRules.canBuy(def, context({ purchases = used, coins = price - 1 }))
+		assert(not ok, "koin tepat di bawah harga sekarang harus ditolak")
+		assert(
+			ShopRules.canBuy(def, context({ purchases = used, coins = price })),
+			"koin tepat sebesar harga sekarang harus boleh"
 		)
 	end,
 })

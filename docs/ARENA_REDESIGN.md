@@ -356,7 +356,7 @@ Perbaikannya bukan menurunkan hadiahnya, karena alasan x4-nya valid. Yang salah
 - `maxPurchases = 0` (tak terbatas) untuk damage up, fire rate, turret, repair
 - harga naik x1.25 per pembelian item yang sama
 
-Dengan begitu 10 tumpuk damage up memakan 6.650 koin, bukan 1.000. Uang selalu
+Dengan begitu 10 tumpuk damage up memakan **6.647** koin, bukan 2.000. (Jumlah geometris eksaknya 6.650,58; yang dibayar pemain 6.647, karena harga dibulatkan ke bawah setiap pembelian, bukan sekali di akhir. Dan pembandingnya 2.000 -- harga dasar 200 dikali 10 -- bukan 1.000, yang adalah lima pembelian dengan batas lama.) Uang selalu
 punya tujuan, dan kelebihan pasokan solo terkoreksi lewat harga, bukan lewat
 tembok. Lantai cooldown (`Balance.SHOP_COOLDOWN_FLOOR = 0.4`) sudah ada, jadi
 fire rate tak terbatas pun tidak bisa menghapus cooldown.

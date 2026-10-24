@@ -59,6 +59,30 @@ Balance.BASE_DAMAGE_MULT = 0.2
 -- atau item nanti dipasang di sini, bukan disebar ke pemanggil.
 Balance.PLAYER_DAMAGE_MULT = 1.0
 
+-- Hadiah koin match per wave. Masuk kolam tim, BUKAN koin permanen, dan itu
+-- yang membuat pengali jumlah pemain di bawah koheren.
+--
+-- Kalau hadiah per wave masuk koin permanen, main solo jadi 4x lebih efisien
+-- per orang untuk farming, dan game co-op yang menghukum main bareng akan
+-- dimainkan solo oleh semua orang. Kolam koin match dibagi tim, jadi x4 solo
+-- cuma menormalkan daya beli per orang -- tidak memberi solo keuntungan yang
+-- dibawa keluar dari match.
+Balance.WAVE_REWARD_BASE = 200
+Balance.WAVE_REWARD_PER_WAVE = 50
+-- Wave boss dikali dua karena boss yang membuat wave itu terasa sebagai puncak.
+Balance.WAVE_REWARD_BOSS_MULT = 2
+
+-- Harga Toko Match naik per pembelian item yang sama, dan ini PENGGANTI batas
+-- jumlah (`maxPurchases`), bukan tambahan untuknya.
+--
+-- Kenapa diganti: dengan hadiah per wave di atas, solo mengumpulkan sekitar
+-- 21.200 koin sepanjang 10 wave, sementara toko yang seluruh itemnya dibatasi
+-- cuma bisa menyerap 3.450. Artinya toko habis diborong di wave 3-4 dan enam
+-- wave sisanya koinnya tidak ada gunanya. Dengan harga yang naik, 10 tumpuk
+-- damage up memakan 6.650 koin alih-alih 1.000: uang selalu punya tujuan, dan
+-- kelebihan pasokan solo terkoreksi lewat harga, bukan lewat tembok.
+Balance.SHOP_PRICE_GROWTH = 1.25
+
 -- Respawn pemain. Sebelum musuh bisa menyerang, kematian pemain tidak punya
 -- konsekuensi apa pun dan angka ini tidak berarti; sekarang dia salah satu knob
 -- kesulitan yang paling langsung terasa.
@@ -211,6 +235,43 @@ function Balance.applyXp(level: number, xp: number, gained: number): (number, nu
 	end
 
 	return newLevel, newXp, gainedLevels
+end
+
+-- Pengali jumlah pemain untuk hadiah wave. Tangga, bukan kurva: 1 pemain x4,
+-- 2 pemain x2, 3 atau lebih x1.
+--
+-- Perhatikan bahwa ini sudah separuh adil dengan sendirinya sebelum pengali
+-- apa pun: efek Toko Match berlaku untuk SELURUH tim, jadi tim berempat
+-- mendapat 4x nilai dari tiap koin yang dibelanjakan. 200 koin untuk tim
+-- berempat kira-kira setara 800 untuk solo.
+function Balance.playerCountMultiplier(playerCount: number): number
+	-- NaN dan jumlah pemain yang tidak masuk akal diperlakukan sebagai solo:
+	-- hadiah yang terlalu besar lebih mudah terlihat saat playtest daripada
+	-- hadiah yang diam-diam hilang.
+	if playerCount ~= playerCount or playerCount <= 1 then
+		return 4
+	end
+	if playerCount < 3 then
+		return 2
+	end
+	return 1
+end
+
+-- Hadiah koin match untuk satu wave yang baru selesai.
+--
+-- `isBossWave` sengaja diminta sebagai argumen, bukan dicari sendiri: modul ini
+-- tidak tahu apa pun soal boss, dan membuatnya me-require Waves atau Bosses
+-- akan menukar satu argumen dengan satu lingkaran require. Pemanggilnya sudah
+-- punya jawabannya: `Waves.get(wave).bossId ~= nil`.
+function Balance.waveReward(wave: number, playerCount: number, isBossWave: boolean): number
+	if wave ~= wave or wave < 1 or wave == math.huge then
+		return 0
+	end
+	local base = Balance.WAVE_REWARD_BASE + Balance.WAVE_REWARD_PER_WAVE * (math.floor(wave) - 1)
+	if isBossWave then
+		base *= Balance.WAVE_REWARD_BOSS_MULT
+	end
+	return math.floor(base * Balance.playerCountMultiplier(playerCount))
 end
 
 return Balance

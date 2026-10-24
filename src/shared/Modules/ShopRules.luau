@@ -25,9 +25,40 @@ export type Context = {
 	locked: boolean,
 	coins: number,
 	purchases: { [string]: number },
+	-- Pengali harga per pembelian item yang sama (Balance.SHOP_PRICE_GROWTH).
+	-- Diminta lewat context, bukan dibaca dari Balance di dalam modul ini,
+	-- supaya test bisa menguji kurva harga tanpa menyetel konstanta global --
+	-- pola yang sama dengan `damageStep` di `modifiers` di bawah.
+	priceGrowth: number,
 }
 
 ShopRules.OPEN_STATE = "Intermission"
+
+-- Harga satu item sesudah `used` pembelian sebelumnya: `cost * growth^used`,
+-- dibulatkan ke bawah.
+--
+-- Ini yang menggantikan `maxPurchases` sebagai pembatas untuk item tak
+-- terbatas. Dengan growth 1.25 dan harga dasar 200, sepuluh tumpuk memakan
+-- 6.650 koin alih-alih 2.000 -- jadi kelebihan koin terkoreksi lewat harga,
+-- bukan lewat tembok yang membuat sisa koin tidak ada gunanya.
+--
+-- `growth` di bawah 1 akan membuat barang makin MURAH tiap dibeli, dan nol atau
+-- NaN membuatnya gratis. Dua-duanya diperlakukan sebagai harga tetap: pengali
+-- yang rusak tidak boleh menghasilkan toko yang bisa diborong tanpa biaya.
+function ShopRules.priceFor(
+	def: Types.ShopItemDef,
+	purchases: { [string]: number },
+	growth: number
+): number
+	local used = purchases[def.id] or 0
+	if type(growth) ~= "number" or growth ~= growth or growth < 1 or growth == math.huge then
+		return def.cost
+	end
+	if used <= 0 then
+		return def.cost
+	end
+	return math.floor(def.cost * growth ^ used)
+end
 
 -- Mengembalikan (boleh, alasan kalau tidak boleh). Alasannya dikirim ke client
 -- lewat `ActionResult` supaya pemain tahu kenapa tombolnya tidak bekerja —
@@ -63,9 +94,14 @@ function ShopRules.canBuy(def: Types.ShopItemDef?, context: Context): (boolean, 
 		return false, string.format("Jatah %s sudah habis (%d).", def.name, def.maxPurchases)
 	end
 
-	if context.coins < def.cost then
+	-- Harga yang dipakai harga SEKARANG, bukan `def.cost`. Item tak terbatas
+	-- dibatasi oleh harga yang naik, jadi membandingkan koin dengan harga dasar
+	-- akan meloloskan pembelian yang tidak bisa dibayar -- dan ShopService
+	-- memotong koin sebesar harga sekarang, jadi saldonya bisa jadi negatif.
+	local price = ShopRules.priceFor(def, context.purchases, context.priceGrowth)
+	if context.coins < price then
 		return false,
-			string.format("Koin tim kurang: butuh %d, ada %d.", def.cost, math.floor(context.coins))
+			string.format("Koin tim kurang: butuh %d, ada %d.", price, math.floor(context.coins))
 	end
 
 	return true, nil

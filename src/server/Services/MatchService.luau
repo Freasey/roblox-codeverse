@@ -49,6 +49,15 @@ MatchService.ENDED_SECONDS = 10
 MatchService.onStateChanged = Signal.new() :: Signal.Signal<State, State>
 -- Wave berikutnya siap dijalankan: (nomor wave).
 MatchService.onWaveStarted = Signal.new() :: Signal.Signal<number>
+-- (jumlah koin match, nomor wave). Ditembakkan saat sebuah wave selesai,
+-- termasuk wave terakhir.
+--
+-- Sinyal, bukan panggilan langsung ke ShopService: ShopService sudah
+-- me-require MatchService untuk `getState()`, jadi arah sebaliknya akan jadi
+-- lingkaran require -- hal yang dilarang eksplisit di header file ini. Jadi
+-- MatchService tidak perlu tahu siapa yang memiliki kolam koin, dan yang
+-- memiliki kolamnya tidak perlu tahu kapan wave selesai.
+MatchService.onWaveReward = Signal.new() :: Signal.Signal<number, number>
 -- Match selesai: (menang, wave yang dicapai, id kesulitan, daftar UserId peserta).
 MatchService.onMatchEnded = Signal.new() :: Signal.Signal<boolean, number, string, { number }>
 
@@ -350,6 +359,17 @@ function MatchService.onWaveCleared()
 	if state ~= "WaveActive" then
 		return
 	end
+
+	-- Hadiah diberikan SEBELUM pengecekan wave terakhir, dan urutannya bukan
+	-- selera. Cabang di bawah memanggil endMatch(true) lalu `return`, jadi
+	-- hadiah yang ditaruh sesudahnya tidak akan pernah diberikan untuk wave
+	-- terakhir -- justru hadiah terbesar di seluruh match (wave boss, x2).
+	--
+	-- Wave boss dikenali dari `Waves`, bukan dari daftar nomor wave di sini:
+	-- menambah boss baru nanti cukup mengisi `bossId` di komposisi wave-nya.
+	local def = Waves.get(wave)
+	local isBossWave = def ~= nil and def.bossId ~= nil
+	MatchService.onWaveReward:Fire(Balance.waveReward(wave, #participantList(), isBossWave), wave)
 
 	if wave >= Waves.LAST_WAVE then
 		endMatch(true)

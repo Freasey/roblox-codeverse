@@ -23,27 +23,35 @@ local ShopItems: { [string]: ShopItemDef } = {
 		name = "Exploit Patch",
 		description = "Damage senjata SEMUA pemain +10% sampai match selesai.",
 		cost = 200,
-		maxPurchases = 5,
+		maxPurchases = 0,
 	},
 	shop_fire_rate = {
 		id = "shop_fire_rate",
 		name = "Overclock",
 		description = "Cooldown senjata SEMUA pemain -8% sampai match selesai.",
 		cost = 200,
-		maxPurchases = 5,
+		maxPurchases = 0,
 	},
 	shop_core_repair = {
 		id = "shop_core_repair",
 		name = "Hotfix",
 		description = "Pulihkan 15% HP maksimum Core Server.",
 		cost = 150,
-		maxPurchases = 3,
+		maxPurchases = 0,
 	},
 	shop_barrier = {
 		id = "shop_barrier",
 		name = "Firewall Block",
 		description = "Tahan musuh di semua lane selama beberapa detik di wave berikutnya.",
 		cost = 100,
+		-- SATU-SATUNYA item yang batasnya dipertahankan, dan rancangan tidak
+		-- menjelaskan kenapa dia ditinggalkan dari daftar "tak terbatas".
+		-- Alasannya: empat item lain menambah KEMAMPUAN, yang tetap harus
+		-- dipakai; yang ini menambah WAKTU musuh tertahan, 6 detik per
+		-- pembelian di semua lane. Dua puluh tumpuk berarti 120 detik tahan,
+		-- dan wave-nya lewat tanpa pemain menyentuh apa pun. Harga yang naik
+		-- tidak menolong di sini, karena yang dibeli bukan kekuatan melawan
+		-- wave tapi penghapusan wave itu sendiri.
 		maxPurchases = 5,
 	},
 	shop_turret = {
@@ -51,7 +59,7 @@ local ShopItems: { [string]: ShopItemDef } = {
 		name = "Scanner Turret",
 		description = "Turret yang menembak musuh terdekat sampai match selesai.",
 		cost = 250,
-		maxPurchases = 2,
+		maxPurchases = 0,
 	},
 }
 

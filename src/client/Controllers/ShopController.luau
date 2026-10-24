@@ -15,6 +15,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Balance = require(ReplicatedStorage.Shared.Modules.Balance)
 local MatchStore = require(script.Parent.MatchStore)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local ShopItems = require(ReplicatedStorage.Shared.Modules.ShopItems)
@@ -181,14 +182,19 @@ local function render()
 		local remainingText = if remaining == math.huge
 			then ""
 			else string.format(" · sisa %d", remaining)
-		row.detail.Text =
-			string.format("%d koin%s — %s", def.cost, remainingText, def.description)
+		-- Harga SEKARANG, bukan `def.cost`. Untuk item tak terbatas harganya
+		-- naik tiap pembelian, dan tombol yang menampilkan harga dasar akan
+		-- memotong koin lebih banyak daripada yang tertulis -- pemain akan
+		-- menganggapnya bug, dan dia benar.
+		local price = ShopRules.priceFor(def, shop.purchases, Balance.SHOP_PRICE_GROWTH)
+		row.detail.Text = string.format("%d koin%s — %s", price, remainingText, def.description)
 
 		local canBuy = ShopRules.canBuy(def, {
 			state = stateName,
 			locked = shop.locked,
 			coins = coins,
 			purchases = shop.purchases,
+			priceGrowth = Balance.SHOP_PRICE_GROWTH,
 		})
 		UiKit.setButtonEnabled(row.button, canBuy)
 		row.title.TextColor3 = if canBuy

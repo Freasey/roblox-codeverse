@@ -201,6 +201,13 @@ local function award(amount: number)
 	broadcastCoins()
 end
 
+-- Pintu dari luar ke kolam koin tim, dipakai hadiah per wave. Kebijakan
+-- angkanya ada di Balance.waveReward, waktunya di MatchService, dan penjagaan
+-- nilainya di sini -- bukan satu service yang mengurus ketiganya.
+function ShopService.addCoins(amount: number)
+	award(amount)
+end
+
 -- --------------------------------------------------------------------------
 -- Efek tiap item
 -- --------------------------------------------------------------------------
@@ -386,6 +393,7 @@ local function onBuy(player: Player, rawId: unknown)
 		locked = locked,
 		coins = coins,
 		purchases = purchases,
+		priceGrowth = Balance.SHOP_PRICE_GROWTH,
 	})
 
 	if not ok or def == nil then
@@ -397,7 +405,12 @@ local function onBuy(player: Player, rawId: unknown)
 	-- yield (task.delay di penghalang) dan dua pembelian dari dua pemain bisa
 	-- datang di frame yang sama; memotong dulu berarti tidak ada celah di mana
 	-- koin yang sama bisa dibelanjakan dua kali.
-	coins -= def.cost
+	-- Harga dihitung dari `purchases` SEBELUM dinaikkan. Urutannya satu-satunya
+	-- yang benar: dibalik, pemain dibebani harga pembelian BERIKUTNYA, dan
+	-- selisihnya tidak akan terlihat sampai ada yang membandingkan angka di
+	-- tombol dengan koin yang hilang.
+	local price = ShopRules.priceFor(def, purchases, Balance.SHOP_PRICE_GROWTH)
+	coins -= price
 	purchases[def.id] = (purchases[def.id] or 0) + 1
 
 	broadcastCoins()
@@ -419,7 +432,7 @@ local function onBuy(player: Player, rawId: unknown)
 			"[ShopService] %s beli %s (%d koin), sisa %d",
 			player.Name,
 			def.id,
-			def.cost,
+			price,
 			math.floor(coins)
 		)
 	)
@@ -442,6 +455,21 @@ function ShopService.start()
 	-- yang membunuhnya (pemain, turret, atau mekanik boss).
 	EnemyService.onDied:Connect(function(enemy)
 		award(enemy.matchCoins)
+	end)
+
+	MatchService.onWaveReward:Connect(function(amount: number, waveNumber: number)
+		if amount <= 0 then
+			return
+		end
+		award(amount)
+		print(
+			string.format(
+				"[ShopService] hadiah wave %d: %d koin tim, kolam jadi %d",
+				waveNumber,
+				amount,
+				math.floor(coins)
+			)
+		)
 	end)
 
 	MatchService.onStateChanged:Connect(function(next: MatchService.State, previous)
