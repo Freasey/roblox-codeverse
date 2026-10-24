@@ -18,13 +18,20 @@ pertarungan, state machine match dengan 10 wave, Toko Match, dua boss, dan
 progres permanen plus lobby. M6 sampai M8 belum disentuh. Sebagian besar
 perilaku game belum pernah dijalankan oleh seorang pemain.
 
-**Playtest M1 ditunda, dan ini sengaja.** `docs/ARENA_REDESIGN.md` mengubah cara
-musuh menyerang: yang mencapai base tidak lagi hilang, dia berhenti dan memukul
-sampai dibunuh. Satu case M1 (`CORE-02`) mematok lima angka damage yang semuanya
-hilang karena itu, dan 27 assertion harness menguji perilaku yang sedang
-dibuang. Playtest-nya bukan dibatalkan, cuma menunggu sampai yang diuji adalah
-perilaku yang akan bertahan. Bagian 3 di bawah tetap berlaku apa adanya begitu
-rancangan langkah 1-3 selesai.
+**Rancangan ulang arena sedang dikerjakan**, dan itu yang menentukan kapan
+playtest masuk akal dijalankan. Langkah 1 sampai 4 dari
+`docs/ARENA_REDESIGN.md` bagian 8 sudah mendarat: musuh yang mencapai base
+berhenti dan memukul sampai dibunuh, pemain bisa mati, hadiah koin per wave
+jalan, dan harga Toko Match naik tiap pembelian. Langkah 5 sampai 7 (fase
+`Loadout`, tiga alur upgrade senjata, isi efek per alur) belum.
+
+**Playtest M1 sekarang sudah bisa dijalankan**, dengan satu catatan yang perlu
+diketahui lebih dulu: langkah 6 dan 7 akan mengubah damage senjata, jadi dua
+baris yang mematok **jumlah serangan** (`WAVE-03` 4 serangan, `WAVE-07` 7
+serangan di wave 5) hampir pasti bergeser lagi setelah itu. Sisanya tidak
+tersentuh langkah 5-7. Kalau yang kamu cari bukti bertanggal untuk laporan,
+jalankan sekarang dan ulangi dua baris itu nanti; kalau yang kamu cari "apakah
+kodenya jalan", dua baris itu boleh dilewati dulu.
 
 ## 2. Apa yang sudah terverifikasi, dan dengan cara apa
 
@@ -32,7 +39,7 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 
 | Lapis | Cakupan | Status |
 | --- | --- | --- |
-| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit | **149 test lulus** |
+| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit | **183 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
 | Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave | **222 assertion lulus, 0 gagal, 17 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
@@ -63,7 +70,7 @@ CORE-06 jadi `OK` tanpa tangan manusia.** (WAVE-11 sempat ikut, lalu turun lagi
 ke `-` setelah rancangan ulang arena mengubah harapannya.) Yang benar-benar mentok
 cuma yang butuh karakter atau client: menyerang, bar HP, kamera, input.
 
-## 3. Playtest M1 (tugas Daffa) — DITUNDA, lihat bagian 1
+## 3. Playtest M1 (tugas Daffa)
 
 Tinggal **24 case bertanda M1** di `docs/TEST_CASES.md` (WAVE-12, CORE-04, dan CORE-06 sudah `OK` lewat harness). Naik dari 18, bukan karena ada yang gagal: lima case M1 baru lahir dari rancangan ulang arena (WAVE-17, WAVE-18, WAVE-19, COMBAT-16, COMBAT-17), dan WAVE-11 kembali manual karena harapannya berubah:
 
@@ -207,6 +214,20 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
 
 - **Seluruh M2 sampai M5.** Kodenya ada dan CI hijau, tapi belum ada satu pun
   match yang pernah dimainkan dari lobby sampai layar hasil oleh manusia.
+
+- **Damage musuh ke PEMAIN.** Damage ke base dipatok harness untuk kelima tipe,
+  tapi memukul pemain butuh Humanoid, jadi harness cuma bisa men-skip-nya
+  (`damage.pukulanKePlayer`). Yang terbukti baru pengalinya sendiri lewat unit
+  test `EnemyAI.playerDamage`. Jadi "berapa pukulan sampai pemain mati" —
+  `basic` 4, `fast` 7, `tank` 2, Splitter 2, Locker 1 — belum pernah diuji
+  seorang pun. `COMBAT-16` dan `COMBAT-17` yang menutupnya.
+
+- **Hadiah koin per wave dan harga toko yang naik.** Seluruh angkanya dipatok
+  unit test (kurva 200 sampai 1300, total 5.300 / 10.600 / 21.200, dan kurva
+  harga 200 sampai 1490), tapi jalurnya dari wave selesai sampai saldo di HUD
+  belum pernah dilihat manusia. Yang paling mudah salah dan paling sunyi
+  kalau salah: hadiah **wave terakhir**. Kodenya sempat punya urutan yang akan
+  melewatkannya, karena `onWaveCleared` memanggil `endMatch` lalu `return`.
 
 ## 5. Yang menunggu tindakan di Studio
 

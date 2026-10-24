@@ -6,11 +6,11 @@
 >
 > Dibuat 2026-10-24, pada commit `0729cda`.
 
-> **Status: langkah 1, 2, dan 3 dari [bagian 8](#8-urutan-kerja-yang-diusulkan)
+> **Status: langkah 1 sampai 4 dari [bagian 8](#8-urutan-kerja-yang-diusulkan)
 > sudah mendarat di `main`.** Musuh sudah menyerang base dan player, respawn
-> sudah ada, dan harness serta `docs/TEST_CASES.md` sudah diselaraskan. Langkah
-> 4 sampai 7 (hadiah per wave, fase `Loadout`, tiga alur upgrade, isi efek)
-> belum dikerjakan.
+> sudah ada, hadiah koin per wave dan harga toko yang naik sudah jalan, dan
+> harness serta `docs/TEST_CASES.md` sudah diselaraskan. Langkah 5 sampai 7
+> (fase `Loadout`, tiga alur upgrade, isi efek per alur) belum dikerjakan.
 >
 > Yang perlu diperhatikan saat membaca sisa dokumen ini: bagian yang berjudul
 > "Mekanismenya sekarang" menggambarkan keadaan **sebelum** langkah 1 — itu
