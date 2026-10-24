@@ -201,9 +201,10 @@ end
 -- Posisi slot cincin di sekitar base, sebagai OFFSET dari pusat base.
 --
 -- Deterministik dari nomor slot: musuh ke-n selalu mendapat tempat yang sama,
--- jadi hasilnya bisa diuji dan tidak bergeser antar run. Slot di luar kapasitas
--- cincin pertama masuk cincin kedua, dan diputar setengah langkah supaya tidak
--- berdiri tepat di belakang slot cincin pertama.
+-- jadi hasilnya bisa diuji dan tidak bergeser antar run. `outerRadius` adalah
+-- radius cincin KEDUA, dan selisihnya dari `radius` jadi kenaikan untuk setiap
+-- cincin sesudahnya -- jadi jumlah cincinnya tidak terbatas dan tidak ada dua
+-- slot yang pernah berbagi tempat.
 function EnemyAI.ringSlotOffset(
 	slot: number,
 	slots: number,
@@ -218,11 +219,13 @@ function EnemyAI.ringSlotOffset(
 	local positionInRing = index % slots
 	local step = (math.pi * 2) / slots
 	local angle = positionInRing * step
-	local useRadius = radius
-	if ring > 0 then
-		angle += step * 0.5
-		useRadius = outerRadius
-	end
+	-- Radius tumbuh PER RING, bukan "dalam atau luar". Versi pertama fungsi ini
+	-- memakai outerRadius untuk setiap ring > 0 dengan pergeseran sudut yang
+	-- sama, dan akibatnya slot 24 berdiri tepat di posisi slot 12 -- tumpukan
+	-- yang justru jadi alasan seluruh mekanisme slot ini ada. Dengan radius
+	-- yang berbeda per ring, dua ring tidak bisa bertabrakan apa pun sudutnya.
+	local useRadius = radius + (outerRadius - radius) * ring
+	angle += step * 0.5 * ring
 	return HitTest.vec(math.cos(angle) * useRadius, 0, math.sin(angle) * useRadius)
 end
 

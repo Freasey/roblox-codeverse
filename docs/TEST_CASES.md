@@ -338,23 +338,80 @@ Level maksimum ketiganya 10. Damage level *n* = `baseDamage * (1 + 0.12*(n-1))` 
 starter: 25, 28, 31, 34, 37, 40, 43, 46, 49, 52. Harga upgrade dari level 1 ke
 10: **50, 67, 91, 123, 166, 224, 302, 408, 551** (total 1982 koin).
 
+**Serangan musuh, mekanismenya dulu.** Musuh punya **satu** angka serangan,
+`attackDamage`, dan satu jadwal, `attackInterval`. Satu angka itu berarti dua hal
+berbeda karena dikalikan dua pengali yang berbeda saat dipakai: ke base dikali
+`Balance.BASE_DAMAGE_MULT` = **0.2**, ke player dikali
+`Balance.PLAYER_DAMAGE_MULT` = **1.0**. Base punya 1000 HP, player 100 — jadi base
+efektif 5000 HP, 50x lebih tahan, dan itulah yang membuat satu angka bisa
+dipakai untuk dua sasaran. Pukulan **pertama** tidak menunggu interval:
+`nextStrikeAt` lahir 0, jadi musuh memukul begitu dia menempel atau begitu
+pemain masuk jarak pukul (6 stud), lalu tiap `attackInterval` sesudahnya.
+
+`attackDamage` **tidak** dikali pengali apa pun selain dua di atas — tidak oleh
+wave, tidak oleh jumlah player, dan **tidak oleh pengali difficulty**. Yang
+dikali `hpMult` cuma HP musuh. Jadi `tank` di `hard` dengan 4 player tetap
+men-damage base 12 per pukulan dan tetap membunuh pemain dalam 2 pukulan; yang
+berubah cuma berapa lama dia bertahan.
+
 **Musuh** (`Enemies.luau`, nilai dasar wave 1 / normal / 1 player):
 
-| id | Nama | Analogi | HP | Speed | Damage ke Core | Koin match | Bentuk graybox |
-|---|---|---|---|---|---|---|---|
-| `basic` | Pop-up Swarmling | Adware | 100 | 8 | 5 | 5 | kubus oranye 3x3x3 |
-| `fast` | Worm Runner | Worm | 60 | 16 | 4 | 7 | balok hijau 2x2x4 |
-| `tank` | Rootkit Hulk | Rootkit | 400 | 5 | 15 | 15 | kubus ungu 6x6x6 |
+| id | Nama | Analogi | HP | Speed | `attackDamage` | `attackInterval` | Damage ke base / pukulan | Koin match | Bentuk graybox |
+|---|---|---|---|---|---|---|---|---|---|
+| `basic` | Pop-up Swarmling | Adware | 100 | 8 | 25 | 1.2 s | **5** | 5 | kubus oranye 3x3x3 |
+| `fast` | Worm Runner | Worm | 60 | 16 | 15 | 0.8 s | **3** | 7 | balok hijau 2x2x4 |
+| `tank` | Rootkit Hulk | Rootkit | 400 | 5 | 60 | 1.5 s | **12** | 15 | kubus ungu 6x6x6 |
 
 **Boss** (`Bosses.luau`):
 
-| id | Nama | Analogi | Wave | HP | Damage ke Core | Koin | Drop | Bentuk |
-|---|---|---|---|---|---|---|---|---|
-| `boss_splitter` | Splitter | Worm | 5 | 2500 | 25 | 120 | `material_a` x1 | kubus merah 9x9x9 |
-| `boss_locker` | Locker | Ransomware | 10 | 6000 | 40 | 250 | `material_b` x1 | kubus merah 11x11x11 |
+| id | Nama | Analogi | Wave | HP | `attackDamage` | `attackInterval` | Damage ke base / pukulan | Koin | Drop | Bentuk |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `boss_splitter` | Splitter | Worm | 5 | 2500 | 80 | 2.0 s | **16** | 120 | `material_a` x1 | kubus merah 9x9x9 |
+| `boss_locker` | Locker | Ransomware | 10 | 6000 | 120 | 2.0 s | **24** | 250 | `material_b` x1 | kubus merah 11x11x11 |
 
 Splitter membelah di **66% dan 33%** HP, masing-masing memunculkan **4 `fast`**.
 Locker memanggil **3 `basic` tiap 8 detik** dan mengunci toko selama hidup.
+
+**Aritmetika serangan.** Angka mentah di dua tabel di atas tidak bisa dinilai
+mata; yang bisa dinilai adalah dua bacaan turunannya. Keduanya dihitung dari
+`attackDamage`, `attackInterval`, 100 HP player, dan 1000 HP base:
+
+| Tipe | Pukulan membunuh player | Lama sampai player mati | DPS ke base | Pukulan dalam 60 detik | HP base hilang kalau 1 lolos sepanjang wave (~60 s) |
+|---|---|---|---|---|---|
+| `basic` | 4 | 3.6 s | 4.2 | 51 | ~255 (**26%**) |
+| `fast` | 7 | 4.8 s | 3.8 | 76 | ~228 (**23%**) |
+| `tank` | **2** | 1.5 s | 8.0 | 41 | ~492 (**49%**) |
+| Splitter | **2** | 2.0 s | 8.0 | 31 | ~496 (**50%**) |
+| Locker | **1** | 0 s | 12.0 | 31 | ~744 (**74%**) |
+
+Pukulan membunuh player = `ceil(100 / attackDamage)`; lamanya =
+`(pukulan - 1) * attackInterval`, karena pukulan pertama jatuh seketika — Locker
+membunuh pemain dengan satu pukulan pada detik dia menyentuhnya. Pukulan dalam
+60 detik = `1 + floor(60 / attackInterval)`, dan HP base yang hilang = angka itu
+dikali kolom damage per pukulan.
+
+Bacaannya, dan ini yang dipakai menilai apakah balancing-nya masih benar setelah
+disetel ulang: **satu `basic` yang dibiarkan menempel sepanjang satu wave
+memakan seperempat base, satu `tank` memakan separuh, dan tiga kebocoran yang
+dibiarkan berarti kalah.** `tank` membunuh pemain dalam dua pukulan memang
+kasar; yang mengimbanginya kecepatan 5 stud/detik, paling lambat di game, jadi
+dia bisa dihindari.
+
+**Profil target** (`Enemies.luau`, `targeting`). Yang menentukan apakah musuh
+meninggalkan lane adalah `prefer`, bukan besar aggro-nya:
+
+| Tipe | `prefer` | aggro | leash | Terlihat seperti |
+|---|---|---|---|---|
+| `basic` | base | 14 | 21 | jalan ke base, memukul pemain yang menghalangi **tanpa keluar lane** |
+| `fast` | player | 25 | 37.5 | **keluar lane** memburu pemain, lalu kembali ke lane |
+| `tank` | base | 8 | 12 | praktis tidak peduli pemain, lurus ke Core |
+| Splitter, Locker | base | 10 | 15 | lurus ke base, memukul yang menghalangi di depan base |
+
+Jarak pukulnya sendiri terpisah dari aggro dan sama untuk semua tipe:
+`EnemyAI.STRIKE_RANGE` = **6 stud**, horizontal (melompat tidak melepaskan
+musuh). Dan satu aturan yang mengikat semuanya: **musuh yang sudah menempel di
+base tidak bisa ditarik keluar lagi** — `attacking_base` tidak punya jalan
+keluar selain mati, jadi berdiri di sebelahnya tidak akan menunda kerusakan.
 
 **Toko Match** (`ShopItems.luau`, urutan tampil dari `ShopItems.order`):
 
@@ -413,6 +470,13 @@ yang menjalankan test tidak membuang waktu mendiagnosis ulang, dan supaya tidak
 ada yang menulis "GAGAL, penyebab tidak diketahui" untuk sesuatu yang sudah
 dijelaskan.
 
+Sejak itu, perilaku musuh berubah besar (`docs/ARENA_REDESIGN.md` bagian 4 dan 5,
+langkah 1-2 sudah ter-commit). Tiga akibatnya **pasti** terlihat salah waktu
+dimainkan padahal benar, dan satu di antaranya terlihat seperti game yang
+menggantung. Itu [bagian 5.3](#53-perilaku-baru-yang-akan-terlihat-seperti-bug),
+dan di antara seluruh bagian 5 itulah yang paling perlu dibaca sebelum Studio
+dibuka.
+
 ### 5.1 Temuan yang sudah ditutup
 
 Baris-baris di bawah **tidak lagi berlaku**. Disimpan dengan perbaikannya karena
@@ -436,6 +500,25 @@ ada yang melaporkannya sebagai temuan baru setiap kali dokumen ini diisi.
 |---|---|---|
 | T4 | **`EnemyHit` diterima client lalu dibuang.** `init.client.luau` menyambungnya dengan handler kosong. | Efek hit masuk di M7 (`FxController`). Sampai itu ada, tidak ada efek hit dan tidak ada angka damage sama sekali; satu-satunya umpan balik serangan adalah bar HP musuh turun. COMBAT-01 sudah disesuaikan. |
 | T7 | **`BindToClose` sengaja tidak jalan di Studio** (`PlayerDataService` langsung `return` kalau `RunService:IsStudio()`). | "Stop di Studio memicu BindToClose" salah; yang menyimpan saat Stop adalah `PlayerRemoving`. DATA-06 dipecah jadi dua baris, dan jalur BindToClose-nya berkode `LIVE`. |
+
+### 5.3 Perilaku baru yang akan terlihat seperti bug
+
+Mekanismenya dulu, karena tiga baris di bawah cuma masuk akal setelah ini.
+**Dulu** musuh yang mencapai ujung lane men-damage Core sekali sebesar
+`coreDamage` lalu dihapus dari arena; kebocoran berarti kehilangan HP satu kali,
+dan arena **dijamin** bersih cepat atau lambat. **Sekarang** musuh yang mencapai
+ujung lane berhenti di base, mengambil satu slot cincin di sekitar Core, tetap
+hidup, dan memukul tiap `attackInterval` detik sampai pemain membunuhnya — dan
+musuh juga bisa memukul dan membunuh pemain. Angkanya ada di
+[bagian 4.2](#42-angka-patokan).
+
+Dua jaminan lama hilang karena itu, dan keduanya hilang **dengan sengaja**.
+
+| # | Perilaku | Kenapa begitu |
+|---|---|---|
+| T8 | **Wave tertunda selama masih ada musuh hidup di base, dan tidak ada batas waktunya.** Nomor wave tidak naik, state tetap `Bertahan!`, `Intermission` dan panel Toko Match tidak muncul, sementara bar Core terus turun satu langkah tiap interval pukulan. Bisa berlangsung selama pemain membiarkannya. | `WaveService.isWaveClear()` tetap menuntut nol musuh aktif dan nol antrian, dan jaminan bahwa itu pasti tercapai sudah tidak ada. Tidak ditambal dengan "musuh di base tidak dihitung" (rancangan bagian 5): kebocoran jadi menghukum dua kali — HP Core dan waktu belanja — tanpa satu aturan tambahan. **Ini bukan hang dan bukan sinyal `onAllClear` yang hilang.** Bedakan dari hang yang sesungguhnya dengan satu pertanyaan: apakah masih ada musuh hidup di arena, termasuk yang berdiri menempel di Core? Kalau ada, itu T8. Kalau arena benar-benar kosong dan state tetap `WaveActive` lebih dari satu detik, itu bug — jaring pengaman `WaveService` memeriksanya dua kali per detik. Dan T8 tidak bisa menggantung permanen: kalau pemain tidak mampu, Core habis dan match berakhir kalah. Dites WAVE-20. |
+| T9 | **Pemain bisa mati, dan itu hal baru.** Sebelum ini tidak ada satu pun `TakeDamage` di `src/server`, jadi kematian pemain tidak punya konsekuensi apa pun dan tidak pernah terjadi karena musuh. Sekarang `fast` memburu pemain, dan tipe lain memukul pemain yang berdiri dalam 6 stud dari mereka. | Respawn 5 detik (`Balance.RESPAWN_SECONDS`, disetel eksplisit ke `Players.RespawnTime`), di `Arena/PlayerSpawn`, **tanpa sistem nyawa** — mati cuma berarti kehilangan waktu, dan waktu itu mahal karena musuh terus memukul base selama pemain tidak ada. Selama mati, `Attack` ditolak karena `CombatService.characterOrigin` mengembalikan nil untuk karakter mati (COMBAT-10), dan itu bukan rate limit yang salah. Dites COMBAT-16 dan COMBAT-17. |
+| T10 | **Slot cincin tidak dipakai ulang, jadi cincinnya melebar selama match berjalan.** | Nomor slot (`ringSlotNext` di `EnemyService`) naik terus dan tidak pernah dipakai ulang: slot yang dibebaskan musuh mati tidak boleh langsung diberikan ke musuh lain, kalau tidak dua musuh bisa berdiri di titik yang sama persis saat yang pertama mati tepat sebelum yang kedua sampai. Akibatnya yang terlihat: dengan banyak kebocoran, cincinnya makin lebar dari Core — itu wajar, bukan bug. Dua musuh di titik yang **sama persis** tetap GAGAL tanpa pengecualian: `EnemyAI.ringSlotOffset` memberi tiap cincin radiusnya sendiri (10, 14, 18, 22, ...), jadi tidak ada dua nomor slot yang bisa berbagi tempat berapa pun banyaknya kebocoran. Dihitung ulang tiap match (`clearAll` me-reset nomornya). Dites WAVE-19, dan dipatok unit test `EnemyAI` lintas tiga cincin. |
 
 ## 6. Boot dan map (BOOT)
 
@@ -493,22 +576,26 @@ Acuan: DEVELOPMENT_PLAN.md bagian 1.3, 3.4, 3.5.
 | WAVE-07 | Match solo | Hitung serangan untuk membunuh satu `basic` di wave 1 dan di wave 5 | Wave 1 = 4 serangan (HP 100), wave 5 = **7** serangan (HP 160). HP musuh naik 15% per wave | M1 | solo | - |
 | WAVE-08 | Dua playtest terpisah, `basic` di wave 1: solo dan 2 player | Bandingkan serangan untuk membunuh satu `basic` | Solo = 4 serangan (HP 100), 2 player = **6** serangan (HP 135). HP naik 35% per player tambahan | M2 | 2P | - |
 | WAVE-09 | `hard` sudah terbuka; dua playtest solo wave 1, `normal` dan `hard` | Bandingkan serangan untuk membunuh satu `basic` | `normal` = 4 serangan (HP 100), `hard` = **8** serangan (HP 180, pengali 1.8) | M5 | solo | - |
-| WAVE-10 | Playtest **4 player** sampai **wave 10** — satu-satunya wave yang jumlah musuhnya (41) melewati batas 40 | Amati jumlah musuh aktif di arena selama wave 10 berjalan | Musuh aktif tidak pernah lebih dari 40 sekaligus; musuh dari antrian menyusul spawn setelah musuh lain mati; wave tetap bisa diselesaikan. Kalau wave tidak pernah bersih, antrian bocor. Alternatif tanpa 4 client: naikkan `Balance.COUNT_BASE` sementara | M2 | 4P (atau solo+EDIT) | - |
-| WAVE-11 | Match berjalan | Ikuti satu musuh dari titik spawn sampai Core | Musuh melewati waypoint 1 sampai 7 berurutan; tidak memotong jalur dan tidak melompat balik. Sampai di waypoint terakhir dia men-damage Core lalu **langsung dihapus** — bukan berhenti menumpuk di dekat Core (`arriveAtCore` di `EnemyService`: damage, sinyal, lalu `removeEnemy`). Jalurnya dicakup lebih detail oleh BOOT-06, nasib akhirnya oleh CORE-02 | M1 | solo | OK |
+| WAVE-10 | Playtest **4 player** sampai **wave 10** — satu-satunya wave yang jumlah musuhnya (41) melewati batas 40 | Amati jumlah musuh aktif di arena selama wave 10 berjalan | Musuh aktif tidak pernah lebih dari 40 sekaligus; musuh dari antrian menyusul spawn setelah musuh lain mati; wave tetap bisa diselesaikan. Kalau wave tidak pernah bersih, **periksa dulu apakah ada musuh yang berdiri menempel di Core** — wave yang tertunda karena kebocoran adalah hal yang benar (WAVE-20), dan cuma kalau arena sudah benar-benar kosong itu berarti antrian bocor. Alternatif tanpa 4 client: naikkan `Balance.COUNT_BASE` sementara | M2 | 4P (atau solo+EDIT) | - |
+| WAVE-11 | Match berjalan | Ikuti satu musuh dari titik spawn sampai Core | Musuh melewati waypoint 1 sampai 7 berurutan; tidak memotong jalur dan tidak melompat balik. Sampai di waypoint terakhir dia **berhenti dan tetap ada**: tidak hilang, bar HP-nya masih di atasnya, dia bergeser ke satu titik di cincin sekitar Core dan menghadap Core. Satu-satunya yang menghapusnya adalah pemain yang membunuhnya. Jalurnya dicakup lebih detail oleh BOOT-06, apa yang dia lakukan di base oleh WAVE-17 dan CORE-02 | M1 | solo | - |
 | WAVE-12 | Arena 2 lane | Amati spawn selama satu wave | Musuh datang dari kedua lane **bergantian satu-satu** (lane dibagikan round-robin, bukan acak), bukan menumpuk di satu lane | M1 | solo | OK |
 | WAVE-13 | Match berjalan | Pukul satu musuh sekali, jangan sampai mati | Bar HP kecil (BillboardGui) di atas musuh ikut turun dan panjangnya sesuai sisa HP. Warnanya hijau di atas 50%, kuning di atas 25%, merah di bawahnya | M1 | solo | - |
 | WAVE-14 | Wave selesai, state `Intermission` | Amati arena selama jeda | Tidak ada musuh yang masih berjalan dan tidak ada sisa antrian spawn dari wave sebelumnya — state ini baru bisa masuk kalau musuh aktif **dan** antrian dua-duanya nol | M2 | solo | - |
 | WAVE-15 | Match berjalan, ada musuh jauh di ujung lane | Menjauh dari musuh sampai lebih dari ~140 stud | Bar HP musuh **hilang dari pandangan** di luar jarak itu (`MaxDistance` 140), lalu muncul lagi saat didekati. Ini bukan bug: tanpa batas jarak, 40 BillboardGui tetap dirender walaupun cuma beberapa piksel | M1 | solo | - |
 | WAVE-16 | Wave 4 atau lebih (punya tiga tipe musuh) | Amati urutan kemunculan musuh | Tipe musuh **tercampur** — putaran demi putaran tiap tipe menyumbang satu, bukan semua `basic` dulu lalu semua `fast` lalu semua `tank`. Urutan antrian itu persis urutan kemunculan, jadi kalau terurut per tipe pemain menghadapi komposisi yang berbeda dari yang dirancang | M2 | solo | - |
+| WAVE-17 | Wave 1, satu `basic` dibiarkan jalan sampai ujung lane tanpa diserang | Amati musuh itu selama ~15 detik setelah dia berhenti di base, lalu berdiri di sebelahnya, lalu bunuh dia | Tiga hal, berurutan. (1) Musuhnya **tidak hilang**: modelnya tetap ada, bar HP-nya tetap penuh, dia berdiri sekitar 10 stud dari pusat Core dan menghadap Core. (2) Bar Core turun **5 poin tiap 1.2 detik**, berulang, bukan sekali — dalam 15 detik sekitar 13 pukulan, bar jatuh dari 1000 ke sekitar 935. Pukulan pertama jatuh **seketika** saat dia menempel, bukan 1.2 detik sesudahnya. (3) Berdiri tepat di sebelahnya **tidak menariknya keluar** dari base: dia tetap memukul Core dan tidak berbalik mengejar. Setelah dibunuh, modelnya hilang dan bar Core **berhenti turun sama sekali** | M1 | solo | - |
+| WAVE-18 | Wave 2 atau lebih (komposisinya berisi `fast`), karakter hidup | Berdiri ~20 stud di samping lane, menyamping dari jalur, dan amati `fast`, `basic`, dan `tank` yang lewat. Lalu berdiri tepat **di atas** jalur satu `basic` (dalam 6 stud darinya). Lalu lari menjauh dari `fast` yang sedang mengejar, lebih dari 40 stud | `fast` (balok hijau) **memutus jalur lane** dan datang lurus ke arah karakter — aggro 25 stud. `basic` dan `tank` dari jarak itu **tidak bergeser sedikit pun** dari lane: aggro-nya 14 dan 8 stud, dan yang menentukan bukan cuma radius itu — `prefer = "base"` berarti mereka tidak pernah keluar lane sama sekali. `basic` yang kita halangi langsung **memukul dari tempatnya berdiri** (HP karakter turun 25 tiap 1.2 detik) sambil tetap di lane, tidak mendekat dan tidak menjauh. `fast` yang kehilangan kita di luar leash 37.5 stud **kembali ke lane** dan melanjutkan ke arah Core — dia tidak pernah kembali ke waypoint yang ada **di belakangnya**, jadi memancingnya mundur berulang kali tidak bisa menahannya di tengah arena selamanya | M1 | solo | - |
+| WAVE-19 | Wave 4 atau lebih, biarkan **minimal 6** musuh sampai ke base tanpa dibunuh (boleh juga naikkan `Balance.COUNT_BASE` sementara supaya tidak perlu menunggu) | Amati kumpulan musuh di sekitar Core dari atas, lalu coba serang satu per satu | Musuhnya berdiri **terpisah di sepanjang cincin** sekitar Core, bukan bertumpuk di satu titik: 12 posisi di radius 10, jarak antar tetangga sekitar 5.2 stud — cukup untuk memisahkan `tank` yang 6x6x6. Tiap bar HP bisa dibaca sendiri dan tiap musuh bisa dibidik sendiri tanpa ikut mengenai tetangganya. Musuh ke-13 dan sesudahnya berdiri di **cincin kedua** radius 14, bergeser setengah langkah sudut sehingga tidak tepat di belakang slot cincin pertama. Dua musuh yang berdiri **di titik yang sama persis** adalah GAGAL, tanpa pengecualian: tiap cincin punya radiusnya sendiri (10, 14, 18, ...), jadi nomor slot berapa pun tidak bisa berbagi tempat. Cincin yang makin lebar saat kebocoran menumpuk itu wajar — lihat T10 di [bagian 5.3](#53-perilaku-baru-yang-akan-terlihat-seperti-bug) | M1 | solo (atau solo+EDIT) | - |
+| WAVE-20 | Wave 1 berjalan. Biarkan **satu** `basic` sampai ke base, lalu habiskan **semua** musuh lain wave itu sampai antrian spawn juga kosong | Tunggu 30 detik tanpa menyentuh musuh yang menempel di base, amati HUD dan panel toko. Lalu bunuh musuh terakhir itu | Selama musuh di base masih hidup: state tetap **"Bertahan!"**, nomor wave tetap 1 dan **tidak** naik, panel **Toko Match tidak muncul**, dan bar Core terus turun 5 poin tiap 1.2 detik (~130 poin dalam 30 detik). **Ini benar, bukan hang** — wave tidak bisa dinyatakan bersih selama masih ada kebocoran yang hidup, dan Intermission memang ikut tertunda (T8 di [bagian 5.3](#53-perilaku-baru-yang-akan-terlihat-seperti-bug), rancangan bagian 5). Begitu musuh terakhir itu mati, state pindah ke **"Jeda — toko buka · 20s"** dalam **maksimal 0.5 detik** dan panel toko muncul. Yang GAGAL bukan penundaannya, tapi dua hal lain: arena yang sudah benar-benar kosong (nol musuh, nol antrian) tapi state tetap `WaveActive` lebih dari satu detik, atau Core yang berhenti kehilangan HP padahal musuhnya masih menempel | M2 | solo | - |
 
 ## 9. Core Server (CORE)
 
 | ID | Prakondisi | Langkah | Hasil yang diharapkan | Milestone | Jalankan? | Status |
 |---|---|---|---|---|---|---|
 | CORE-01 | Match baru mulai | Lihat bar Core di HUD | "Core 1000 / 1000", bar penuh | M1 | solo | - |
-| CORE-02 | State `WaveActive`, ada musuh berjalan | Biarkan satu `basic` sampai ke Core Server | Bar Core turun **5 poin**, musuh itu hilang (tidak menumpuk di Core). Angka per tipe: `basic` 5, `fast` 4, `tank` 15, Splitter 25, Locker 40 | M1 | solo | - |
-| CORE-03 | State `WaveActive`, HP Core hampir habis | Biarkan musuh terus sampai HP Core 0 | Match langsung berakhir kalah; tidak ada HP negatif; musuh dibersihkan dan tidak terus menyerang Core | M1 | solo | - |
-| CORE-04 | State `Intermission` atau `Lobby` | Tunggu tanpa melakukan apa-apa | HP Core tidak berkurang sama sekali — di luar `WaveActive` musuh tidak bergerak | M1 | solo | OK |
+| CORE-02 | State `WaveActive`, ada musuh berjalan. Satu tipe per percobaan; `tank` butuh wave 4, dua boss butuh wave 5 dan 10 (atau pindahkan `bossId` sementara, prosedurnya di [bagian 12](#12-boss-boss)) | Biarkan satu musuh sampai ke base, catat bar Core tepat sebelum pukulan pertama, lalu hitung penurunannya per pukulan | Bar Core turun **sebesar satu angka tetap, berulang tiap `attackInterval`**, bukan sekali: `basic` **5 tiap 1.2 s**, `fast` **3 tiap 0.8 s**, `tank` **12 tiap 1.5 s**, Splitter **16 tiap 2.0 s**, Locker **24 tiap 2.0 s**. Pukulan pertama jatuh seketika saat musuh menempel. Angkanya = `attackDamage * 0.2`, dan **tidak** dipengaruhi difficulty: `tank` di `hard` tetap 12 per pukulan — yang dikali 1.8 cuma HP musuh. Penurunan baru berhenti kalau musuhnya dibunuh (WAVE-17) atau Core habis | M1 | solo (atau solo+EDIT untuk boss) | - |
+| CORE-03 | State `WaveActive`, HP Core hampir habis, dan **ada musuh yang sudah menempel di base** | Biarkan musuh terus memukul sampai HP Core 0 | HP berhenti **tepat di 0**, tidak pernah negatif, dan layar hasil "Core Server jebol" muncul. Seluruh musuh **dibersihkan dari arena, termasuk yang menempel di base** — cincin di sekitar Core ikut kosong, bukan tertinggal berdiri di sana — dan tidak ada pukulan yang masuk setelah itu: bar Core tetap 0 dan tidak ada angka yang bergerak lagi. Output mencetak `[CodeVerse] Core Server hancur` dan `[MatchService] match selesai: kalah di wave N` | M1 | solo | - |
+| CORE-04 | State `Intermission` atau `Lobby` | Tunggu tanpa melakukan apa-apa | HP Core tidak berkurang sama sekali — di luar `WaveActive` seluruh loop musuh berhenti, jadi musuh tidak bergerak **dan** tidak memukul. Perhatikan bahwa `Intermission` sendiri cuma bisa dimasuki setelah arena bersih (WAVE-20), jadi tidak akan ada musuh di base yang bisa diamati di sini | M1 | solo | OK |
 | CORE-05 | State `Intermission`, HP Core sudah berkurang, koin tim ≥ 150 | Beli **Hotfix** | HP Core naik **150** (15% dari 1000) **langsung saat dibeli**, bukan di wave berikutnya; tidak pernah melebihi 1000. Kalau Core sudah penuh, saldo tetap terpotong dan bar tidak berubah — itu benar, bukan bug | M3 | solo | - |
 | CORE-06 | Match berjalan, HP Core turun bertahap | Perhatikan warna Part Core di arena | Warnanya bergeser dari warna asli ke merah seiring HP-nya turun, jadi kondisi Core terlihat tanpa melihat HUD | M1 | solo | OK |
 
@@ -533,6 +620,8 @@ Acuan: DEVELOPMENT_PLAN.md bagian 3.7.
 | COMBAT-13 | `weapon_starter` ter-equip, beberapa musuh berdekatan di depan | Serang sekali | **Hanya satu** musuh yang kena, yang terdekat (`projectiles = 1`). Serangan yang mengenai beberapa musuh sekaligus adalah milik `weapon_boss_a` (COMBAT-09), bukan starter | M1 | solo | - |
 | COMBAT-14 | State `Intermission` (panel toko terbuka) dan `Lobby` (panel lobby terbuka) | Klik tombol di panel itu, lalu amati Output server dan HP musuh | Kliknya tidak memicu serangan. Catatan: di v1 ini **tidak bisa benar-benar membuktikan apa pun**, karena di kedua state itu `Attack` sudah ditolak gerbang state, dan selama `WaveActive` tidak ada satu pun tombol UI yang terlihat. Penjaga "input yang sudah dipakai UI tidak diteruskan" memang ada di `InputController`, tapi baru bisa diuji sungguhan setelah M7 menambah tombol UI yang aktif di tengah wave. Dicatat supaya tidak lupa diulang saat itu | M3 | solo | - |
 | COMBAT-15 | State `WaveActive`, musuh di depan | **Tahan** tombol kiri, jangan klik berulang | Serangan terkirim terus selama tombol ditahan (client mengirim 8 kali per detik, server menerapkan cooldown senjata). Tidak perlu mengklik berkali-kali | M1 | solo | - |
+| COMBAT-16 | Wave 2 atau lebih (komposisinya berisi `fast`), karakter HP penuh 100, **jangan menyerang sama sekali** | Berdiri di dekat lane sampai satu `fast` datang mengejar, biarkan dia memukul sampai karakter mati, lalu hitung detik sampai karakter kembali | Bar HP karakter turun **15 tiap 0.8 detik** — pukulan pertama jatuh begitu `fast` masuk 6 stud, tidak menunggu interval — dan karakter **mati setelah 7 pukulan**, sekitar 4.8 detik. Karakter kembali **5 detik** sesudahnya (`Balance.RESPAWN_SECONDS`) di `Arena/PlayerSpawn` dengan HP penuh 100, **tanpa** kehilangan nyawa, koin tim, atau progres apa pun — tidak ada sistem nyawa di v1. Selama mati, klik tidak men-damage musuh mana pun dan Output server tidak mengeluarkan error (COMBAT-10). Musuh yang membunuh kita **melepas targetnya** dan kembali berjalan ke base, tidak menunggu di tempat kita mati. Sementara kita mati, musuh di base **terus memukul Core** — bar Core tetap turun selama 5 detik itu | M1 | solo | - |
+| COMBAT-17 | Satu tipe per percobaan, karakter HP penuh 100, jangan menyerang. `tank` butuh wave 4; dua boss butuh wave 5 dan 10 (atau pindahkan `bossId` sementara) | Berdiri dalam 6 stud dari musuh itu dan hitung pukulan sampai karakter mati | Jumlah pukulannya tetap dan bisa dihitung: `basic` **4** (25 per pukulan tiap 1.2 s), `fast` **7** (15 / 0.8 s), `tank` **2** (60 / 1.5 s), Splitter **2** (80 / 2.0 s), Locker **1** (120 / 2.0 s — satu pukulan dari HP penuh langsung mematikan). Angka ini **tidak** berubah di `hard` dan tidak berubah dengan jumlah player: `attackDamage` tidak dikali pengali difficulty, cuma HP musuh yang dikali. `basic` dan `tank` memukul **dari tempatnya berdiri di lane** tanpa mengejar (WAVE-18) | M1 | solo (atau solo+EDIT untuk boss) | - |
 
 ## 11. Toko Match (SHOP)
 
@@ -744,10 +833,10 @@ bisa dicentang — tapi dia juga tidak sedang gagal.
 |---|---|---|---|
 | M0 | CI hijau, test Lune jalan | Di luar dokumen ini — lihat [bagian 3](#3-yang-sudah-terverifikasi-di-luar-dokumen-ini) | — |
 | M0 | Dua player baru yang di-load berbarengan punya tabel `weapons` yang **berbeda** | DATA-01, DATA-10, DATA-11, BOOT-01 | DATA-02 (`PUB`) menambah bukti migrasi skema, tapi bukan syarat kriteria ini |
-| M1 | Solo playtest bisa membunuh musuh | COMBAT-01, COMBAT-02, COMBAT-03, COMBAT-04, COMBAT-10, COMBAT-13, COMBAT-15, WAVE-03, WAVE-07, WAVE-11, WAVE-12, WAVE-13, WAVE-15, BOOT-02, BOOT-06 | — |
+| M1 | Solo playtest bisa membunuh musuh | COMBAT-01, COMBAT-02, COMBAT-03, COMBAT-04, COMBAT-10, COMBAT-13, COMBAT-15, COMBAT-16, COMBAT-17, WAVE-03, WAVE-07, WAVE-11, WAVE-12, WAVE-13, WAVE-15, WAVE-17, WAVE-18, WAVE-19, BOOT-02, BOOT-06 | — |
 | M1 | Core yang HP-nya habis memicu kalah | CORE-01, CORE-02, CORE-03, CORE-04, CORE-06, BOOT-03 | — |
 | M1 | Serangan terasa kena saat dites dengan ping tinggi (Network simulation) | COMBAT-05 | — |
-| M2 | Satu match penuh bisa dimainkan dari lobby sampai hasil | MATCH-01 sampai MATCH-09, MATCH-11, MATCH-12, MATCH-13, MATCH-15, MATCH-16, WAVE-01, WAVE-02, WAVE-04, WAVE-05, WAVE-14, WAVE-16, COMBAT-11, HUD-01, HUD-02 | MATCH-16 berkode `LIVE` |
+| M2 | Satu match penuh bisa dimainkan dari lobby sampai hasil | MATCH-01 sampai MATCH-09, MATCH-11, MATCH-12, MATCH-13, MATCH-15, MATCH-16, WAVE-01, WAVE-02, WAVE-04, WAVE-05, WAVE-14, WAVE-16, WAVE-20, COMBAT-11, HUD-01, HUD-02 | MATCH-16 berkode `LIVE` |
 | M2 | Bisa diulang tanpa restart server | MATCH-10, MATCH-14, SHOP-12 | — |
 | M2 | Scaling jumlah dan HP musuh per player; batas musuh aktif + antrian | WAVE-06, WAVE-08, WAVE-10 | Semuanya butuh `2P`/`4P` |
 | M3 | Beli item mengubah gameplay di wave berikutnya | SHOP-01 sampai SHOP-06, SHOP-14, CORE-05, COMBAT-14 | — |
@@ -840,3 +929,23 @@ atas langsung mengacu ke sini saat hasilnya terasa aneh tapi sebenarnya benar.
 | "Pemain baru" diukur dari apa | `stats.matchesPlayed < 1` | Satu-satunya penanda yang sudah ada di skema bagian 3.1 dan yang artinya tidak ambigu. Menambah field `tutorialDone` berarti menambah field skema untuk sesuatu yang bisa disimpulkan. Dites HUD-06. |
 | ReadyPad: tombol atau penanda | **Penanda posisi**; tombol Ready yang sesungguhnya ada di UI | Bagian 3.4 cuma menyebut "Part untuk tanda siap". Tombol UI bisa dipakai di mobile (CONCEPT.md menargetkan mobile) dan tidak bergantung pada pemain berhasil menginjak satu Part. ReadyPad tetap dibuat dan tetap dibaca MapService supaya kontrak bagian 3.4 utuh. Dites MATCH-02. |
 | Posisi lobby | Z = 400, 280 stud di belakang tepi arena | Lobby dan arena ada di satu place (bagian 1.1), jadi pemain yang ditahan di lobby harus dipisahkan dengan **jarak**, bukan dengan kode. Pada jarak itu pemain di lobby tidak bisa melihat atau menjangkau musuh di arena. Dites BOOT-05 dan MP-07. |
+
+### 20.6 Keputusan rancangan ulang arena
+
+Baris di bawah datang dari `docs/ARENA_REDESIGN.md` bagian 4 dan 5, bukan dari
+DEVELOPMENT_PLAN.md — jadi tidak ada kriteria "Selesai kalau" yang
+memaksanya, dan semuanya pilihan. Yang paling mengubah rasa main: musuh yang
+lolos **tidak hilang lagi**, dan dari satu perubahan itu lahir seluruh sisa
+tabel ini.
+
+| Keputusan | Yang dipilih | Alasan |
+|---|---|---|
+| Musuh yang mencapai ujung lane | **Berhenti di base, tetap hidup, memukul berulang** tiap `attackInterval` sampai dibunuh pemain | Sebelumnya dia men-damage Core sekali lalu dihapus sendiri, jadi kebocoran berarti satu kali kehilangan HP dan arena pasti bersih sendiri. Kebocoran yang menetap mengubah "aku kehilangan 5 HP" jadi "aku kehilangan 5 HP per 1.2 detik sampai aku mengurusnya", dan itu yang membuat `tank` akhirnya punya arti — dulu dia cuma 15 dari 1000. Dites WAVE-11, WAVE-17, CORE-02. |
+| Satu angka serangan atau dua (ke base dan ke player) | **Satu** `attackDamage`, dikali dua pengali di titik pemakaian: `BASE_DAMAGE_MULT` 0.2 dan `PLAYER_DAMAGE_MULT` 1.0 | Base 1000 HP dan player 100 HP terpaut 50x. Dua angka terpisah per tipe berarti dua tabel balancing yang bisa saling bertentangan tanpa ada yang sadar; satu angka dengan dua pengali berarti satu tempat untuk disetel dan satu rasio untuk diperdebatkan. Angkanya sendiri ditetapkan **dari sisi player** (berapa pukulan sampai mati), lalu dibaca ke sisi base lewat aritmetika kebocoran — kalau dibalik, hasilnya musuh yang mengelupas base 1 HP per detik. Aritmetikanya ada di [bagian 4.2](#42-angka-patokan). |
+| Pengali difficulty ikut menaikkan serangan musuh? | **Tidak.** Cuma HP yang dikali `hpMult` | `hard` yang menaikkan damage sekaligus HP menggandakan kesulitannya dua kali di satu pengali, dan pukulan yang membunuh pemain dalam satu hit tidak punya ruang untuk dinaikkan lagi: `tank` sudah 2 pukulan, Locker sudah 1. Yang dinaikkan `hard` adalah berapa lama musuh bertahan, bukan seberapa cepat pemain mati. Dites CORE-02 dan COMBAT-17. |
+| Musuh mana yang boleh meninggalkan lane untuk mengejar pemain | **Hanya yang `prefer = "player"`** — di v1 cuma `fast`. Yang lain memukul pemain yang menghalangi dari tempatnya berdiri | Musuh tidak punya collision maupun pathfinding, jadi pengejaran garis lurus bisa menembus dinding atau keluar arena. Membatasi pengejaran ke satu tipe membatasi masalah itu ke satu tipe juga, dan tetap memberi tiga rasa berbeda dari satu bentuk profil yang sama: `tank` tidak peduli pemain, `basic` memukul kalau dihalangi, `fast` memburu. Dites WAVE-18. |
+| Musuh yang sudah menempel di base, bisa ditarik keluar lagi? | **Tidak.** `attacking_base` tidak punya jalan keluar selain mati | Kalau mendekat bisa menariknya keluar, pemain bisa menunda kerusakan tanpa membunuh apa pun — dan karena wave baru selesai saat arena bersih, wave-nya bisa digantung selamanya oleh pemain yang cuma berdiri di dekat Core. Dites WAVE-17. |
+| Kembali ke lane setelah pengejaran selesai | Ke waypoint terdekat yang ada **di depannya**, bukan yang terdekat secara umum | Kalau boleh mundur, pemain bisa menarik satu musuh maju-mundur tanpa batas dan wave-nya tidak akan pernah berakhir. Dites WAVE-18. |
+| Penumpukan musuh di base | **Slot cincin**: 12 posisi per cincin, radius tumbuh per cincin (10, 14, 18, ...), nomor slot **tidak pernah dipakai ulang** | Tanpa collision, 20 musuh yang berhenti di titik yang sama jadi satu gumpalan yang tidak bisa dibidik satu-satu. Nomor slot tidak dipakai ulang supaya slot yang dibebaskan musuh mati tidak langsung diberikan ke musuh lain yang sedang datang — dua musuh bisa berdiri di titik yang sama persis kalau yang pertama mati tepat sebelum yang kedua sampai. Harganya: cincinnya melebar selama match berjalan, dan itu diterima. Radiusnya tumbuh per cincin (10, 14, 18, ...) supaya jumlah cincin tidak terbatas tanpa dua slot pernah berbagi tempat — versi pertama memakai satu radius luar untuk semua cincin dan membuat slot 24 berdiri tepat di posisi slot 12. Dites WAVE-19 dan unit test `EnemyAI`. |
+| Wave boleh dinyatakan bersih sementara masih ada musuh di base? | **Tidak**, dan jaminan "arena pasti bersih" memang dibuang — bukan ditambal dengan "musuh di base tidak dihitung" | Efek sampingnya yang justru dicari: Intermission dan Toko Match tertunda selama masih ada kebocoran, sambil base terus kehilangan HP. Kebocoran menghukum dua kali, HP dan waktu belanja, tanpa satu aturan tambahan. Dan ini tidak bisa menggantung permanen — kalau pemain tidak mampu, Core habis dan match berakhir kalah. Konsekuensinya untuk yang playtest: satu wave yang "tidak mau selesai" adalah hal yang benar, dan itu yang paling mudah salah dilaporkan. Dites WAVE-20, dijelaskan di T8. |
+| Konsekuensi kematian pemain | **Respawn biasa 5 detik di spawn arena, tanpa sistem nyawa** | Sebelum ini musuh tidak bisa menyentuh pemain sama sekali, jadi `RESPAWN_SECONDS` tidak punya arti. Sistem nyawa menambah state, UI, dan aturan multiplayer ("apa yang terjadi kalau satu pemain habis nyawa") untuk sesuatu yang sudah dihukum cukup oleh waktu: selama pemain tidak ada, musuh di base terus memukul. Angkanya ditulis eksplisit, bukan dibiarkan memakai default Roblox yang kebetulan juga 5 detik, supaya kesulitan game tidak bisa bergeser karena default engine berubah. Dites COMBAT-16. |

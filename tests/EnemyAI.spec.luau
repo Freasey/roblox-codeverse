@@ -259,55 +259,56 @@ table.insert(cases, {
 -- --------------------------------------------------------------------------
 
 table.insert(cases, {
-	name = "slot cincin memberi posisi berbeda untuk musuh berbeda",
+	name = "tidak ada dua slot cincin yang pernah berbagi tempat",
 	run = function()
-		local seen: { [string]: boolean } = {}
-		for slot = 0, Balance.BASE_RING_SLOTS - 1 do
+		-- Diuji lintas TIGA cincin, bukan satu. Versi pertama test ini cuma
+		-- berjalan 0..11 dan membandingkan slot 12 dengan slot 0, jadi dia lulus
+		-- sambil tidak pernah menyentuh properti yang justru rusak: slot 24
+		-- berdiri tepat di posisi slot 12, karena setiap cincin > 0 memakai
+		-- radius dan pergeseran sudut yang sama.
+		local slots = Balance.BASE_RING_SLOTS
+		local seen: { [string]: number } = {}
+		for slot = 0, slots * 3 - 1 do
 			local offset = EnemyAI.ringSlotOffset(
 				slot,
-				Balance.BASE_RING_SLOTS,
+				slots,
 				Balance.BASE_RING_RADIUS,
 				Balance.BASE_RING_RADIUS_OUTER
 			)
 			local key = string.format("%.3f,%.3f", offset.x, offset.z)
-			assert(not seen[key], string.format("slot %d bertabrakan dengan slot lain", slot))
-			seen[key] = true
-			local distance = HitTest.horizontalDistance(origin, offset)
+			local clash = seen[key]
 			assert(
-				math.abs(distance - Balance.BASE_RING_RADIUS) < 0.001,
-				"cincin pertama harus di radius dalam"
+				clash == nil,
+				string.format("slot %d berdiri tepat di posisi slot %d", slot, clash or -1)
 			)
+			seen[key] = slot
 		end
 	end,
 })
 
 table.insert(cases, {
-	name = "slot yang melewati kapasitas cincin pertama pindah ke cincin kedua",
+	name = "cincin pertama persis di radius dalam, dan tiap cincin punya radiusnya sendiri",
 	run = function()
-		-- Tanpa ini, musuh ke-13 berdiri tepat di atas musuh ke-1 dan
-		-- penumpukan yang mau dihindari kembali dengan periode 12.
-		local outer = EnemyAI.ringSlotOffset(
-			Balance.BASE_RING_SLOTS,
-			Balance.BASE_RING_SLOTS,
-			Balance.BASE_RING_RADIUS,
-			Balance.BASE_RING_RADIUS_OUTER
-		)
-		local distance = HitTest.horizontalDistance(origin, outer)
-		assert(
-			math.abs(distance - Balance.BASE_RING_RADIUS_OUTER) < 0.001,
-			"slot ke-13 harus di radius luar"
-		)
-
-		local inner = EnemyAI.ringSlotOffset(
-			0,
-			Balance.BASE_RING_SLOTS,
-			Balance.BASE_RING_RADIUS,
-			Balance.BASE_RING_RADIUS_OUTER
-		)
-		assert(
-			HitTest.horizontalDistance(inner, outer) > 1,
-			"slot cincin kedua tidak boleh tepat di belakang slot cincin pertama"
-		)
+		local slots = Balance.BASE_RING_SLOTS
+		local inner = Balance.BASE_RING_RADIUS
+		local outer = Balance.BASE_RING_RADIUS_OUTER
+		local function radiusOf(slot: number): number
+			local offset = EnemyAI.ringSlotOffset(slot, slots, inner, outer)
+			return HitTest.horizontalDistance(origin, offset)
+		end
+		for slot = 0, slots - 1 do
+			assert(math.abs(radiusOf(slot) - inner) < 0.001, "cincin pertama di radius dalam")
+		end
+		-- Radius naik sebesar selisihnya untuk tiap cincin sesudahnya, jadi
+		-- jumlah cincin tidak terbatas tanpa pernah bertumpuk.
+		local step = outer - inner
+		for ring = 1, 3 do
+			local expected = inner + step * ring
+			assert(
+				math.abs(radiusOf(slots * ring) - expected) < 0.001,
+				string.format("cincin ke-%d harus di radius %.1f", ring + 1, expected)
+			)
+		end
 	end,
 })
 
