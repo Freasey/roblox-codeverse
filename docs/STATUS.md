@@ -15,9 +15,16 @@ Terakhir diperbarui: 2026-10-24, pada commit `15a7da4`.
 
 Kode untuk **M0 sampai M5 sudah ada di `main` dan CI-nya hijau**: fondasi,
 pertarungan, state machine match dengan 10 wave, Toko Match, dua boss, dan
-progres permanen plus lobby. M6 sampai M8 belum disentuh. Yang belum terjadi
-dan jadi penghalang utama sekarang bukan koding, tapi **playtest manusia**:
-sebagian besar perilaku game belum pernah dijalankan oleh seorang pemain.
+progres permanen plus lobby. M6 sampai M8 belum disentuh. Sebagian besar
+perilaku game belum pernah dijalankan oleh seorang pemain.
+
+**Playtest M1 ditunda, dan ini sengaja.** `docs/ARENA_REDESIGN.md` mengubah cara
+musuh menyerang: yang mencapai base tidak lagi hilang, dia berhenti dan memukul
+sampai dibunuh. Satu case M1 (`CORE-02`) mematok lima angka damage yang semuanya
+hilang karena itu, dan 27 assertion harness menguji perilaku yang sedang
+dibuang. Playtest-nya bukan dibatalkan, cuma menunggu sampai yang diuji adalah
+perilaku yang akan bertahan. Bagian 3 di bawah tetap berlaku apa adanya begitu
+rancangan langkah 1-3 selesai.
 
 ## 2. Apa yang sudah terverifikasi, dan dengan cara apa
 
@@ -55,7 +62,7 @@ tanpa Player. Case `core_wave` menutup itu dan membuat **WAVE-11, WAVE-12,
 CORE-04, dan CORE-06 jadi `OK` tanpa tangan manusia.** Yang benar-benar mentok
 cuma yang butuh karakter atau client: menyerang, bar HP, kamera, input.
 
-## 3. Langkah berikutnya: playtest M1 (tugas Daffa)
+## 3. Playtest M1 (tugas Daffa) — DITUNDA, lihat bagian 1
 
 Tinggal **18 case bertanda M1** di `docs/TEST_CASES.md` (WAVE-11, WAVE-12, CORE-04, dan CORE-06 sudah `OK` lewat harness):
 

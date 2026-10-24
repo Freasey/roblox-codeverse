@@ -333,8 +333,8 @@ itu terasa sebagai puncak. Total 5.300. Lalu dikali pengali pemain:
 
 ### Masalah yang dibawa pengali x4
 
-Seluruh isi Toko Match sekarang **cuma bisa menyerap 2.950 koin** — lima item,
-semuanya dibatasi (`maxPurchases` 5/5/3/5/2). Solo dengan pengali x4 akan
+Seluruh isi Toko Match sekarang **cuma bisa menyerap 3.450 koin** — lima item,
+semuanya dibatasi: 200x5 + 200x5 + 150x3 + 100x5 + 250x2. Solo dengan pengali x4 akan
 mengumpulkan **21.200** koin sepanjang 10 wave: dia memborong habis seluruh toko
 di wave 3-4, lalu enam wave sisanya koinnya tidak ada gunanya.
 
@@ -364,7 +364,8 @@ sebagian daftar itu:
 |---|---|
 | **CORE-02** | mematok lima angka damage ke Core (`basic` 5, `fast` 4, `tank` 15, Splitter 25, Locker 40). Kelimanya hilang — `coreDamage` berubah jadi DPS |
 | **WAVE-11** | secara eksplisit menguji musuh yang sampai di Core "langsung dihapus, bukan berhenti menumpuk". Itu persis perilaku yang sekarang diminta. Case-nya bukan gagal, tapi terbalik |
-| `tests/studio/cases/enemy_core.luau` | assertion `damage.musuhDibersihkanSetelahSampai` dan `damage.tidakDamageBerulang` akan merah, dan memang **seharusnya** merah |
+| `tests/studio/cases/enemy_core.luau` | **27 assertion** akan merah, dan memang seharusnya merah: 19 di grup `damageTipe.*` (empat tipe x tiga assertion, plus patokan `hard4Player` dan `coreBelumHancur`) dan 8 di grup `damage.*`. Itu 15% dari 183 assertion harness, jadi langkah 3 bukan pekerjaan sepele |
+| `tests/studio/cases/core_wave.luau` | `habis.musuhTetapSampaiDiCore` dan `habis.hpTetapNolSetelahDiserangLagi` dua-duanya menggiring musuh ke Core lewat jalur normal, jadi ikut terdampak |
 | **WAVE-07** | masih sah, tapi angkanya bergeser begitu alur upgrade mengubah damage |
 
 Artinya: **kerjakan rancangan ini dulu, baru playtest.** Kalau playtest jalan
