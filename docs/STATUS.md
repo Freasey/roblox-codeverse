@@ -27,7 +27,7 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 | --- | --- | --- |
 | Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit | **149 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
-| Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane | **145 assertion lulus, 0 gagal, 16 di-skip** |
+| Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, damage ke Core per tipe musuh, skala HP per wave | **183 assertion lulus, 0 gagal, 16 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
 
 ### Kenapa CI hijau tidak cukup

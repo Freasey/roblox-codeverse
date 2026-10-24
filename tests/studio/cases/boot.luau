@@ -37,6 +37,24 @@ local EXPECTED_LINES = {
 	"[ProgressionService] siap",
 }
 
+-- Berapa KALI sebuah baris muncul di log, bukan cuma apakah dia ada.
+--
+-- `T.logFind` berhenti di kecocokan pertama, jadi baris yang tercetak dua kali
+-- lolos darinya tanpa suara. Itu bukan kekhawatiran teoretis: cache `require`
+-- milik konteks plugin pernah membuat seluruh rantai boot jalan dua kali, dan
+-- gejala satu-satunya adalah "[MapService] Arena siap" yang tercetak dua kali
+-- (lihat tests/studio/README.md bagian Mekanismenya, lapis 3). Semua assertion
+-- lain tetap hijau dalam keadaan itu.
+local function logCount(needle: string): number
+	local count = 0
+	for _, entry in T.log() do
+		if string.find(entry.text, needle, 1, true) ~= nil then
+			count += 1
+		end
+	end
+	return count
+end
+
 T.main(function()
 	-- Rantai boot tidak instan: host memanggil Run() lalu script ini juga
 	-- mulai, jadi urutannya tidak dijamin. Tunggu penanda terakhir.
@@ -63,6 +81,40 @@ T.main(function()
 		arenaLine ~= nil and string.find(arenaLine, "Lane1=7, Lane2=7", 1, true) ~= nil,
 		arenaLine
 	)
+
+	-- BOOT-02 menuntut barisnya TEPAT SATU, dan dua assertion di atas tidak
+	-- menjangkau itu. Baris kedua berarti `MapService.getArena()` membaca map
+	-- dua kali — artinya `arenaResolved` tidak memegang cache-nya, atau ada dua
+	-- salinan modul yang hidup berbarengan, dan dua musuh bisa berjalan di dua
+	-- kumpulan waypoint yang berbeda tanpa ada yang terlihat salah.
+	T.eq("boot.arena.barisSiapTepatSatu", logCount("[MapService] Arena siap"), 1)
+
+	-- Sisi lain dari kejadian yang sama: init.server.luau mencetak baris ini di
+	-- module scope, jadi dua baris = rantai boot jalan dua kali.
+	T.eq("boot.initServerJalanSekali", logCount("[CodeVerse] server booting"), 1)
+
+	-- Arena ADA di place ini, jadi warn Arena tidak boleh muncul SAMA SEKALI.
+	-- Diperiksa terpisah dari `boot.tidakAdaWarnTakTerduga` karena warn ini yang
+	-- paling mungkin lolos: dia memang bukan warn tak terduga kalau map-nya
+	-- hilang, dan tanpa assertion ini satu-satunya gejalanya adalah angka lane 0
+	-- di baris "Arena siap" yang tidak pernah tercetak.
+	T.eq(
+		"boot.mapService.warnArenaTidakPernah",
+		logCount("[MapService] Arena tidak bisa dipakai"),
+		0
+	)
+
+	-- BOOT-03 menuntut warn MapService "tidak berulang tiap frame". Yang bisa
+	-- diperiksa dari sini adalah bentuk yang sama untuk warn Lobby, yang memang
+	-- muncul di place ini (assets/Lobby.rbxmx belum ada): `getLobby()` dipanggil
+	-- beberapa service dan warn-nya dijaga bendera sekali-pakai `lobbyWarned`,
+	-- jadi angka 2 berarti bendera itu tidak bekerja.
+	--
+	-- Batas ATAS, bukan sama dengan satu: begitu Lobby dibuat angkanya jadi nol,
+	-- dan itu kemajuan, bukan kegagalan. Alasannya sama dengan ALLOWED_WARNINGS
+	-- di atas file ini.
+	local lobbyWarnCount = logCount("[MapService] Lobby tidak lengkap")
+	T.ok("boot.mapService.warnLobbyTidakBerulang", lobbyWarnCount <= 1, lobbyWarnCount)
 
 	-- Hanya keluaran milik game yang dihitung: Studio ikut mencetak ke Output
 	-- yang sama, dan sampahnya muncul tidak menentu (lihat T.gameErrors di
@@ -100,6 +152,26 @@ T.main(function()
 		"boot.warnYangDiizinkan",
 		string.format("%d warn, semuanya ada di daftar yang diizinkan", allowedCount)
 	)
+
+	-- Bentuk umum dari "tidak ada warn yang berulang tiap frame" (BOOT-03):
+	-- tidak ada warn milik game yang teksnya PERSIS sama muncul lebih dari
+	-- sekali. Diperiksa sebagai teks utuh, bukan per awalan service, karena
+	-- setiap warn di src/ menyebut service DAN alasannya — dua sebab yang
+	-- berbeda tidak menghasilkan teks yang identik, jadi duplikat selalu berarti
+	-- warn yang sama keluar dua kali.
+	--
+	-- Ini melengkapi daftar izin di atas, yang menyaring warn menurut ISINYA dan
+	-- karena itu melewatkan warn yang diizinkan tapi tercetak 400 kali.
+	local warnCounts: { [string]: number } = {}
+	local repeated: { string } = {}
+	for _, warning in T.gameWarnings() do
+		local seen = (warnCounts[warning] or 0) + 1
+		warnCounts[warning] = seen
+		if seen == 2 then
+			table.insert(repeated, warning)
+		end
+	end
+	T.ok("boot.tidakAdaWarnIdentikBerulang", #repeated == 0, table.concat(repeated, " || "))
 
 	-- State awal yang dihasilkan wiring itu. Dibaca dari service yang sama
 	-- dengan yang dipakai init.server.luau — script ini disuntik sebagai Script

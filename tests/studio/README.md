@@ -98,7 +98,7 @@ lune run tests/studio/run
 
 ## Apa yang BISA dites di sini
 
-Diverifikasi dengan empat case di `cases/`, 145 assertion (145 lulus, 0 gagal, 16 dilewati):
+Diverifikasi dengan empat case di `cases/`, 183 assertion (183 lulus, 0 gagal, 16 dilewati):
 
 - **Seluruh rantai boot `init.server.luau` di engine sungguhan** — urutan
   `require` yang melingkar, API web yang dipanggil di module scope, nama
@@ -170,7 +170,9 @@ langsung kalah.** `CoreService.heal()` punya celah yang identik.
 
 Seberapa serius: **belum bisa dieksploitasi dari client.** Satu-satunya pemanggil
 `damage()` adalah `arriveAtCore()`, yang mengirim `enemy.coreDamage` — angka
-berhingga dari `Enemies.luau` dikali pengali difficulty. Jadi ini celah laten di
+berhingga yang diambil apa adanya dari `Enemies.luau`/`Bosses.luau`, tanpa
+pengali difficulty sama sekali (berbeda dari HP musuh, yang lewat
+`Balance.enemyHp`; dipatok di `damageTipe.hard4Player.*`). Jadi ini celah laten di
 fungsi yang komentarnya sendiri mengklaim memvalidasi argumennya, bukan lubang
 yang terbuka hari ini. Tetap layak ditutup: `CombatService` sudah memeriksa
 `magnitude == math.huge` untuk arah serangan, jadi polanya memang dikenal di
