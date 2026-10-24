@@ -10,13 +10,16 @@ keputusan implementasi — pindah ke sini.
 
 > ## Baca ini dulu
 >
-> **Tidak satu baris pun kode M1 sampai M5 pernah dijalankan sebagai game di
-> Roblox Studio.** Yang sudah hijau cuma `stylua --check`, `selene`,
-> `luau-lsp analyze`, 148 unit test Lune, dan `rojo build` — dan lolos type check
-> bukan berarti jalan di engine. Yang sama sekali tidak bisa diperiksa dari CI:
-> apakah UI-nya kelihatan dan posisinya benar, apakah musuh benar-benar bergerak,
-> apakah serangan terasa kena saat ping tinggi, apakah state machine-nya berpindah
-> pada waktu yang benar, dan apakah data tersimpan lalu terbaca lagi.
+> **Tidak satu baris pun kode M1 sampai M5 pernah dimainkan sebagai game di
+> Roblox Studio.** Yang sudah hijau: `stylua --check`, `selene`,
+> `luau-lsp analyze`, 149 unit test Lune, `rojo build`, dan — sejak harness
+> `tests/studio` ada — sisi server yang dijalankan engine sungguhan dalam mode
+> Run (lihat [bagian 3.2](#32-cakupan-harness-studio)). Lolos type check bukan
+> berarti jalan di engine, dan jalan di mode Run bukan berarti bisa dimainkan:
+> mode Run tidak punya Player sama sekali. Yang tetap tidak bisa diperiksa tanpa
+> manusia di Studio: apakah UI-nya kelihatan dan posisinya benar, apakah serangan
+> terasa kena saat ping tinggi, apakah state machine-nya berpindah pada waktu
+> yang benar, dan apakah data tersimpan lalu terbaca lagi.
 >
 > Jadi dokumen ini **bukan formalitas dan bukan lampiran yang diisi belakangan.**
 > Dia gerbang pertama yang sebenarnya. Baris yang GAGAL di sini adalah bug nyata
@@ -186,15 +189,89 @@ File menimpa `assets/Arena.rbxmx`.
 
 ## 3. Yang sudah terverifikasi di luar dokumen ini
 
+Ada dua macam cakupan dari luar dokumen ini, dan keduanya tidak boleh
+dicampur. [Bagian 3.1](#31-tidak-perlu-dites-lagi-di-sini) adalah hal yang
+**tidak perlu dites lagi** sama sekali. [Bagian 3.2](#32-cakupan-harness-studio)
+adalah cakupan **sebagian**: dia memendekkan kerja tangan untuk beberapa baris
+M1, tapi tidak satu pun dari baris itu jadi hijau karenanya.
+
+### 3.1 Tidak perlu dites lagi di sini
+
 Tiga hal di bawah **tidak perlu dites lagi** di sini. Dicatat supaya tidak ada
 yang mengetesnya ulang, dan supaya kalau salah satunya pecah, jelas bahwa itu
 regresi.
 
 | Yang sudah terverifikasi | Di mana | Catatan |
 |---|---|---|
-| Lint, format, type check, 148 unit test Lune, `rojo build` | CI (`.github/workflows/ci.yml`) | Modul murni di `src/shared/Modules` sudah punya test: pembagian musuh per wave jumlahnya persis `Balance.enemyCount`, ambang boss cuma terpicu sekali, seluruh daftar penolakan toko dan progres, kurva level yang aman terhadap XP inf/NaN, dan material drop boss cocok dengan bahan craft. |
-| **Relative require jalan di engine Roblox** (DEVELOPMENT_PLAN.md bagian 1.5) | Playtest Studio pertama | Place lokal dijalankan dan eksekusi sampai masuk ke `PlayerDataService`, artinya seluruh rantai require di atasnya sukses — termasuk `require(Shared.Config)`, dan `Config.luau` baris 5 adalah `require("./Modules/Types")`. Rencana cadangan di bagian 1.5 **tidak** dipakai. |
+| Lint, format, type check, 149 unit test Lune, `rojo build` | CI (`.github/workflows/ci.yml`) | Modul murni di `src/shared/Modules` sudah punya test: pembagian musuh per wave jumlahnya persis `Balance.enemyCount`, ambang boss cuma terpicu sekali, seluruh daftar penolakan toko dan progres, kurva level yang aman terhadap XP inf/NaN, dan material drop boss cocok dengan bahan craft. |
+| **Relative require jalan di engine Roblox** (DEVELOPMENT_PLAN.md bagian 1.5) | Playtest Studio pertama, lalu tiap run harness (`boot.log: [CodeVerse] relative require OK`) | Place lokal dijalankan dan eksekusi sampai masuk ke `PlayerDataService`, artinya seluruh rantai require di atasnya sukses — termasuk `require(Shared.Config)`, dan `Config.luau` baris 5 adalah `require("./Modules/Types")`. Rencana cadangan di bagian 1.5 **tidak** dipakai. |
 | **API web Roblox tidak boleh dipanggil di module scope** | Playtest Studio pertama | `GetDataStore` dulu dipanggil di module scope `PlayerDataService`; di place yang belum pernah di-publish, Roblox melempar error tepat di baris itu, require-nya gagal, dan SELURUH script server mati sebelum satu baris pun jalan — dengan pesan "Requested module experienced an error while loading" yang tidak menunjuk ke penyebabnya. Sudah diperbaiki jadi lazy + `pcall`. **Aturan ini berlaku untuk semua kode berikutnya:** `DataStoreService`, `OrderedDataStore`, `MessagingService`, `HttpService`, `MarketplaceService`, dan sejenisnya hanya dipanggil di dalam fungsi. |
+
+### 3.2 Cakupan harness Studio
+
+`tests/studio` menjalankan sisi server game ini di dalam Roblox Studio asli dari
+command line (`lune run tests/studio/run`). Mekanismenya: `run-in-roblox`
+membuka place hasil `rojo build`, script-nya memanggil `RunService:Run()` — itu
+tombol **Run**, jadi seluruh `Script` server benar-benar dieksekusi engine — lalu
+sebuah `Script` test disuntik ke `ServerScriptService` supaya dia berbagi cache
+`require` dengan `init.server.luau` dan memanggil service yang sungguh hidup,
+bukan salinan. Penjelasan lengkapnya ada di
+[tests/studio/README.md](../tests/studio/README.md).
+
+Batasnya satu, dan dia menentukan segalanya: **mode Run tidak punya Player.**
+`Players:CreateLocalPlayer` ditolak engine, jadi tidak ada karakter, tidak ada
+Humanoid, tidak ada input, tidak ada kamera, dan tidak ada satu pun
+`LocalScript` yang jalan. Apa pun di kolom "Hasil yang diharapkan" yang
+menyebut HUD, panel, bar HP, klik, atau posisi karakter berada di luar
+jangkauannya secara permanen — bukan karena harness-nya belum selesai.
+
+Run terakhir: **145 assertion lulus, 0 gagal, 16 dilewati, exit 0**, dari case
+`boot`, `enemy_core`, `remote_reject`, dan `core_wave`. Yang 13 dilewati itu **bukan lulus**:
+kedelapan handler remote C → S memanggil `RateLimit.check(player.UserId)`
+sebelum memvalidasi argumennya, jadi tanpa Player mereka error karena nil player
+sebelum jalur validasinya tersentuh — delapan SKIP untuk handler-nya, empat lagi
+untuk varian argumen `RequestAction`, dan satu untuk `GetProfile` yang
+memanggil `PlayerDataService.waitFor(player)`. Itu milik
+[bagian 16](#16-keamanan-remote-sec) dan tetap harus dijalankan dari command bar
+client.
+
+Akibatnya untuk kolom Status: **empat baris M1 dibuktikan seluruhnya dan sudah
+`OK`** — WAVE-11, WAVE-12, CORE-04, dan CORE-06. Keempatnya kebetulan tidak
+punya bagian client di kolom harapannya: yang diuji gerak musuh, pembagian lane,
+HP Core, dan warna sebuah Part, semuanya milik server.
+
+Sisanya tetap `-`, dan aturan di [bagian 1](#1-cara-memakai-dokumen-ini) berlaku
+apa adanya: sebagian sesuai bukan `OK`. Dua yang paling dekat tapi tidak lolos
+patut disebut, supaya tidak ada yang menaikkannya belakangan tanpa alasan baru:
+**BOOT-06** (jalur lane 1 terbukti utuh, tapi lane 2 tidak disentuh dan flag
+`DEBUG_VISIBLE_WAYPOINTS` memang untuk dilihat mata) dan **CORE-03** (HP berhenti
+tepat di 0 dan `onDestroyed` menyala sekali, tapi transisi ke `Ended` dan
+pembersihan arena ada di `MatchService.endMatch` yang tidak bisa dicapai tanpa
+Player).
+
+Untuk baris yang masih `-`, tabel di bawah menyebut bagian mana yang sudah
+berdiri sendiri, supaya kerja tangannya lebih pendek dan bukan diulang dari nol.
+
+| ID | Sudah dibuktikan harness | Masih butuh tangan |
+|---|---|---|
+| BOOT-02 | Baris `[MapService] Arena siap` isinya persis `2 lane, waypoint di-cache (Lane1=7, Lane2=7)` (`boot.arena.2lane`, `boot.arena.waypointTerCache`), dan tidak ada warn `MapService` soal Arena — allow-list warn-nya cuma memuat DataStore dan Lobby (`boot.tidakAdaWarnTakTerduga`) | Bahwa barisnya **tepat satu**: harness cuma mencari kecocokan pertama, tidak menghitungnya. Dan karakter muncul di `Arena/PlayerSpawn` |
+| BOOT-06 | Jalur lane 1 **utuh dan berurutan**: satu musuh diikuti 100 sampel dari awal lane sampai Core, jarak terdekat ke tiap waypoint 1–7 di bawah 1.2 stud, dan nomor sampel saat kedekatan itu terjadi naik rapi `@1 @16 @33 @49 @66 @83 @99` (`waypoint.urutan1Sampai7`). Urutan nama waypoint datang dari sort **angka**, diuji dengan nama yang memuat "10" supaya sort string memberi hasil berbeda (`waypoint.urutanDariSortAngkaBukanString`) | Lane 2 tidak disentuh, dan flag `DEBUG_VISIBLE_WAYPOINTS` memang untuk dilihat mata. Nomor sampel yang naik sudah menutup lompat-balik dan zig-zag besar; yang tersisa untuk mata cuma kehalusan geraknya |
+| WAVE-03 | Musuh `basic` berjalan mengikuti lane mendekat ke Core (`gerak.*`, sama dengan BOOT-06); HP dasarnya 100 di wave 1 terbaca di detail `gerak.hpPositif` | Angka 8 stud/detik — harness jalan sekitar 8 Hz, jadi durasi absolut dari sana tidak bisa dibandingkan dengan playtest. Dan jumlah serangan sampai mati: menyerang butuh karakter |
+| CORE-01 | HP Core 1000 / 1000 dan Core belum hancur tepat setelah boot (`boot.coreHpPenuh`, `boot.coreTidakHancur`, `prasyarat.coreHpPenuh`) | Bahwa HUD menampilkannya: "Core 1000 / 1000" dan bar penuh adalah UI client |
+| CORE-02 | Satu `basic` sampai ke Core: HP 1000 → 995, persis sebesar `coreDamage` musuh itu (`damage.besarDamagePersis`, `damage.hpCoreBerkurang`), musuhnya hilang dari arena (`damage.musuhDibersihkanSetelahSampai`), dan tidak men-damage Core berulang sesudahnya (`damage.tidakDamageBerulang`) | Bar Core di HUD, dan empat angka sisanya: tidak ada tipe selain `basic` yang dijalankan sampai Core, jadi `fast` 4, `tank` 15, Splitter 25, dan Locker 40 belum terbukti di engine |
+| CORE-03 | HP berhenti **tepat di 0** dan tidak pernah negatif walau di-damage tiga kali HP yang ada, `onDestroyed` menyala tepat sekali dengan HP sudah 0, damage dan heal sesudahnya ditolak, dan musuh yang sampai lewat jalur normal (`step` → `arriveAtCore`) tidak menembus 0 (`habis.*`) | Transisi state ke `Ended` dan pembersihan arena: keduanya di `MatchService.endMatch`, yang cuma terpanggil dari handler `onDestroyed` saat state `WaveActive` atau `Intermission` — dan state tidak bisa keluar dari `Lobby` tanpa Player |
+
+Tiga belas baris M1 sisanya **tidak disentuh harness sama sekali** dan dikerjakan
+dari nol: BOOT-03 (butuh map-nya dihilangkan, dan menilai HUD), WAVE-07, WAVE-13,
+WAVE-15, CORE-03, serta seluruh COMBAT M1 — COMBAT-01 sampai COMBAT-05,
+COMBAT-10, COMBAT-13, COMBAT-15. Semuanya bermuara ke satu sebab yang sama:
+menyerang butuh karakter, dan bar HP musuh, bar Core, serta jarak pandang
+kamera butuh client.
+
+Harness ini **tidak jalan di CI** (butuh instalasi Studio), jadi angka di atas
+berasal dari satu run manual dan bisa basi. Jalankan ulang
+`lune run tests/studio/run` sebelum memakai tabel ini sebagai alasan melewatkan
+sesuatu.
 
 ## 4. Kontrak remote dan angka patokan
 
@@ -416,8 +493,8 @@ Acuan: DEVELOPMENT_PLAN.md bagian 1.3, 3.4, 3.5.
 | WAVE-08 | Dua playtest terpisah, `basic` di wave 1: solo dan 2 player | Bandingkan serangan untuk membunuh satu `basic` | Solo = 4 serangan (HP 100), 2 player = **6** serangan (HP 135). HP naik 35% per player tambahan | M2 | 2P | - |
 | WAVE-09 | `hard` sudah terbuka; dua playtest solo wave 1, `normal` dan `hard` | Bandingkan serangan untuk membunuh satu `basic` | `normal` = 4 serangan (HP 100), `hard` = **8** serangan (HP 180, pengali 1.8) | M5 | solo | - |
 | WAVE-10 | Playtest **4 player** sampai **wave 10** — satu-satunya wave yang jumlah musuhnya (41) melewati batas 40 | Amati jumlah musuh aktif di arena selama wave 10 berjalan | Musuh aktif tidak pernah lebih dari 40 sekaligus; musuh dari antrian menyusul spawn setelah musuh lain mati; wave tetap bisa diselesaikan. Kalau wave tidak pernah bersih, antrian bocor. Alternatif tanpa 4 client: naikkan `Balance.COUNT_BASE` sementara | M2 | 4P (atau solo+EDIT) | - |
-| WAVE-11 | Match berjalan | Ikuti satu musuh dari titik spawn sampai Core | Musuh melewati waypoint 1 sampai 7 berurutan dan berhenti di dekat Core; tidak memotong jalur dan tidak melompat balik. Sudah dicakup lebih detail oleh BOOT-06 | M1 | solo | - |
-| WAVE-12 | Arena 2 lane | Amati spawn selama satu wave | Musuh datang dari kedua lane **bergantian satu-satu** (lane dibagikan round-robin, bukan acak), bukan menumpuk di satu lane | M1 | solo | - |
+| WAVE-11 | Match berjalan | Ikuti satu musuh dari titik spawn sampai Core | Musuh melewati waypoint 1 sampai 7 berurutan; tidak memotong jalur dan tidak melompat balik. Sampai di waypoint terakhir dia men-damage Core lalu **langsung dihapus** — bukan berhenti menumpuk di dekat Core (`arriveAtCore` di `EnemyService`: damage, sinyal, lalu `removeEnemy`). Jalurnya dicakup lebih detail oleh BOOT-06, nasib akhirnya oleh CORE-02 | M1 | solo | OK |
+| WAVE-12 | Arena 2 lane | Amati spawn selama satu wave | Musuh datang dari kedua lane **bergantian satu-satu** (lane dibagikan round-robin, bukan acak), bukan menumpuk di satu lane | M1 | solo | OK |
 | WAVE-13 | Match berjalan | Pukul satu musuh sekali, jangan sampai mati | Bar HP kecil (BillboardGui) di atas musuh ikut turun dan panjangnya sesuai sisa HP. Warnanya hijau di atas 50%, kuning di atas 25%, merah di bawahnya | M1 | solo | - |
 | WAVE-14 | Wave selesai, state `Intermission` | Amati arena selama jeda | Tidak ada musuh yang masih berjalan dan tidak ada sisa antrian spawn dari wave sebelumnya — state ini baru bisa masuk kalau musuh aktif **dan** antrian dua-duanya nol | M2 | solo | - |
 | WAVE-15 | Match berjalan, ada musuh jauh di ujung lane | Menjauh dari musuh sampai lebih dari ~140 stud | Bar HP musuh **hilang dari pandangan** di luar jarak itu (`MaxDistance` 140), lalu muncul lagi saat didekati. Ini bukan bug: tanpa batas jarak, 40 BillboardGui tetap dirender walaupun cuma beberapa piksel | M1 | solo | - |
@@ -430,9 +507,9 @@ Acuan: DEVELOPMENT_PLAN.md bagian 1.3, 3.4, 3.5.
 | CORE-01 | Match baru mulai | Lihat bar Core di HUD | "Core 1000 / 1000", bar penuh | M1 | solo | - |
 | CORE-02 | State `WaveActive`, ada musuh berjalan | Biarkan satu `basic` sampai ke Core Server | Bar Core turun **5 poin**, musuh itu hilang (tidak menumpuk di Core). Angka per tipe: `basic` 5, `fast` 4, `tank` 15, Splitter 25, Locker 40 | M1 | solo | - |
 | CORE-03 | State `WaveActive`, HP Core hampir habis | Biarkan musuh terus sampai HP Core 0 | Match langsung berakhir kalah; tidak ada HP negatif; musuh dibersihkan dan tidak terus menyerang Core | M1 | solo | - |
-| CORE-04 | State `Intermission` atau `Lobby` | Tunggu tanpa melakukan apa-apa | HP Core tidak berkurang sama sekali — di luar `WaveActive` musuh tidak bergerak | M1 | solo | - |
+| CORE-04 | State `Intermission` atau `Lobby` | Tunggu tanpa melakukan apa-apa | HP Core tidak berkurang sama sekali — di luar `WaveActive` musuh tidak bergerak | M1 | solo | OK |
 | CORE-05 | State `Intermission`, HP Core sudah berkurang, koin tim ≥ 150 | Beli **Hotfix** | HP Core naik **150** (15% dari 1000) **langsung saat dibeli**, bukan di wave berikutnya; tidak pernah melebihi 1000. Kalau Core sudah penuh, saldo tetap terpotong dan bar tidak berubah — itu benar, bukan bug | M3 | solo | - |
-| CORE-06 | Match berjalan, HP Core turun bertahap | Perhatikan warna Part Core di arena | Warnanya bergeser dari warna asli ke merah seiring HP-nya turun, jadi kondisi Core terlihat tanpa melihat HUD | M1 | solo | - |
+| CORE-06 | Match berjalan, HP Core turun bertahap | Perhatikan warna Part Core di arena | Warnanya bergeser dari warna asli ke merah seiring HP-nya turun, jadi kondisi Core terlihat tanpa melihat HUD | M1 | solo | OK |
 
 ## 10. Combat (COMBAT)
 

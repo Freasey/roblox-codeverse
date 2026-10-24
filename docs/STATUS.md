@@ -27,7 +27,7 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 | --- | --- | --- |
 | Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit | **149 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
-| Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote | **82 assertion lulus, 0 gagal, 13 di-skip** |
+| Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane | **145 assertion lulus, 0 gagal, 16 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
 
 ### Kenapa CI hijau tidak cukup
@@ -48,18 +48,30 @@ HUD tidak bisa diotomatisasi sama sekali. Rinciannya di
 `tests/studio/COVERAGE.md`.
 
 Ini bukan masalah yang bisa dipecahkan dengan usaha lebih; itu batas alatnya.
-Dari 160 case di `docs/TEST_CASES.md`, hanya 16 yang bisa otomatis penuh.
+Tapi batas itu lebih jauh dari yang disangka semula. Apa pun yang dikerjakan
+server sendiri bisa dijangkau: musuh digerakkan server lewat `CFrame`, jadi
+urutan waypoint, pembagian lane, HP Core, dan warna Part Core semuanya terukur
+tanpa Player. Case `core_wave` menutup itu dan membuat **WAVE-11, WAVE-12,
+CORE-04, dan CORE-06 jadi `OK` tanpa tangan manusia.** Yang benar-benar mentok
+cuma yang butuh karakter atau client: menyerang, bar HP, kamera, input.
 
 ## 3. Langkah berikutnya: playtest M1 (tugas Daffa)
 
-Ada **22 case bertanda M1** di `docs/TEST_CASES.md`:
+Tinggal **18 case bertanda M1** di `docs/TEST_CASES.md` (WAVE-11, WAVE-12, CORE-04, dan CORE-06 sudah `OK` lewat harness):
 
 ```
 BOOT-02 BOOT-03 BOOT-06
-WAVE-03 WAVE-07 WAVE-11 WAVE-12 WAVE-13 WAVE-15
-CORE-01 CORE-02 CORE-03 CORE-04 CORE-06
+WAVE-03 WAVE-07 WAVE-13 WAVE-15
+CORE-01 CORE-02 CORE-03
 COMBAT-01 COMBAT-02 COMBAT-03 COMBAT-04 COMBAT-05 COMBAT-10 COMBAT-13 COMBAT-15
 ```
+
+Sebagian dari 18 itu **sudah terbukti separuh**, dan bagian mana yang tersisa
+ditulis per case di `docs/TEST_CASES.md` bagian 3.2. Dua yang paling memendek:
+geometri COMBAT-03 (musuh di belakang, musuh di luar jangkauan) dan pemilihan
+target terdekat COMBAT-13 sudah dibuktikan unit test di
+`tests/HitTest.spec.luau` — yang tersisa cuma memastikan kabelnya tersambung,
+bukan menguji ulang matematikanya.
 
 ### Urutan menjalankannya
 
@@ -70,7 +82,7 @@ ditukar, dan alasannya ditulis di tempatnya masing-masing.
 
 ```bash
 lune run tests/run          # 149 unit test, beberapa detik
-lune run tests/studio/run   # harness Studio, ~45 detik
+lune run tests/studio/run   # harness Studio, ~85 detik
 ```
 
 Harness ini **harus jalan sebelum Studio dibuka**. Dia membuka instalasi Studio
@@ -191,10 +203,14 @@ menggantung selamanya, jadi tidak ada lebih baik daripada ada tapi mati. Lihat
 
 ## 7. Utang dokumentasi yang diketahui
 
-- **`tests/studio/COVERAGE.md` persentasenya historis.** Penyebutnya 126,
+- **`tests/studio/COVERAGE.md` persentasenya historis, dan sekarang dua kali
+  basi.** Penyebutnya 126,
   dihitung sebelum `STUDIO_CHECKLIST.md` dilebur ke `TEST_CASES.md`; sekarang
-  dokumennya memuat 160 case. Angka-angka itu masih benar sebagai pembilang,
-  tapi rasionya tidak. Belum dihitung ulang.
+  dokumennya memuat 160 case. Pembilangnya juga sudah lewat: dia ditulis untuk
+  tiga case harness dengan 82 assertion, sementara sekarang ada empat case
+  dengan 145 dan empat baris M1 yang naik jadi `OK`. Rasio maupun pembilangnya
+  belum dihitung ulang; `docs/TEST_CASES.md` bagian 3.2 adalah sumber yang
+  benar untuk cakupan harness.
 
 ## 8. Kebiasaan kerja yang berlaku di repo ini
 

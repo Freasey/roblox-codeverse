@@ -36,6 +36,7 @@ local CASES: { CaseSpec } = {
 	{ name = "boot", file = "cases/boot.luau", deadline = 90 },
 	{ name = "enemy_core", file = "cases/enemy_core.luau", deadline = 150 },
 	{ name = "remote_reject", file = "cases/remote_reject.luau", deadline = 120 },
+	{ name = "core_wave", file = "cases/core_wave.luau", deadline = 150 },
 }
 
 -- --------------------------------------------------------------------------
@@ -172,9 +173,32 @@ local function runCase(spec: CaseSpec, prelude: string, hostTemplate: string): P
 
 	local started = os.clock()
 	local invocation = process.exec("run-in-roblox", { "--place", PLACE, "--script", scriptPath })
-	local elapsed = os.clock() - started
-
 	local parsed = parse(invocation.stdout .. "\n" .. invocation.stderr)
+
+	-- Cold start Studio. Case yang jalan PERTAMA di mesin yang Studio-nya belum
+	-- pernah dibuka kadang kehabisan waktu di dalam run-in-roblox sendiri:
+	-- prosesnya keluar dengan kode 2 dan stdout BENAR-BENAR kosong — tidak ada
+	-- satu pun baris host, tidak ada hasil, tidak ada END. Artinya script
+	-- test-nya belum pernah mulai, jadi belum ada apa pun yang diuji dan
+	-- mengulang sekali tidak menyembunyikan apa-apa.
+	--
+	-- Syaratnya sengaja sempit. Script yang mati DI TENGAH jalan selalu
+	-- meninggalkan jejak (baris `host`, atau sebagian PASS/FAIL), dan kasus itu
+	-- TIDAK diulang: kalau diulang, bug yang cuma muncul sesekali akan lolos
+	-- dari gerbang ini dengan cara yang paling sulit disadari.
+	local coldStart = not parsed.ended
+		and #parsed.results == 0
+		and #parsed.host == 0
+		and string.match(invocation.stdout, "^%s*$") ~= nil
+	if coldStart then
+		print(
+			"   !! run pertama tidak menghasilkan keluaran (Studio cold start) — diulang sekali"
+		)
+		invocation = process.exec("run-in-roblox", { "--place", PLACE, "--script", scriptPath })
+		parsed = parse(invocation.stdout .. "\n" .. invocation.stderr)
+	end
+
+	local elapsed = os.clock() - started
 
 	for _, entry in parsed.host do
 		print(string.format("   host   %-18s %s", entry.key, entry.value))

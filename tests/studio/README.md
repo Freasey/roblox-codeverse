@@ -98,7 +98,7 @@ lune run tests/studio/run
 
 ## Apa yang BISA dites di sini
 
-Diverifikasi dengan tiga case di `cases/`, 94 assertion (83 lulus, 3 gagal karena bug nyata di bawah, 8 dilewati):
+Diverifikasi dengan empat case di `cases/`, 145 assertion (145 lulus, 0 gagal, 16 dilewati):
 
 - **Seluruh rantai boot `init.server.luau` di engine sungguhan** — urutan
   `require` yang melingkar, API web yang dipanggil di module scope, nama
@@ -147,10 +147,14 @@ dengan `player` = nil di argumen pertama. Diverifikasi di
 argumennya SEBELUM menyentuh `player` bisa diuji penuh; yang tidak, tidak bisa
 sama sekali.
 
-## Temuan: `math.huge` lolos validasi `CoreService`
+## Temuan yang sudah ditutup: `math.huge` lolos validasi `CoreService`
 
-**`lune run tests/studio/run` saat ini exit 1, dan itu bukan harness yang
-rusak.** Tiga assertion gagal karena satu bug nyata:
+**Sudah diperbaiki.** Dicatat di sini karena inilah bug pertama yang ditemukan
+harness ini, dan bentuknya menjelaskan kenapa harness ini ada: dia lolos dari
+lint, type check, dan 149 unit test, lalu ketangkap pada run pertama di engine
+sungguhan.
+
+Dulu tiga assertion gagal:
 
 ```
 FAIL  tolak.coreDamageAngkaTidakWajar: inf        -- dapat 1000, harap 0
@@ -172,9 +176,9 @@ yang terbuka hari ini. Tetap layak ditutup: `CombatService` sudah memeriksa
 `magnitude == math.huge` untuk arah serangan, jadi polanya memang dikenal di
 repo ini — cuma terlewat di `CoreService`.
 
-Cabang spike ini **tidak menyentuh `src/`**, jadi assertion-nya dibiarkan gagal
-apa adanya. Begitu `CoreService` menolak infinity, ketiganya hijau tanpa perlu
-mengubah apa pun di sini.
+Ditutup di `CoreService.isValidAmount`, yang sekarang menolak `math.huge`
+bersama NaN, non-number, dan angka <= 0 dalam satu gerbang. Ketiga assertion di
+atas sekarang PASS tanpa ada yang diubah di `tests/`.
 
 ## Satu flaky yang sudah ditutup, dan satu yang belum
 
@@ -227,6 +231,34 @@ durasi absolut dengan angka yang diamati di playtest manual.
    deadline dan runner melaporkan timeout, yang menyembunyikan penyebabnya.
 2. Daftarkan di `CASES` di `run.luau` dengan `deadline` yang masuk akal.
 3. `stylua tests/studio/` — CI memeriksa format `tests/` juga.
+
+File case dimulai dengan `--!nocheck`, bukan `--!strict`. Bukan karena
+malas: runner menempelkan `lib/prelude.luau` DI DEPAN file case, jadi directive
+yang berlaku untuk file gabungan adalah milik prelude, dan directive di baris 1
+file case berakhir di tengah file lalu jadi komentar biasa. Menulis `--!strict`
+di situ memberi kesan file ini type-checked padahal tidak; dan kalau suatu hari
+directive itu benar-benar berlaku, file case tidak akan lulus strict karena `T`
+adalah global yang tidak dideklarasikan.
+
+**Dua jebakan yang sudah pernah menjerat:**
+
+1. **Jembatan log-nya asinkron.** Baris yang di-`print` SELAMA run belum tentu
+   langsung terbaca `T.logContains` / `T.logFind`: host baru menuangkan sadapan
+   `LogService` ke `ReplicatedStorage` beberapa saat kemudian. Sekali baca
+   langsung setelah aksi akan lolos atau gagal tergantung timing — flaky yang
+   paling mahal, karena dia hijau di mesinmu. Bungkus dengan
+   `T.waitUntil(function() return T.logContains(...) end)`. Case yang cuma
+   membaca baris boot tidak kena, karena log itu sudah lama tertuang sebelum
+   assertion pertama jalan.
+
+2. **Kebersihan state antar case bergantung pada satu sesi Studio per case.**
+   Assertion prasyarat seperti `prasyarat.arenaKosong` dan
+   `prasyarat.coreHpPenuh` benar karena runner memanggil `run-in-roblox` sekali
+   untuk tiap case, jadi tiap case dapat sesi bersih. Kalau suatu saat beberapa
+   case digabung ke satu sesi demi kecepatan, assertion prasyarat di SEMUA case
+   mulai saling bergantung pada urutan dan akan gagal dengan cara yang sangat
+   membingungkan. Tetap bersihkan jejak di akhir case (`setRunning(false)`,
+   `clearAll()`, `CoreService.reset()`) supaya penggabungan itu tetap mungkin.
 
 Pakai `T.skip(nama, alasan)` untuk hal yang harness ini memang tidak bisa
 jangkau, dan **sebutkan alasannya**. Runner mencetak jumlah SKIP terpisah dari
