@@ -49,6 +49,22 @@ local localPlayer = Players.LocalPlayer
 local PANEL_WIDTH = 340
 local ROW_HEIGHT = 66
 
+-- Tinggi panel DIHITUNG dari isinya, bukan ditebak. Versi sebelumnya memakai
+-- `150 + jumlahSenjata * ROW_HEIGHT` untuk tingginya lalu menaruh baris
+-- petunjuk di `height - 56`, dan dua angka itu tidak pernah dihubungkan satu
+-- sama lain. Dengan tiga senjata hasilnya bertabrakan: baris senjata terakhir
+-- berakhir di y=310 sementara petunjuknya mulai di y=292, jadi teks petunjuk
+-- menindih tombol Pakai dan Craft milik senjata ketiga.
+--
+-- Sekarang tiap bagian menyumbang tingginya sendiri dan posisinya diturunkan
+-- dari bagian di atasnya, jadi menambah senjata keempat menggeser semuanya
+-- alih-alih menumpuknya.
+local ROWS_TOP = 120
+local HINT_HEIGHT = 26
+local READY_HEIGHT = 24
+local SECTION_GAP = 6
+local PANEL_PAD = 12
+
 -- Panel pemilihan alur upgrade. Yang dipatok di sini ukuran SATU kartu, bukan
 -- ukuran panelnya: jumlah kartu dan jumlah baris tingkat dibaca dari definisi
 -- senjata (`pathPanelShape`), jadi panelnya yang dihitung dari kartunya, bukan
@@ -335,7 +351,11 @@ local function build()
 
 	local screen = UiKit.screenGui("CodeVerseLobby", 20)
 
-	local height = 150 + #WEAPON_ORDER * ROW_HEIGHT
+	-- `ROW_HEIGHT` sudah memuat jarak 8px antar baris, jadi dasar baris terakhir
+	-- adalah tempat petunjuk boleh mulai.
+	local hintTop = ROWS_TOP + #WEAPON_ORDER * ROW_HEIGHT
+	local readyTop = hintTop + HINT_HEIGHT + SECTION_GAP
+	local height = readyTop + READY_HEIGHT + PANEL_PAD
 	local frame = UiKit.panel(
 		screen,
 		"Panel",
@@ -410,7 +430,7 @@ local function build()
 		local row = UiKit.panel(
 			frame,
 			weaponId,
-			UDim2.fromOffset(14, 120 + (index - 1) * ROW_HEIGHT),
+			UDim2.fromOffset(14, ROWS_TOP + (index - 1) * ROW_HEIGHT),
 			UDim2.fromOffset(312, ROW_HEIGHT - 8)
 		)
 		row.BackgroundColor3 = Color3.fromRGB(26, 29, 36)
@@ -474,8 +494,13 @@ local function build()
 	end
 
 	-- Ready -----------------------------------------------------------------
-	local hint =
-		UiKit.label(frame, "Hint", UDim2.fromOffset(14, height - 56), UDim2.fromOffset(312, 26), "")
+	local hint = UiKit.label(
+		frame,
+		"Hint",
+		UDim2.fromOffset(14, hintTop),
+		UDim2.fromOffset(312, HINT_HEIGHT),
+		""
+	)
 	hint.TextSize = 12
 	hint.TextWrapped = true
 	hint.TextColor3 = UiKit.COLOR_MUTED
@@ -483,8 +508,8 @@ local function build()
 	local button = UiKit.button(
 		frame,
 		"Ready",
-		UDim2.fromOffset(14, height - 30),
-		UDim2.fromOffset(312, 24),
+		UDim2.fromOffset(14, readyTop),
+		UDim2.fromOffset(312, READY_HEIGHT),
 		"Ready"
 	)
 	button.Activated:Connect(function()
@@ -801,10 +826,20 @@ local function render()
 		local name = if def ~= nil then def.name else difficultyId
 		if not unlocked then
 			difficultyButton.Text = name .. " (terkunci)"
-		elseif difficultyId == selectedDifficulty then
-			difficultyButton.Text = "▸ " .. name
 		else
 			difficultyButton.Text = name
+		end
+
+		-- Yang TIDAK terpilih diredupkan; yang terpilih dibiarkan warna aksen
+		-- penuh. Penandanya warna, bukan karakter, karena versi sebelumnya
+		-- menempelkan "▸" di depan nama dan glyph itu tidak ada di font
+		-- Gotham milik Roblox: yang muncul di layar kotak kosong, dan kotak
+		-- kosong terbaca sebagai teks rusak, bukan sebagai penanda pilihan.
+		-- Titik tengah dan em dash di panel ini tampil benar, jadi batas
+		-- fontnya ada di antara Latin-1 dan bentuk geometri -- bukan sesuatu
+		-- yang bisa ditebak aman untuk karakter penanda berikutnya.
+		if unlocked and canSelect and difficultyId ~= selectedDifficulty then
+			difficultyButton.BackgroundColor3 = Color3.fromRGB(58, 86, 112)
 		end
 	end
 
