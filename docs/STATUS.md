@@ -15,7 +15,9 @@ Terakhir diperbarui: 2026-10-25, tepat sesudah commit `1796f1c`.
 
 Kode untuk **M0 sampai M5 sudah ada di `main` dan CI-nya hijau**: fondasi,
 pertarungan, state machine match dengan 10 wave, Toko Match, dua boss, dan
-progres permanen plus lobby. M7 dan M8 belum disentuh. Sebagian besar
+progres permanen plus lobby. **Isi Toko Match sejak itu berganti seluruhnya**:
+dia tidak lagi menjual lima item berefek tim melainkan upgrade senjata per
+pemain, dan upgrade senjata pindah ke sana dari lobby (bagian 4). M7 dan M8 belum disentuh. Sebagian besar
 perilaku game belum pernah dijalankan oleh seorang pemain.
 
 **M6 kodenya sudah lengkap, buktinya belum.** Lima item M6 di
@@ -60,7 +62,7 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 
 | Lapis | Cakupan | Status |
 | --- | --- | --- |
-| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit, papan wave tertinggi | **258 test lulus** |
+| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit, papan wave tertinggi, upgrade dalam match | **277 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
 | Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave, slow dan zona dan tanda alur upgrade, pendaftaran remote papan | **257 assertion lulus, 0 gagal, 22 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
@@ -119,7 +121,7 @@ ditukar, dan alasannya ditulis di tempatnya masing-masing.
 
 ```bash
 cd "C:\Web Program\roblox-codeverse"
-lune run tests/run          # 258 unit test, beberapa detik
+lune run tests/run          # 277 unit test, beberapa detik
 lune run tests/studio/run   # harness Studio, ~130 detik
 ```
 
@@ -303,6 +305,58 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
   sekali di place yang belum pernah di-publish: tidak ada satu catatan pun
   yang pernah ditulis atau dibaca sungguhan. Lihat LB-01 sampai LB-05.
 
+- **Toko Match sekarang menjual UPGRADE SENJATA, bukan lima item.**
+  Permintaan Daffa, 2026-10-25. Tiap jeda antar wave pemain bisa menaikkan satu
+  level senjata yang sedang dia pakai, dibayar cash, dan di level 4 dia memilih
+  satu dari tiga alur. Seluruh aturannya dipatok 19 unit test di
+  `tests/MatchUpgradeRules.spec.luau`, termasuk yang paling mahal kalau salah:
+  alur **tidak** tersimpan sebelum titik percabangan, dan alur yang sudah
+  terpilih tidak bisa diganti di match yang sama.
+
+  Tiga hal yang belum pernah dilihat manusia, dan ketiganya cuma bisa dilihat
+  dengan bermain: panel upgrade di layar saat jeda, tiga kartu alur yang
+  menggantikan tombol tunggal di level 4, dan -- yang paling mudah salah --
+  **cash yang berkurang persis sebesar angka yang tertulis di tombol**. Harga
+  dibaca dari save SEBELUM naik; kalau urutannya terbalik pemain dibebani harga
+  level berikutnya, dan selisihnya tidak terlihat sampai ada yang
+  membandingkan.
+
+  **Level dan alur dimulai ulang tiap match**, karena cash habis tiap match.
+  Itu bukan efek samping: alur yang terkunci selamanya cuma pernah dialami
+  sekali per senjata, sementara alur yang dipilih ulang tiap match adalah
+  keputusan yang diambil berkali-kali. `data.weapons[id].level` yang permanen
+  tidak dibaca `CombatService` lagi dan tidak pernah naik.
+
+- **Cash jadi per pemain, bukan satu kolam tim.** Ikut berubah bersamanya, dan
+  harus: upgrade senjata milik satu orang, jadi kolam bersama berarti tiap
+  orang di tim berempat cuma kebagian seperempat anggaran dan yang paling cepat
+  menekan tombol memakai uang bersama untuk dirinya sendiri. `MatchCoins`
+  sekarang `FireClient`. Cash dari musuh mati masuk ke yang membunuhnya; musuh
+  yang mati tanpa pembunuh (zona jebakan, turret, mekanik boss) dibayarkan ke
+  semua peserta, supaya alur Jebakan tidak justru menghasilkan lebih sedikit
+  karena dia bekerja sendiri.
+
+  Anggaran satu run penuh per pemain: **5.300** dari hadiah wave ditambah cash
+  dari membunuh (1.394 solo, 513 per orang berempat), jadi 6.694 solo dan 5.813
+  berempat. Menaikkan satu senjata dari level 1 ke 10 butuh **5.951**. Jadi
+  level maksimum bisa dicapai dalam satu run, tapi cuma kalau hampir seluruh
+  cash ditumpahkan ke satu senjata. **Itu tebakan pertama yang menunggu
+  playtest, bukan angka yang sudah terbukti.**
+
+- **Mekanik sandera boss Locker sekarang HAMPA.** Dia menyandera efek upgrade
+  TIM yang dibeli dari kelima item toko. Kelima item itu dimatikan, jadi tidak
+  ada lagi yang bisa disandera: `getModifiers` mengembalikan pengali dasar
+  `1`/`1` dengan atau tanpa sandera. Mekanik andalan boss wave 10 karena itu
+  tidak melakukan apa-apa sampai dia diarahkan ke sesuatu yang lain.
+
+  Kandidat yang paling jelas: menyandera level senjata DALAM MATCH selama
+  Locker hidup -- analogi ransomware-nya justru lebih tepat di sana, karena
+  yang disandera jadi barang yang baru saja dibeli pemain dengan cash-nya
+  sendiri. Tapi itu keputusan desain yang belum diambil, dan menyandera
+  seluruh level bisa jadi jauh lebih kejam daripada menyandera +10% damage.
+  SHOP-16 yang dulu satu-satunya cara membuktikan mekanik ini tidak bisa
+  membuktikan apa pun sekarang.
+
 - **Ketiga senjata terbuka sejak awal, dan ini SEMENTARA.**
   `Config.DEFAULT_DATA.weapons` sekarang memuat `weapon_starter`,
   `weapon_ranged`, dan `weapon_boss_a` di level 1 (permintaan Daffa,
@@ -465,19 +519,10 @@ Checklist lengkapnya ada di `docs/DEVELOPMENT_PLAN.md` bagian 4. Ringkasnya:
 
 - **M6 — Multiplayer & leaderboard.** **Kodenya sudah lengkap** (lihat bagian
   1); yang tersisa playtest 4 client dan publish.
-- **Toko Match diganti jadi toko UPGRADE SENJATA.** Keputusan Daffa,
-  2026-10-25, dan **sengaja belum dikerjakan** -- yang dikerjakan lebih dulu
-  implementasi yang sudah ada. Isinya: upgrade senjata pindah dari lobby ke
-  DALAM match, jadi yang ditawarkan toko adalah upgrade senjata beserta
-  ketiga alur upgrade-nya; kelima item toko sekarang (Exploit Patch,
-  Overclock, Hotfix, Firewall Block, Scanner Turret) dihapus; dan jumlah alur
-  upgrade diperbanyak supaya gameplay lebih bervariasi.
-
-  Yang perlu dipikirkan saat mengerjakannya, karena menyentuh dua hal yang
-  sudah mendarat: upgrade yang pindah ke dalam match membuat **koin global**
-  kehilangan satu-satunya hal yang bisa dibeli dengannya, dan membuat alur
-  upgrade yang **permanen** berhadapan dengan mata uang yang **habis tiap
-  match**. Keduanya keputusan desain, bukan detail implementasi.
+- **Alur upgrade diperbanyak.** Permintaan Daffa, 2026-10-25, dan satu-satunya
+  bagian dari pemindahan toko yang sengaja ditunda. Yang sudah jalan tiga alur
+  per senjata, sembilan seluruhnya; yang diminta lebih banyak supaya tiap run
+  terasa berbeda. Belum ada angka maupun jumlahnya.
 
 - **M7 — Polish & pengujian.** Model final dari Blender, balancing, optimasi,
   alpha test, beta test.

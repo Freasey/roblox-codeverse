@@ -13,6 +13,21 @@ Config.DATASTORE_NAME = "PlayerData_v1" -- naikkan versi kalau skema berubah bre
 Config.AUTOSAVE_INTERVAL = 120 -- detik
 Config.SAVE_RETRY_COUNT = 5
 
+-- Lima item Toko Match (Exploit Patch, Overclock, Hotfix, Firewall Block,
+-- Scanner Turret) dimatikan. Yang dijual toko sekarang UPGRADE SENJATA, dan
+-- dua toko di satu panel cuma akan berebut cash yang sama.
+--
+-- Flag, bukan penghapusan: definisi item, aturan belinya, efeknya, dan unit
+-- test-nya semuanya masih benar dan masih lulus. Yang mati pintunya -- di
+-- server, bukan cuma di client, karena fitur yang masih bisa dibeli lewat
+-- remote bukan fitur yang dimatikan.
+--
+-- Satu akibat yang perlu disadari: mekanik sandera boss Locker menyandera
+-- upgrade TIM yang dibeli dari kelima item ini. Tanpa item, tidak ada yang
+-- bisa disandera, jadi mekanik andalannya jadi hampa sampai dia diarahkan ke
+-- sesuatu yang lain. Lihat docs/STATUS.md.
+Config.MATCH_SHOP_ITEMS_ENABLED = false
+
 -- Match
 --
 -- MAX_PLAYERS adalah angka yang DIASUMSIKAN rancangan (jumlah musuh per wave

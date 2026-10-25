@@ -178,6 +178,10 @@ CombatService.setGate(MatchService.canAttack)
 -- yang sama dengan gerbangnya: CombatService tidak boleh bergantung ke
 -- ShopService, dan ShopService sudah bergantung ke MatchService.
 CombatService.setModifiers(ShopService.getModifiers)
+-- Level dan alur senjata yang berlaku di match ini. Upgrade senjata sekarang
+-- dibeli dengan cash di dalam match dan dimulai ulang tiap match, jadi yang
+-- memegang angkanya ShopService -- bukan data permanen pemain.
+CombatService.setMatchWeaponSource(ShopService.getMatchWeapon)
 -- Pengurangan damage yang masuk ke pemain (alur senjata "Bertahan", langkah 7
 -- rancangan ulang arena). Arahnya sama dengan dua di atas tapi terbalik
 -- pemiliknya: yang MEMBACA angkanya EnemyService, dan yang TAHU angkanya

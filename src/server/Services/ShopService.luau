@@ -1,5 +1,22 @@
 --!strict
--- ShopService.luau — Toko Match: cash tim dan efek pembeliannya.
+-- ShopService.luau — Toko Match: cash per pemain dan upgrade senjata.
+--
+-- APA YANG DIJUAL TOKO INI BERUBAH. Dulu lima item berefek tim (Exploit Patch,
+-- Overclock, Hotfix, Firewall Block, Scanner Turret). Sekarang yang dijual tiap
+-- jeda antar wave adalah UPGRADE SENJATA pemain itu sendiri, beserta ketiga
+-- alurnya. Kelima item lama dimatikan lewat `Config.MATCH_SHOP_ITEMS_ENABLED`,
+-- bukan dihapus: kodenya masih benar dan menunggu kalau nanti dipakai lagi.
+--
+-- CASH PER PEMAIN, BUKAN SATU KOLAM TIM, dan itu berubah bersamanya. Upgrade
+-- senjata milik satu orang: kalau empat pemain berbagi satu kolam untuk barang
+-- pribadi, tiap orang cuma kebagian seperempat dan yang paling cepat menekan
+-- tombol memakai uang bersama untuk dirinya sendiri. Satu kolam tim benar
+-- selama yang dibeli efek tim; begitu yang dibeli barang pribadi, dia salah.
+--
+-- LEVEL DAN ALUR DIMULAI ULANG TIAP MATCH. Cash habis tiap match selesai, jadi
+-- apa pun yang dibelinya ikut habis. `data.weapons[id].level` yang permanen
+-- TIDAK dibaca di sini dan tidak ikut naik -- yang dipakai `matchWeapons` di
+-- bawah, yang umurnya satu match.
 --
 -- DUA MATA UANG, DAN NAMANYA SENGAJA BERBEDA. Yang di sini **cash**: milik
 -- tim, habis tiap match selesai, cuma bisa dibelanjakan di Toko Match. Yang di
@@ -15,12 +32,11 @@
 -- di layar. Jadi: kalau sebuah nama dibaca PEMAIN, dia "cash"; kalau dia cuma
 -- dibaca programmer, dia tetap coins.
 --
--- CASH MILIK TIM, SATU KOLAM, dan reset tiap match. Bukan per pemain.
--- Itu yang diminta M3 ("koin match per tim") dan bagian 3.7 ("musuh mati:
--- tambah koin match ke tim"), dan sekaligus menyelesaikan satu hal yang
--- bagian 3.3 serahkan ke implementasi: cash pemain yang disconnect tidak
--- bisa hangus, karena tidak ada saldo per pemain yang bisa hilang. Saat dia
--- rejoin, saldo tim yang dia lihat sama dengan saat dia keluar.
+-- Cash pemain yang disconnect TIDAK dihapus saat dia keluar, dengan alasan
+-- yang sama seperti `participants` di MatchService: dia boleh rejoin dan
+-- melanjutkan match yang sama, dan saldo yang hangus saat koneksi putus
+-- sebentar adalah hukuman untuk sesuatu yang bukan salahnya. Yang
+-- membersihkannya reset antar match.
 --
 -- Semua keputusan beli ada di ShopRules.luau (modul murni, ada unit test-nya).
 -- Yang tinggal di sini cuma yang butuh runtime Roblox: menerima remote,
@@ -33,24 +49,40 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Modules.Balance)
+local Config = require(Shared.Config)
+local MatchUpgradeRules = require(Shared.Modules.MatchUpgradeRules)
 local RateLimit = require(Shared.Modules.RateLimit)
 local Remotes = require(Shared.Remotes)
 local ShopItems = require(Shared.Modules.ShopItems)
 local ShopRules = require(Shared.Modules.ShopRules)
 local Signal = require(Shared.Modules.Signal)
+local Types = require(Shared.Modules.Types)
+local Weapons = require(Shared.Modules.Weapons)
 
 local CoreService = require(script.Parent.CoreService)
 local EnemyService = require(script.Parent.EnemyService)
 local MatchService = require(script.Parent.MatchService)
 local MapService = require(script.Parent.MapService)
+local PlayerDataService = require(script.Parent.PlayerDataService)
 
 local ShopService = {}
 
-ShopService.onCoinsChanged = Signal.new() :: Signal.Signal<number>
+-- (UserId, saldo baru).
+ShopService.onCashChanged = Signal.new() :: Signal.Signal<number, number>
 
 local FOLDER_NAME = "ShopEffects"
 
-local coins = 0
+-- Cash per UserId, bukan satu angka. UserId dan bukan objek Player karena
+-- objek Player hilang saat pemain disconnect, dan peserta yang rejoin harus
+-- menemukan saldonya utuh -- alasan yang sama dengan `participants` di
+-- MatchService.
+local cash: { [number]: number } = {}
+
+-- Level dan alur senjata yang berlaku DI DALAM match ini, per UserId. Satu
+-- save per pemain, bukan per senjata, karena fase `Loadout` sudah mengunci
+-- senjata yang dipakai sampai match selesai.
+local matchWeapons: { [number]: Types.WeaponSave } = {}
+
 local purchases: { [string]: number } = {}
 local locked = false
 local started = false
@@ -88,7 +120,7 @@ local turrets: { Turret } = {}
 local effectsFolder: Folder? = nil
 local turretLoop: thread? = nil
 
-local limiter = RateLimit.newRegistry({ BuyShopItem = 2 }, 2)
+local limiter = RateLimit.newRegistry({ BuyShopItem = 2, UpgradeWeapon = 2 }, 2)
 
 local function getFolder(): Folder
 	local existing = effectsFolder
@@ -106,9 +138,43 @@ local function getFolder(): Folder
 	return effectsFolder :: Folder
 end
 
-local function broadcastCoins()
-	Remotes.Events.MatchCoins:FireAllClients(math.floor(coins))
-	ShopService.onCoinsChanged:Fire(coins)
+local function cashOf(userId: number): number
+	return cash[userId] or 0
+end
+
+-- Senjata yang berlaku di match ini untuk pemain itu. Save BARU kalau dia
+-- belum pernah upgrade, bukan nil: pemanggilnya menghitung stat, dan nil di
+-- sana berarti setiap pembaca harus menangani "belum punya" sendiri-sendiri.
+local function matchWeaponOf(userId: number): Types.WeaponSave
+	local existing = matchWeapons[userId]
+	if existing ~= nil then
+		return existing
+	end
+	return MatchUpgradeRules.freshSave()
+end
+
+-- Dikirim ke SATU pemain, bukan FireAllClients: saldo sekarang milik
+-- masing-masing orang, dan menyiarkannya ke semua berarti tiap client
+-- menampilkan saldo pemain yang terakhir berubah.
+local function broadcastCashTo(player: Player)
+	Remotes.Events.MatchCoins:FireClient(player, math.floor(cashOf(player.UserId)))
+end
+
+local function broadcastUpgradeStateTo(player: Player)
+	local data = PlayerDataService.get(player)
+	local save = matchWeaponOf(player.UserId)
+	Remotes.Events.MatchUpgradeState:FireClient(player, {
+		weaponId = if data ~= nil then data.equippedWeapon else "weapon_starter",
+		level = save.level,
+		path = save.path,
+	})
+end
+
+local function broadcastToAll()
+	for _, player in Players:GetPlayers() do
+		broadcastCashTo(player)
+		broadcastUpgradeStateTo(player)
+	end
 end
 
 local function broadcastShopState()
@@ -140,7 +206,10 @@ local function clearEffects()
 end
 
 function ShopService.reset()
-	coins = 0
+	cash = {}
+	-- Level dan alur ikut dibuang. Inilah yang membuat alur jadi keputusan yang
+	-- diambil berkali-kali alih-alih sekali seumur akun.
+	matchWeapons = {}
 	purchases = {}
 	locked = false
 	-- Jaring pengaman antar match. Kalau Locker mati lewat jalur yang tidak
@@ -149,12 +218,19 @@ function ShopService.reset()
 	-- berikutnya — itu akan terlihat sebagai damage yang diam-diam mengecil.
 	suspended = false
 	clearEffects()
-	broadcastCoins()
+	broadcastToAll()
 	broadcastShopState()
 end
 
-function ShopService.getCoins(): number
-	return coins
+function ShopService.getCash(userId: number): number
+	return cashOf(userId)
+end
+
+-- Dibaca CombatService lewat suntikan di init.server.luau, bukan lewat require:
+-- CombatService tidak boleh bergantung ke service ini, dengan alasan yang sama
+-- seperti `setModifiers` dan `setGate`.
+function ShopService.getMatchWeapon(userId: number): Types.WeaponSave
+	return matchWeaponOf(userId)
 end
 
 function ShopService.getPurchases(): { [string]: number }
@@ -207,19 +283,30 @@ function ShopService.getModifiers(): ShopRules.Modifiers
 	)
 end
 
-local function award(amount: number)
+local function awardTo(player: Player, amount: number)
 	if type(amount) ~= "number" or amount ~= amount or amount <= 0 then
 		return
 	end
-	coins += amount
-	broadcastCoins()
+	cash[player.UserId] = cashOf(player.UserId) + amount
+	broadcastCashTo(player)
+	ShopService.onCashChanged:Fire(player.UserId, cashOf(player.UserId))
 end
 
--- Pintu dari luar ke kolam koin tim, dipakai hadiah per wave. Kebijakan
--- angkanya ada di Balance.waveReward, waktunya di MatchService, dan penjagaan
--- nilainya di sini -- bukan satu service yang mengurus ketiganya.
-function ShopService.addCoins(amount: number)
-	award(amount)
+-- Dibayarkan ke setiap peserta yang sedang terhubung. Dipakai hadiah per wave,
+-- dan juga untuk musuh yang mati tanpa pembunuh yang bisa ditunjuk.
+local function awardParticipants(amount: number)
+	for _, player in Players:GetPlayers() do
+		if MatchService.isParticipant(player) then
+			awardTo(player, amount)
+		end
+	end
+end
+
+-- Pintu dari luar, dipakai hadiah per wave. Kebijakan angkanya ada di
+-- `Balance.waveCash`, waktunya di MatchService, dan penjagaan nilainya di sini
+-- -- bukan satu service yang mengurus ketiganya.
+function ShopService.addCashToParticipants(amount: number)
+	awardParticipants(amount)
 end
 
 -- --------------------------------------------------------------------------
@@ -401,11 +488,20 @@ local function onBuy(player: Player, rawId: unknown)
 		return
 	end
 
+	-- Kelima item dimatikan, dan penolakannya DI SERVER, bukan cuma dengan
+	-- menyembunyikan panelnya di client. Client yang dimodifikasi tetap bisa
+	-- menembakkan remote ini, dan fitur yang "dimatikan" tapi masih bisa
+	-- dibeli lewat remote bukan fitur yang dimatikan.
+	if not Config.MATCH_SHOP_ITEMS_ENABLED then
+		reject(player, "Toko item sudah tidak ada. Yang dijual sekarang upgrade senjata.")
+		return
+	end
+
 	local def = ShopItems.get(itemId)
 	local ok, reason = ShopRules.canBuy(def, {
 		state = MatchService.getState(),
 		locked = locked,
-		coins = coins,
+		coins = cashOf(player.UserId),
 		purchases = purchases,
 		priceGrowth = Balance.SHOP_PRICE_GROWTH,
 	})
@@ -424,10 +520,10 @@ local function onBuy(player: Player, rawId: unknown)
 	-- selisihnya tidak akan terlihat sampai ada yang membandingkan angka di
 	-- tombol dengan koin yang hilang.
 	local price = ShopRules.priceFor(def, purchases, Balance.SHOP_PRICE_GROWTH)
-	coins -= price
+	cash[player.UserId] = cashOf(player.UserId) - price
 	purchases[def.id] = (purchases[def.id] or 0) + 1
 
-	broadcastCoins()
+	broadcastCashTo(player)
 	broadcastShopState()
 
 	local effect = EFFECTS[def.id]
@@ -447,7 +543,96 @@ local function onBuy(player: Player, rawId: unknown)
 			player.Name,
 			def.id,
 			price,
-			math.floor(coins)
+			math.floor(cashOf(player.UserId))
+		)
+	)
+end
+
+-- --------------------------------------------------------------------------
+-- Upgrade senjata di dalam match
+-- --------------------------------------------------------------------------
+
+local function rejectUpgrade(player: Player, reason: string)
+	Remotes.Events.ActionResult:FireClient(player, {
+		action = "UpgradeWeapon",
+		ok = false,
+		reason = reason,
+	})
+end
+
+local function onUpgradeWeapon(player: Player, rawWeaponId: unknown, rawPathId: unknown)
+	if not RateLimit.check(limiter, player.UserId, "UpgradeWeapon", os.clock()) then
+		return
+	end
+	if type(rawWeaponId) ~= "string" then
+		return
+	end
+	-- `pathId` yang bukan string jadi nil, bukan alasan untuk membatalkan:
+	-- di level selain titik percabangan dia memang diabaikan, dan menolak
+	-- seluruh upgrade karena argumen opsional yang salah bentuk berarti
+	-- client lama tidak bisa upgrade sama sekali.
+	local pathId: string? = if type(rawPathId) == "string" then rawPathId :: string else nil
+
+	if not MatchService.isParticipant(player) then
+		rejectUpgrade(player, "Kamu bukan peserta match ini.")
+		return
+	end
+
+	local data = PlayerDataService.get(player)
+	if data == nil then
+		return
+	end
+
+	-- Senjata yang di-upgrade adalah senjata yang SEDANG DIPAKAI, bukan yang
+	-- dikirim client. Id dari client cuma diperiksa kecocokannya, supaya
+	-- tombol yang ditekan di panel lama -- sesudah pemain ganti senjata --
+	-- tidak diam-diam menaikkan senjata yang lain.
+	if rawWeaponId ~= data.equippedWeapon then
+		rejectUpgrade(player, "Senjata itu bukan yang sedang kamu pakai.")
+		return
+	end
+
+	local def = Weapons[data.equippedWeapon]
+	local save = matchWeaponOf(player.UserId)
+
+	local ok, reason = MatchUpgradeRules.canUpgrade(def, save, {
+		state = MatchService.getState(),
+		cash = cashOf(player.UserId),
+		locked = locked,
+	}, pathId)
+
+	if not ok or def == nil then
+		rejectUpgrade(player, reason or "Upgrade ditolak.")
+		return
+	end
+
+	-- Harga dibaca dari save SEBELUM naik, dan cash dipotong SEBELUM save
+	-- diganti. Dibalik, pemain dibebani harga level berikutnya -- selisih yang
+	-- tidak akan terlihat sampai ada yang membandingkan angka di tombol dengan
+	-- cash yang hilang.
+	local price = MatchUpgradeRules.priceFor(def, save)
+	cash[player.UserId] = cashOf(player.UserId) - price
+	matchWeapons[player.UserId] = MatchUpgradeRules.applyUpgrade(def, save, pathId)
+
+	broadcastCashTo(player)
+	broadcastUpgradeStateTo(player)
+
+	Remotes.Events.ActionResult:FireClient(player, {
+		action = "UpgradeWeapon",
+		ok = true,
+		reason = nil,
+	})
+
+	local applied = matchWeapons[player.UserId]
+	print(
+		string.format(
+			"[ShopService] %s upgrade %s ke level %d%s (%d cash), sisa %d",
+			player.Name,
+			def.id,
+			applied.level,
+			if applied.path ~= save.path then string.format(" alur %s", applied.path) else "",
+			price,
+			math.floor(cashOf(player.UserId))
 		)
 	)
 end
@@ -464,26 +649,41 @@ function ShopService.start()
 	end
 
 	Remotes.Events.BuyShopItem.OnServerEvent:Connect(onBuy)
+	Remotes.Events.UpgradeWeapon.OnServerEvent:Connect(onUpgradeWeapon)
 
-	-- Koin match datang dari musuh yang mati, dan masuk ke kolam tim apa pun
-	-- yang membunuhnya (pemain, turret, atau mekanik boss).
-	EnemyService.onDied:Connect(function(enemy)
-		award(enemy.matchCoins)
+	-- Cash dari musuh yang mati masuk ke YANG MEMBUNUHNYA. Musuh yang mati
+	-- tanpa pembunuh yang bisa ditunjuk -- zona jebakan, turret, mekanik boss
+	-- -- dibayarkan ke semua peserta: membiarkannya hangus berarti alur
+	-- Jebakan menghasilkan lebih sedikit cash justru karena dia bekerja
+	-- sendiri, dan itu menghukum alur yang dipilih pemain.
+	EnemyService.onDied:Connect(function(enemy, by: Player?)
+		if by ~= nil then
+			awardTo(by, enemy.matchCoins)
+		else
+			awardParticipants(enemy.matchCoins)
+		end
 	end)
 
 	MatchService.onWaveReward:Connect(function(amount: number, waveNumber: number)
 		if amount <= 0 then
 			return
 		end
-		award(amount)
+		awardParticipants(amount)
 		print(
 			string.format(
-				"[ShopService] hadiah wave %d: %d cash tim, kolam jadi %d",
+				"[ShopService] hadiah wave %d: %d cash untuk tiap peserta",
 				waveNumber,
-				amount,
-				math.floor(coins)
+				amount
 			)
 		)
+	end)
+
+	-- Pemain yang baru join -- termasuk yang rejoin ke match berjalan -- harus
+	-- langsung melihat saldo dan level senjatanya, bukan menunggu pembelian
+	-- berikutnya yang kebetulan menyiarkan ulang.
+	Players.PlayerAdded:Connect(function(player)
+		broadcastCashTo(player)
+		broadcastUpgradeStateTo(player)
 	end)
 
 	MatchService.onStateChanged:Connect(function(next: MatchService.State, previous)
@@ -519,7 +719,7 @@ function ShopService.start()
 		end
 	end)
 
-	broadcastCoins()
+	broadcastToAll()
 	broadcastShopState()
 end
 

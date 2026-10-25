@@ -57,6 +57,14 @@ end
 -- dan tetap menutup spam.
 local limiter = RateLimit.newRegistry({ Attack = 20 }, 20)
 
+-- Level dan alur senjata yang berlaku di match yang sedang berjalan, per
+-- UserId. Disuntik oleh init.server.luau; lihat `resolveWeapon`.
+local matchWeaponSource: ((number) -> Types.WeaponSave)? = nil
+
+function CombatService.setMatchWeaponSource(fn: (number) -> Types.WeaponSave)
+	matchWeaponSource = fn
+end
+
 local lastAttackAt: { [number]: number } = {}
 local started = false
 
@@ -90,16 +98,24 @@ local function resolveWeapon(player: Player): (Weapons.WeaponDef, Types.WeaponSt
 		return starter, Balance.weaponStats(starter, { level = 1, path = DataSchema.NO_PATH })
 	end
 
-	local def, level = ProgressionRules.equippedWeapon(data, Weapons, Config.DEV_ALL_WEAPONS)
-	-- Alur dibaca dari save senjata ITU, bukan dari `def`: `equippedWeapon`
-	-- bisa jatuh ke starter, dan memakai alur senjata yang gagal dipakai akan
-	-- memberi starter efek alur yang bukan miliknya.
-	local save = data.weapons[def.id]
-	return def,
-		Balance.weaponStats(def, {
-			level = level,
-			path = if save ~= nil then save.path else DataSchema.NO_PATH,
-		})
+	local def = ProgressionRules.equippedWeapon(data, Weapons, Config.DEV_ALL_WEAPONS)
+
+	-- Level dan alur dibaca dari save DALAM MATCH, bukan dari `data.weapons`.
+	-- Upgrade senjata sekarang dibeli dengan cash di dalam match dan dimulai
+	-- ulang tiap match, jadi `data.weapons[id].level` yang permanen bukan lagi
+	-- jawaban atas "senjata ini sekuat apa sekarang".
+	--
+	-- Disuntik dari init.server.luau, bukan di-require: yang memegang save itu
+	-- ShopService, dan CombatService tidak boleh bergantung kepadanya --
+	-- alasan yang sama seperti `setGate` dan `setModifiers`.
+	--
+	-- Tanpa suntikan (harness, atau urutan boot yang belum selesai) jatuh ke
+	-- level 1 tanpa alur. Itu senjata yang lemah, bukan error: fungsi ini
+	-- dipanggil tiap serangan, jadi tidak ada tempat untuk melapor.
+	local save = if matchWeaponSource ~= nil
+		then matchWeaponSource(player.UserId)
+		else { level = 1, path = DataSchema.NO_PATH }
+	return def, Balance.weaponStats(def, save)
 end
 
 -- Pengali damage yang masuk ke pemain ini, dari alur senjata yang dia pakai

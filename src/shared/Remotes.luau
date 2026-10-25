@@ -25,6 +25,11 @@ local EVENT_NAMES = {
 	"MatchState", -- S -> C: { state, wave, timer, coreHp, coreMaxHp }
 	"MatchCoins", -- S -> C: number (cash tim; nama remote tetap Coins, lihat ShopService)
 	"MatchResult", -- S -> C: { won, waveReached, coins, xp, materials, unlocked }
+	-- S -> C, PER PEMAIN: { weaponId, level, path } yang berlaku di match ini.
+	-- Terpisah dari `ShopState` karena isinya milik satu pemain sementara
+	-- `ShopState` disiarkan ke semua -- satu payload untuk dua sifat yang
+	-- berbeda berarti salah satunya pasti salah alamat.
+	"MatchUpgradeState",
 	"SetReady", -- C -> S: boolean
 	"SelectLoadout", -- C -> S: weaponId, difficultyId
 

@@ -214,8 +214,13 @@ table.insert(cases, {
 })
 
 -- --------------------------------------------------------------------------
--- Hadiah koin match per wave
+-- Cash per wave
 -- --------------------------------------------------------------------------
+--
+-- Cash sekarang masuk PER PEMAIN, bukan ke satu kolam tim, sejak dia jadi mata
+-- uang upgrade senjata. Pengali jumlah pemain yang dulu ada di sini (solo x4,
+-- duo x2, sisanya x1) ikut hilang bersamanya: gunanya menyamakan kolam TIM
+-- lintas jumlah pemain, dan yang disamakan sekarang anggaran per pemain.
 
 local function isBossWave(wave: number): boolean
 	local def = Waves.get(wave)
@@ -223,52 +228,37 @@ local function isBossWave(wave: number): boolean
 end
 
 table.insert(cases, {
-	name = "pengali jumlah pemain: solo x4, duo x2, 3 atau lebih x1",
+	name = "kurva cash per wave cocok dengan rancangan, wave boss dikali dua",
 	run = function()
-		assert(Balance.playerCountMultiplier(1) == 4, "solo x4")
-		assert(Balance.playerCountMultiplier(2) == 2, "duo x2")
-		assert(Balance.playerCountMultiplier(3) == 1, "trio x1")
-		assert(Balance.playerCountMultiplier(4) == 1, "empat x1")
-	end,
-})
-
-table.insert(cases, {
-	name = "jumlah pemain tidak masuk akal diperlakukan sebagai solo, bukan nol",
-	run = function()
-		-- Hadiah yang terlalu besar langsung terlihat saat playtest; hadiah yang
-		-- diam-diam hilang tidak.
-		for _, bad in { 0, -3, 0 / 0 } do
-			assert(
-				Balance.playerCountMultiplier(bad) == 4,
-				string.format("playerCount %s harus jatuh ke x4", tostring(bad))
-			)
-		end
-	end,
-})
-
-table.insert(cases, {
-	name = "kurva hadiah per wave cocok dengan rancangan, dengan wave boss dikali dua",
-	run = function()
-		-- Dites pada pengali x1 (3-4 pemain) supaya yang diuji kurvanya sendiri,
-		-- bukan kurva dikali pengali pemain.
 		local expected = { 200, 250, 300, 350, 800, 450, 500, 550, 600, 1300 }
 		for wave, want in expected do
-			local got = Balance.waveReward(wave, 3, isBossWave(wave))
-			assert(got == want, string.format("wave %d harus %d koin, dapat %d", wave, want, got))
+			local got = Balance.waveCash(wave, isBossWave(wave))
+			assert(got == want, string.format("wave %d harus %d cash, dapat %d", wave, want, got))
 		end
+	end,
+})
+
+table.insert(cases, {
+	name = "cash per wave tidak lagi bergantung pada jumlah pemain",
+	run = function()
+		-- Yang dijaga di sini bukan rumusnya tapi BENTUK fungsinya: dia cuma
+		-- menerima wave dan boss. Kalau nanti ada yang menambahkan kembali
+		-- argumen jumlah pemain, satu pemain di tim berempat akan kembali
+		-- kebagian seperempat anggaran untuk barang yang dipakainya sendiri.
+		assert(Balance.playerCountMultiplier == nil, "pengali jumlah pemain harus sudah hilang")
+		assert(Balance.waveReward == nil, "waveReward harus sudah diganti waveCash")
 	end,
 })
 
 table.insert(cases, {
 	name = "wave boss dikenali dari Waves, bukan dari nomor yang ditulis tangan",
 	run = function()
-		-- Kalau boss baru ditambahkan nanti dengan mengisi `bossId`, hadiahnya
-		-- ikut terkali dua tanpa menyentuh Balance. Yang diuji di sini: wave
-		-- yang punya bossId memang dapat dua kali wave tetangganya yang tidak.
+		-- Kalau boss baru ditambahkan nanti dengan mengisi `bossId`, cash-nya
+		-- ikut terkali dua tanpa menyentuh Balance.
 		for wave = 1, 10 do
 			if isBossWave(wave) then
-				local withBoss = Balance.waveReward(wave, 3, true)
-				local withoutBoss = Balance.waveReward(wave, 3, false)
+				local withBoss = Balance.waveCash(wave, true)
+				local withoutBoss = Balance.waveCash(wave, false)
 				assert(
 					withBoss == withoutBoss * 2,
 					string.format("wave boss %d harus dua kali wave biasa", wave)
@@ -279,30 +269,26 @@ table.insert(cases, {
 })
 
 table.insert(cases, {
-	name = "total sepuluh wave: 5300 untuk tim besar, 21200 untuk solo",
+	name = "satu run penuh memberi 5300 cash per pemain",
 	run = function()
-		-- Angka inti rancangan bagian 6. 21.200 solo itu yang membuat batas
-		-- jumlah di Toko Match harus diganti harga yang naik -- toko yang semua
-		-- itemnya dibatasi cuma bisa menyerap 3.450.
-		local function total(playerCount: number): number
-			local sum = 0
-			for wave = 1, 10 do
-				sum += Balance.waveReward(wave, playerCount, isBossWave(wave))
-			end
-			return sum
+		-- Angka ini anggaran yang dipakai `Balance.matchUpgradePrice` untuk
+		-- memilih kurvanya. Kalau salah satu digeser tanpa yang lain, upgrade
+		-- jadi terlalu murah atau tidak pernah terjangkau -- dan dua-duanya cuma
+		-- terasa sebagai "balancing yang aneh", bukan sebagai angka yang salah.
+		local sum = 0
+		for wave = 1, 10 do
+			sum += Balance.waveCash(wave, isBossWave(wave))
 		end
-		assert(total(3) == 5300, string.format("tim 3-4 harus 5300, dapat %d", total(3)))
-		assert(total(2) == 10600, string.format("duo harus 10600, dapat %d", total(2)))
-		assert(total(1) == 21200, string.format("solo harus 21200, dapat %d", total(1)))
+		assert(sum == 5300, string.format("harus 5300 per pemain, dapat %d", sum))
 	end,
 })
 
 table.insert(cases, {
-	name = "hadiah naik monoton antar wave biasa, dan tidak pernah negatif",
+	name = "cash naik monoton antar wave biasa, dan tidak pernah negatif",
 	run = function()
 		local previous = 0
 		for wave = 1, 10 do
-			local reward = Balance.waveReward(wave, 3, false)
+			local reward = Balance.waveCash(wave, false)
 			assert(reward > previous, string.format("wave %d harus di atas sebelumnya", wave))
 			previous = reward
 		end
@@ -313,10 +299,44 @@ table.insert(cases, {
 	name = "nomor wave tidak wajar memberi nol, bukan angka negatif atau NaN",
 	run = function()
 		for _, bad in { 0, -5, 0 / 0, math.huge } do
-			local reward = Balance.waveReward(bad, 1, false)
+			local reward = Balance.waveCash(bad, false)
 			assert(
 				reward == 0,
 				string.format("wave %s harus 0, dapat %s", tostring(bad), tostring(reward))
+			)
+		end
+	end,
+})
+
+-- Harga upgrade di dalam match ----------------------------------------------
+
+table.insert(cases, {
+	name = "harga upgrade dalam match naik dan totalnya sesuai anggaran satu run",
+	run = function()
+		-- Kurvanya dipilih terhadap anggaran yang benar-benar masuk: 5.300 dari
+		-- hadiah wave ditambah cash dari membunuh. Totalnya 5.951 untuk naik dari
+		-- level 1 ke 10, jadi level maksimum bisa dicapai dalam satu run tapi
+		-- cuma kalau hampir seluruh cash ditumpahkan ke satu senjata.
+		local expected = { 150, 202, 273, 369, 498, 672, 908, 1225, 1654 }
+		local sum = 0
+		for level, want in expected do
+			local got = Balance.matchUpgradePrice(level)
+			assert(got == want, string.format("level %d harus %d cash, dapat %d", level, want, got))
+			sum += got
+		end
+		assert(sum == 5951, string.format("total 1 ke 10 harus 5951, dapat %d", sum))
+	end,
+})
+
+table.insert(cases, {
+	name = "level tidak wajar memberi harga tak terhingga, bukan gratis",
+	run = function()
+		-- Nol atau NaN yang pulang sebagai 0 berarti upgrade gratis, dan itu
+		-- tidak akan pernah dilaporkan oleh pemain yang diuntungkan.
+		for _, bad in { 0, -4, 0 / 0 } do
+			assert(
+				Balance.matchUpgradePrice(bad) == math.huge,
+				string.format("level %s harus tak terhingga", tostring(bad))
 			)
 		end
 	end,

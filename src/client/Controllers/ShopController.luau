@@ -1,55 +1,109 @@
 --!strict
--- ShopController.luau — UI Toko Match.
+-- ShopController.luau — UI Toko Match, yang sekarang menjual UPGRADE SENJATA.
 --
--- Panel ini muncul saat jeda antar wave DAN saat toko dikunci boss Locker,
--- dan tombolnya dinonaktifkan kalau koin tim kurang atau jatah item habis.
--- Semuanya murni presentasi: server tetap memeriksa ulang semuanya di
--- ShopService (bagian 1.2), dan kalau cache client ketinggalan, yang terjadi
--- paling buruk adalah tombol terlihat aktif lalu pembeliannya ditolak dengan
--- alasan yang jelas lewat `ActionResult` — yang juga ditampilkan di sini.
+-- Panel ini muncul saat jeda antar wave dan saat toko dikunci boss Locker.
+-- Yang ditawarkan satu hal saja: menaikkan satu level senjata yang sedang
+-- dipakai pemain, dibayar cash. Lima item tim yang dulu ada di sini sudah
+-- dimatikan (`Config.MATCH_SHOP_ITEMS_ENABLED`).
 --
--- Harga dan sisa jatah dibaca dari modul shared yang sama dengan server
--- (`ShopItems`, `ShopRules`), bukan dikirim per update: angkanya data statis
--- yang identik di dua sisi.
+-- Satu baris, bukan daftar, dan itu mengikuti bentuk fiturnya: fase `Loadout`
+-- sudah mengunci senjata yang dipakai sampai match selesai, jadi tidak pernah
+-- ada lebih dari satu senjata yang bisa di-upgrade di sini.
+--
+-- Di level percabangan panel ini berubah bentuk: tombol tunggalnya diganti
+-- tiga kartu alur berjajar, masing-masing dengan tombol konfirmasinya sendiri.
+-- Berjajar dan bukan satu per satu karena itu syarat rancangan
+-- (ARENA_REDESIGN.md bagian 3) -- pilihan yang diambil tanpa melihat dua alur
+-- lain bukan keputusan. Bedanya dengan versi lobby dulu: pilihannya cuma
+-- mengikat sampai match ini selesai, bukan selamanya.
+--
+-- Semuanya murni presentasi. Server memeriksa ulang semuanya di ShopService
+-- lewat `MatchUpgradeRules` yang SAMA dengan yang dibaca file ini, jadi tombol
+-- yang hidup di sini adalah tombol yang akan diterima di sana. Kalau cache
+-- client ketinggalan, yang terjadi paling buruk tombol terlihat aktif lalu
+-- ditolak dengan alasan yang jelas lewat `ActionResult` -- yang juga
+-- ditampilkan di sini.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Balance = require(ReplicatedStorage.Shared.Modules.Balance)
+local Shared = ReplicatedStorage.Shared
+local Balance = require(Shared.Modules.Balance)
+local MatchUpgradeRules = require(Shared.Modules.MatchUpgradeRules)
+local ProgressionRules = require(Shared.Modules.ProgressionRules)
+local Remotes = require(Shared.Remotes)
+local Types = require(Shared.Modules.Types)
+local Weapons = require(Shared.Modules.Weapons)
+
 local MatchStore = require(script.Parent.MatchStore)
-local Remotes = require(ReplicatedStorage.Shared.Remotes)
-local ShopItems = require(ReplicatedStorage.Shared.Modules.ShopItems)
-local ShopRules = require(ReplicatedStorage.Shared.Modules.ShopRules)
 local UiKit = require(script.Parent.UiKit)
 
 local ShopController = {}
 
 local localPlayer = Players.LocalPlayer
 
-local ROW_HEIGHT = 58
 local PANEL_WIDTH = 330
+local PAD = 14
+local INNER = PANEL_WIDTH - PAD * 2
+-- Tinggi satu kartu alur: judul, tema, tiga baris tingkat, tombol.
+local CARD_HEIGHT = 128
+local CARD_GAP = 8
+local HEADER_HEIGHT = 108
 
-type Row = {
-	button: TextButton,
+type Card = {
+	root: Frame,
 	title: TextLabel,
-	detail: TextLabel,
+	body: TextLabel,
+	confirm: TextButton,
+	pathId: string?,
 }
 
 local gui: ScreenGui? = nil
 local panel: Frame? = nil
 local statusLabel: TextLabel? = nil
-local rows: { [string]: Row } = {}
+local titleLabel: TextLabel? = nil
+local detailLabel: TextLabel? = nil
+local upgradeButton: TextButton? = nil
+local cards: { Card } = {}
 local started = false
 
 -- Balasan `ActionResult` terakhir, ditahan di baris status selama beberapa
 -- detik. Perlu ditahan dengan penanda waktu, bukan cuma ditulis sekali:
 -- `MatchState` dikirim server tiap 0.2 detik dan tiap paketnya memanggil
--- render(), jadi tanpa ini pesannya ketimpa "N cash tim" sebelum pemain
--- selesai membacanya.
+-- render(), jadi tanpa ini pesannya ketimpa "N cash" sebelum pemain selesai
+-- membacanya.
 local NOTICE_SECONDS = 4
 local noticeText: string? = nil
 local noticeOk = false
 local noticeUntil = 0
+
+-- Senjata dan save yang berlaku sekarang. Nil kalau server belum mengirim
+-- apa pun -- sebelum match pertama, misalnya.
+local function currentWeapon(): (Types.WeaponDef?, Types.WeaponSave)
+	local state = MatchStore.getUpgradeState()
+	if state == nil then
+		return nil, MatchUpgradeRules.freshSave()
+	end
+	return Weapons[state.weaponId], { level = state.level, path = state.path }
+end
+
+local function send(pathId: string?)
+	local state = MatchStore.getUpgradeState()
+	if state == nil then
+		return
+	end
+	Remotes.Events.UpgradeWeapon:FireServer(state.weaponId, pathId)
+end
+
+local function describeStats(def: Types.WeaponDef, save: Types.WeaponSave): string
+	local stats = Balance.weaponStats(def, save)
+	return string.format(
+		"damage %d · jeda %.2fs · jangkauan %d",
+		math.floor(stats.damage + 0.5),
+		stats.cooldown,
+		math.floor(stats.range + 0.5)
+	)
+end
 
 local function build()
 	if gui ~= nil then
@@ -57,8 +111,9 @@ local function build()
 	end
 
 	local screen = UiKit.screenGui("CodeVerseShop", 30)
-
-	local height = 54 + #ShopItems.order * ROW_HEIGHT
+	-- Tinggi awal saja; `resize` yang menentukan tinggi sebenarnya tiap render,
+	-- karena panel ini berganti bentuk antara satu tombol dan tiga kartu.
+	local height = HEADER_HEIGHT + PAD
 	local frame = UiKit.panel(
 		screen,
 		"Panel",
@@ -70,62 +125,106 @@ local function build()
 	local title = UiKit.label(
 		frame,
 		"Title",
-		UDim2.fromOffset(14, 8),
-		UDim2.fromOffset(302, 20),
-		"Toko Match"
+		UDim2.fromOffset(PAD, 10),
+		UDim2.fromOffset(INNER, 20),
+		"Upgrade Senjata"
 	)
 	title.Font = Enum.Font.GothamBold
 
 	local status =
-		UiKit.label(frame, "Status", UDim2.fromOffset(14, 28), UDim2.fromOffset(302, 18), "")
-	status.TextSize = 13
-	status.TextColor3 = UiKit.COLOR_MUTED
+		UiKit.label(frame, "Status", UDim2.fromOffset(PAD, 32), UDim2.fromOffset(INNER, 16), "")
+	status.TextSize = 12
+	status.TextColor3 = UiKit.COLOR_WARN
 
-	-- Urutan dari ShopItems.order, bukan dari iterasi tabel: urutan iterasi
-	-- tabel Luau tidak dijamin, jadi tanpa daftar itu susunan tombol bisa
-	-- berbeda tiap kali client dibuka.
-	for index, itemId in ShopItems.order do
-		local def = ShopItems.get(itemId)
-		if def == nil then
-			continue
+	local detail =
+		UiKit.label(frame, "Detail", UDim2.fromOffset(PAD, 50), UDim2.fromOffset(INNER, 32), "")
+	detail.TextSize = 12
+	detail.TextWrapped = true
+	detail.TextColor3 = UiKit.COLOR_MUTED
+
+	local button = UiKit.button(
+		frame,
+		"Upgrade",
+		UDim2.fromOffset(PAD, 86),
+		UDim2.fromOffset(INNER, 28),
+		"Upgrade"
+	)
+	button.Activated:Connect(function()
+		if not button.Active then
+			return
 		end
+		send(nil)
+	end)
 
-		local top = 52 + (index - 1) * ROW_HEIGHT
+	-- Kartu alur dibuat sebanyak alur TERBANYAK yang dimiliki senjata mana
+	-- pun, lalu disembunyikan yang tidak terpakai. Dibuat sekali di sini dan
+	-- bukan tiap render: membuat Instance tiap frame membuat panel berkedip
+	-- dan menumpuk sampah.
+	local maxPaths = 0
+	for _, def in Weapons do
+		maxPaths = math.max(maxPaths, #def.paths)
+	end
 
-		local button = UiKit.button(
+	for index = 1, maxPaths do
+		local card = UiKit.panel(
 			frame,
-			itemId,
-			UDim2.fromOffset(14, top),
-			UDim2.fromOffset(302, ROW_HEIGHT - 8),
+			string.format("Path%d", index),
+			UDim2.fromOffset(PAD, HEADER_HEIGHT + (index - 1) * (CARD_HEIGHT + CARD_GAP)),
+			UDim2.fromOffset(INNER, CARD_HEIGHT)
+		)
+		card.BackgroundColor3 = Color3.fromRGB(26, 29, 36)
+		card.Visible = false
+
+		local cardTitle = UiKit.label(
+			card,
+			"Title",
+			UDim2.fromOffset(10, 6),
+			UDim2.fromOffset(INNER - 20, 16),
 			""
 		)
-		button.Text = ""
+		cardTitle.Font = Enum.Font.GothamBold
+		cardTitle.TextSize = 14
 
-		local rowTitle = UiKit.label(
-			button,
-			"Title",
-			UDim2.fromOffset(10, 4),
-			UDim2.fromOffset(282, 18),
-			def.name
+		local body = UiKit.label(
+			card,
+			"Body",
+			UDim2.fromOffset(10, 24),
+			UDim2.fromOffset(INNER - 20, 70),
+			""
 		)
-		rowTitle.Font = Enum.Font.GothamBold
-		rowTitle.TextSize = 14
-		rowTitle.TextColor3 = Color3.fromRGB(16, 18, 24)
+		body.TextSize = 11
+		body.TextWrapped = true
+		body.TextYAlignment = Enum.TextYAlignment.Top
+		body.TextColor3 = UiKit.COLOR_MUTED
 
-		local detail =
-			UiKit.label(button, "Detail", UDim2.fromOffset(10, 22), UDim2.fromOffset(282, 26), "")
-		detail.TextSize = 12
-		detail.TextWrapped = true
-		detail.TextColor3 = Color3.fromRGB(40, 44, 54)
+		local confirm = UiKit.button(
+			card,
+			"Confirm",
+			UDim2.fromOffset(10, CARD_HEIGHT - 32),
+			UDim2.fromOffset(INNER - 20, 24),
+			"Pilih alur ini"
+		)
+		confirm.TextSize = 12
 
-		button.Activated:Connect(function()
-			if not button.Active then
+		local entry: Card = {
+			root = card,
+			title = cardTitle,
+			body = body,
+			confirm = confirm,
+			pathId = nil,
+		}
+		confirm.Activated:Connect(function()
+			if not confirm.Active then
 				return
 			end
-			Remotes.Events.BuyShopItem:FireServer(itemId)
+			-- Alur dibaca saat KLIK dari state kartunya, bukan ditangkap saat
+			-- kartu dibuat: kartu yang sama dipakai ulang untuk senjata yang
+			-- berbeda, jadi id yang ditangkap sekali akan mengunci alur
+			-- senjata yang sudah lama tidak ditampilkan.
+			send(entry.pathId)
 		end)
 
-		rows[itemId] = { button = button, title = rowTitle, detail = detail }
+		cards[index] = entry
 	end
 
 	screen.Parent = localPlayer:WaitForChild("PlayerGui")
@@ -133,77 +232,149 @@ local function build()
 	gui = screen
 	panel = frame
 	statusLabel = status
+	titleLabel = title
+	detailLabel = detail
+	upgradeButton = button
+end
+
+-- Tinggi panel mengikuti apa yang sedang ditampilkan: satu tombol, atau tiga
+-- kartu alur. Dihitung dari isinya dan bukan dipatok, dengan alasan yang sama
+-- seperti panel lobby -- angka tinggi yang ditebak akan menindih isinya begitu
+-- jumlah kartunya berubah.
+local function resize(visibleCards: number)
+	local frame = panel
+	if frame == nil then
+		return
+	end
+	local height = HEADER_HEIGHT + PAD
+	if visibleCards > 0 then
+		height = HEADER_HEIGHT + visibleCards * (CARD_HEIGHT + CARD_GAP) + PAD
+	end
+	frame.Size = UDim2.fromOffset(PANEL_WIDTH, height)
+	frame.Position = UDim2.new(1, -(PANEL_WIDTH + 16), 0.5, -height // 2)
 end
 
 local function render()
 	local frame = panel
 	local status = statusLabel
-	if frame == nil or status == nil then
+	local title = titleLabel
+	local detail = detailLabel
+	local button = upgradeButton
+	if frame == nil or status == nil or title == nil or detail == nil or button == nil then
 		return
 	end
 
-	local shop = MatchStore.getShopState()
-	local coins = MatchStore.getCoins()
 	local stateName = MatchStore.getStateName()
+	local shop = MatchStore.getShopState()
+	frame.Visible = stateName == MatchUpgradeRules.OPEN_STATE or shop.locked
 
-	-- Panel tetap terlihat saat toko terkunci boss, dengan alasannya. Kalau
-	-- disembunyikan, pemain tidak tahu bedanya "belum waktunya" dan "dikunci
-	-- Locker" — padahal yang kedua adalah mekanik yang harus dia sadari.
-	--
-	-- `shop.locked` perlu disebut terpisah dari state: Locker cuma hidup saat
-	-- `WaveActive` dan wave tidak bisa dinyatakan bersih selama dia hidup,
-	-- jadi tidak akan pernah ada Intermission sambil toko terkunci. Tanpa
-	-- cabang ini kuncinya tidak terlihat di UI sama sekali.
-	frame.Visible = stateName == ShopRules.OPEN_STATE or shop.locked
+	local cash = MatchStore.getCoins()
+	local def, save = currentWeapon()
 
-	if noticeText ~= nil and os.clock() >= noticeUntil then
-		noticeText = nil
+	if def == nil then
+		title.Text = "Upgrade Senjata"
+		detail.Text = "Senjata belum siap."
+		UiKit.setButtonEnabled(button, false)
+		button.Visible = true
+		for _, card in cards do
+			card.root.Visible = false
+		end
+		resize(0)
+		status.Text = string.format("%d cash", cash)
+		status.TextColor3 = UiKit.COLOR_WARN
+		return
 	end
 
+	local weapon = def :: Types.WeaponDef
+	title.Text = string.format("%s · level %d/%d", weapon.name, save.level, weapon.maxLevel)
+
+	-- Baris status: balasan terakhir kalau masih baru, lalu kunci boss, lalu
+	-- saldo. Urutannya sama dengan versi sebelumnya karena alasannya sama:
+	-- penolakan yang ketimpa saldo sebelum sempat dibaca sama saja dengan
+	-- tidak ada penolakan.
 	local notice = noticeText
-	if notice ~= nil then
+	if notice ~= nil and os.clock() < noticeUntil then
 		status.Text = notice
 		status.TextColor3 = if noticeOk then UiKit.COLOR_GOOD else UiKit.COLOR_BAD
 	elseif shop.locked then
 		status.Text = "Dikunci — kalahkan boss-nya dulu"
 		status.TextColor3 = UiKit.COLOR_BAD
 	else
-		status.Text = string.format("%d cash tim", coins)
+		status.Text = string.format("%d cash", cash)
 		status.TextColor3 = UiKit.COLOR_WARN
 	end
 
-	for itemId, row in rows do
-		local def = ShopItems.get(itemId)
-		if def == nil then
+	local needsPath = ProgressionRules.pathChoiceRequired(save)
+	local price = MatchUpgradeRules.priceFor(weapon, save)
+	local ok = MatchUpgradeRules.canUpgrade(weapon, save, {
+		state = stateName,
+		cash = cash,
+		locked = shop.locked,
+	}, if needsPath then nil else save.path)
+
+	if save.level >= weapon.maxLevel then
+		detail.Text = string.format("%s · sudah maksimum", describeStats(weapon, save))
+	else
+		local next = { level = save.level + 1, path = save.path }
+		detail.Text = string.format(
+			"%s\nsesudah upgrade: %s",
+			describeStats(weapon, save),
+			describeStats(weapon, next)
+		)
+	end
+
+	if not needsPath then
+		button.Visible = true
+		button.Text = if save.level >= weapon.maxLevel
+			then "Level maksimum"
+			else string.format("Upgrade — %d cash", price)
+		UiKit.setButtonEnabled(button, ok)
+		for _, card in cards do
+			card.root.Visible = false
+		end
+		resize(0)
+		return
+	end
+
+	-- Titik percabangan: tombol tunggal diganti kartu alur.
+	button.Visible = false
+	detail.Text = string.format(
+		"Level %d mengunci satu alur sampai match ini selesai. Baca ketiganya dulu — %d cash.",
+		Balance.PATH_BRANCH_LEVEL,
+		price
+	)
+
+	local shown = 0
+	for index, card in cards do
+		local path = weapon.paths[index]
+		if path == nil then
+			card.root.Visible = false
 			continue
 		end
+		shown += 1
+		card.pathId = path.id
+		card.root.Visible = true
+		card.title.Text = path.name
 
-		local remaining = ShopRules.remaining(def, shop.purchases)
-		local remainingText = if remaining == math.huge
-			then ""
-			else string.format(" · sisa %d", remaining)
-		-- Harga SEKARANG, bukan `def.cost`. Untuk item tak terbatas harganya
-		-- naik tiap pembelian, dan tombol yang menampilkan harga dasar akan
-		-- memotong cash lebih banyak daripada yang tertulis -- pemain akan
-		-- menganggapnya bug, dan dia benar.
-		local price = ShopRules.priceFor(def, shop.purchases, Balance.SHOP_PRICE_GROWTH)
-		row.detail.Text = string.format("%d cash%s — %s", price, remainingText, def.description)
+		local lines = { path.theme }
+		for _, tier in path.tiers do
+			table.insert(lines, string.format("L%d  %s", tier.level, tier.summary))
+		end
+		card.body.Text = table.concat(lines, "\n")
 
-		local canBuy = ShopRules.canBuy(def, {
+		card.confirm.Text = string.format("Pilih %s", path.name)
+		-- Tiap kartu ditanya SENDIRI ke aturan yang sama dengan server, dengan
+		-- alur kartunya. Satu jawaban untuk ketiganya akan salah begitu ada
+		-- alur yang punya syarat sendiri nanti.
+		local cardOk = MatchUpgradeRules.canUpgrade(weapon, save, {
 			state = stateName,
+			cash = cash,
 			locked = shop.locked,
-			coins = coins,
-			purchases = shop.purchases,
-			priceGrowth = Balance.SHOP_PRICE_GROWTH,
-		})
-		UiKit.setButtonEnabled(row.button, canBuy)
-		row.title.TextColor3 = if canBuy
-			then Color3.fromRGB(16, 18, 24)
-			else Color3.fromRGB(140, 145, 155)
-		row.detail.TextColor3 = if canBuy
-			then Color3.fromRGB(40, 44, 54)
-			else Color3.fromRGB(120, 125, 135)
+		}, path.id)
+		UiKit.setButtonEnabled(card.confirm, cardOk)
 	end
+
+	resize(shown)
 end
 
 function ShopController.start()
@@ -215,45 +386,25 @@ function ShopController.start()
 	build()
 	render()
 
-	MatchStore.onShopState:Connect(render)
 	MatchStore.onMatchState:Connect(render)
+	MatchStore.onShopState:Connect(render)
+	MatchStore.onUpgradeState:Connect(render)
 	MatchStore.onCoins:Connect(render)
 
-	-- Penolakan pembelian ditampilkan di baris status panel toko. Tanpa ini
-	-- tidak ada yang menampilkannya di mana pun: satu-satunya pendengar
-	-- `ActionResult` yang lain adalah LobbyController, dan panel lobby
-	-- disembunyikan di luar state Lobby/Loadout/Countdown — persis saat toko
-	-- buka.
-	-- Tombol yang ditolak server jadi terlihat sama seperti tombol yang rusak.
-	--
-	-- Disaring lewat `payload.action`: aksi lobby (SelectLoadout, upgrade,
-	-- beli, craft senjata) bukan urusan panel ini dan sudah ada tempatnya
-	-- sendiri.
 	Remotes.Events.ActionResult.OnClientEvent:Connect(function(raw: unknown)
 		if type(raw) ~= "table" then
 			return
 		end
 		local payload = raw :: { [string]: unknown }
-		if payload.action ~= "BuyShopItem" or type(payload.ok) ~= "boolean" then
+		if payload.action ~= "UpgradeWeapon" and payload.action ~= "BuyShopItem" then
 			return
 		end
-
-		noticeOk = payload.ok :: boolean
-		if noticeOk then
-			noticeText = "Pembelian berhasil."
-		else
-			noticeText = if type(payload.reason) == "string"
-				then payload.reason :: string
-				else "Ditolak server."
-		end
+		noticeOk = payload.ok == true
+		noticeText = if type(payload.reason) == "string"
+			then payload.reason :: string
+			else if noticeOk then "Upgrade terpasang." else "Ditolak."
 		noticeUntil = os.clock() + NOTICE_SECONDS
 		render()
-
-		-- Dikembalikan ke teks biasa setelah beberapa detik supaya pesan
-		-- penolakan lama tidak menempel selamanya. render() yang dipicu
-		-- `MatchState` biasanya sudah melakukannya lebih dulu; ini jaringnya
-		-- kalau paket itu berhenti datang (match selesai).
-		task.delay(NOTICE_SECONDS, render)
 	end)
 end
 

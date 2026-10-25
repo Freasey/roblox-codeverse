@@ -68,8 +68,8 @@ MatchService.ENDED_SECONDS = 10
 MatchService.onStateChanged = Signal.new() :: Signal.Signal<State, State>
 -- Wave berikutnya siap dijalankan: (nomor wave).
 MatchService.onWaveStarted = Signal.new() :: Signal.Signal<number>
--- (jumlah koin match, nomor wave). Ditembakkan saat sebuah wave selesai,
--- termasuk wave terakhir.
+-- (cash untuk TIAP peserta, nomor wave). Ditembakkan saat sebuah wave
+-- selesai, termasuk wave terakhir.
 --
 -- Sinyal, bukan panggilan langsung ke ShopService: ShopService sudah
 -- me-require MatchService untuk `getState()`, jadi arah sebaliknya akan jadi
@@ -415,7 +415,10 @@ function MatchService.onWaveCleared()
 	-- menambah boss baru nanti cukup mengisi `bossId` di komposisi wave-nya.
 	local def = Waves.get(wave)
 	local isBossWave = def ~= nil and def.bossId ~= nil
-	MatchService.onWaveReward:Fire(Balance.waveReward(wave, #participantList(), isBossWave), wave)
+	-- Angkanya PER PEMAIN sekarang, bukan satu kolam yang dibagi: jumlah
+	-- peserta tidak lagi ikut menghitung, dan yang menerimanya ShopService
+	-- membayarkannya ke tiap peserta.
+	MatchService.onWaveReward:Fire(Balance.waveCash(wave, isBossWave), wave)
 
 	if wave >= Waves.LAST_WAVE then
 		endMatch(true)

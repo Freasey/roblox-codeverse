@@ -203,13 +203,32 @@ local function onCraft(player: Player, rawId: unknown)
 	print(string.format("[ProgressionService] %s craft %s", player.Name, def.id))
 end
 
+-- Handler upgrade LOBBY, diparkir. Tidak disambung ke remote mana pun selama
+-- upgrade senjata hidup di dalam match (lihat `start` di bawah), tapi tetap
+-- diekspor supaya menyalakannya lagi cukup satu baris di `start` -- dan supaya
+-- dia tidak terbaca sebagai kode mati yang aman dihapus.
+ProgressionService.upgradeFromLobby = onUpgrade
+
 function ProgressionService.start()
 	if started then
 		return
 	end
 	started = true
 
-	Remotes.Events.UpgradeWeapon.OnServerEvent:Connect(onUpgrade)
+	-- `UpgradeWeapon` SENGAJA tidak disambung di sini lagi. Upgrade senjata
+	-- pindah ke dalam match dan dibayar cash, jadi yang memegang remote itu
+	-- sekarang ShopService.
+	--
+	-- Bukan dibiarkan tersambung dengan gerbang state yang kebetulan tidak
+	-- bertabrakan: `OnServerEvent` boleh punya banyak pendengar, jadi dua
+	-- handler akan sama-sama jalan untuk tiap tembakan. Hari ini keduanya
+	-- aman karena gerbangnya berbeda (`Lobby` di sini, `Intermission` di
+	-- sana), tapi satu perubahan state di salah satu sisi akan membuat satu
+	-- upgrade dipotong DUA KALI dari dua mata uang yang berbeda -- dan yang
+	-- pertama terlihat cuma koin yang berkurang tanpa sebab.
+	--
+	-- `onUpgrade` dan seluruh aturannya dibiarkan utuh: dia masih benar, dan
+	-- dia yang dipakai lagi kalau upgrade lobby dinyalakan kembali.
 	Remotes.Events.BuyWeapon.OnServerEvent:Connect(onBuy)
 	Remotes.Events.CraftWeapon.OnServerEvent:Connect(onCraft)
 

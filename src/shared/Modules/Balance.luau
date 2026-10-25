@@ -29,6 +29,11 @@ Balance.XP_LEVEL_BASE = 100
 Balance.XP_LEVEL_GROWTH = 1.25
 Balance.UPGRADE_BASE_PRICE = 50
 Balance.UPGRADE_PRICE_GROWTH = 1.35
+
+-- Harga upgrade DI DALAM match, dibayar cash. Lihat `Balance.matchUpgradePrice`
+-- untuk perhitungan anggarannya.
+Balance.MATCH_UPGRADE_BASE_PRICE = 150
+Balance.MATCH_UPGRADE_PRICE_GROWTH = 1.35
 Balance.DAMAGE_PER_LEVEL = 0.12
 
 -- Batas musuh aktif sekaligus (bagian 1.3). Sisa spawn masuk antrian, bukan
@@ -181,9 +186,43 @@ function Balance.rewardXp(waveReached: number, won: boolean): number
 	return Balance.XP_PER_WAVE * waveReached + (if won then Balance.XP_WIN_BONUS else 0)
 end
 
--- Harga naik dari level `fromLevel` ke `fromLevel + 1`.
+-- Harga naik dari level `fromLevel` ke `fromLevel + 1`, dibayar KOIN di lobby.
+--
+-- Tidak dipakai selama upgrade senjata hidup di dalam match: yang berlaku
+-- sekarang `matchUpgradePrice` di bawah. Dibiarkan utuh karena kurvanya masih
+-- benar dan menunggu kalau upgrade lobby dinyalakan lagi.
 function Balance.upgradePrice(fromLevel: number): number
 	return math.floor(Balance.UPGRADE_BASE_PRICE * Balance.UPGRADE_PRICE_GROWTH ^ (fromLevel - 1))
+end
+
+-- Harga naik satu level DI DALAM match, dibayar cash.
+--
+-- Angkanya dipilih terhadap anggaran yang benar-benar masuk, bukan dikarang.
+-- Satu run penuh 10 wave memberi tiap pemain 5.300 cash dari hadiah wave
+-- ditambah cash dari membunuh -- sekitar 1.394 solo dan 513 per orang di tim
+-- berempat, jadi totalnya 6.694 solo dan 5.813 berempat. Menaikkan satu
+-- senjata dari level 1 ke 10 butuh sembilan kali upgrade:
+--
+--   150, 202, 273, 369, 498, 672, 908, 1.225, 1.654  -- totalnya 5.951
+--
+-- Jadi level maksimum bisa dicapai dalam satu run, tapi cuma kalau hampir
+-- seluruh cash ditumpahkan ke satu senjata dan nyaris tidak ada yang tersisa.
+-- Itu yang membuat tiap jeda jadi pilihan, bukan formalitas.
+--
+-- Ada sembilan jeda antar wave dalam satu match dan sembilan kali upgrade
+-- untuk mencapai level 10, jadi "satu upgrade tiap wave" bukan kebetulan --
+-- itu memang bentuk yang dituju.
+--
+-- Ini TEBAKAN PERTAMA yang menunggu playtest, bukan angka yang sudah terbukti.
+-- Kalau terasa salah, yang digeser dua konstanta di atas, bukan rumus di sini.
+function Balance.matchUpgradePrice(fromLevel: number): number
+	if fromLevel ~= fromLevel or fromLevel < 1 then
+		return math.huge
+	end
+	local level = math.floor(fromLevel)
+	return math.floor(
+		Balance.MATCH_UPGRADE_BASE_PRICE * Balance.MATCH_UPGRADE_PRICE_GROWTH ^ (level - 1)
+	)
 end
 
 -- Kosakata kunci `effects` di `WeaponPathTier`, dan di mana tiap kunci harus
@@ -388,33 +427,27 @@ function Balance.applyXp(level: number, xp: number, gained: number): (number, nu
 	return newLevel, newXp, gainedLevels
 end
 
--- Pengali jumlah pemain untuk hadiah wave. Tangga, bukan kurva: 1 pemain x4,
--- 2 pemain x2, 3 atau lebih x1.
+-- Cash yang didapat SATU PEMAIN dari satu wave yang baru selesai.
 --
--- Perhatikan bahwa ini sudah separuh adil dengan sendirinya sebelum pengali
--- apa pun: efek Toko Match berlaku untuk SELURUH tim, jadi tim berempat
--- mendapat 4x nilai dari tiap koin yang dibelanjakan. 200 koin untuk tim
--- berempat kira-kira setara 800 untuk solo.
-function Balance.playerCountMultiplier(playerCount: number): number
-	-- NaN dan jumlah pemain yang tidak masuk akal diperlakukan sebagai solo:
-	-- hadiah yang terlalu besar lebih mudah terlihat saat playtest daripada
-	-- hadiah yang diam-diam hilang.
-	if playerCount ~= playerCount or playerCount <= 1 then
-		return 4
-	end
-	if playerCount < 3 then
-		return 2
-	end
-	return 1
-end
-
--- Hadiah koin match untuk satu wave yang baru selesai.
+-- Per pemain, bukan satu kolam tim, dan itu berubah sejak cash jadi mata uang
+-- upgrade senjata. Upgrade senjata milik satu orang: kalau empat pemain
+-- berbagi satu kolam untuk barang pribadi, tiap orang cuma kebagian seperempat
+-- dan yang paling cepat menekan tombol memakai uang bersama untuk dirinya
+-- sendiri. Dengan hadiah per pemain, anggaran satu pemain tidak bergantung
+-- pada berapa orang yang ikut.
+--
+-- Pengali jumlah pemain yang dulu ada di sini (solo x4, duo x2, sisanya x1)
+-- ikut dibuang bersamanya. Gunanya dulu menyamakan kolam TIM lintas jumlah
+-- pemain, karena jumlah musuh -- dan karena itu cash dari membunuh -- ikut
+-- mengecil saat sendirian. Sekarang yang disamakan anggaran PER PEMAIN, dan
+-- itu sudah tercapai tanpa pengali: satu run penuh memberi 5.300 cash dari
+-- hadiah wave kepada setiap pemain, berapa pun jumlah mereka.
 --
 -- `isBossWave` sengaja diminta sebagai argumen, bukan dicari sendiri: modul ini
 -- tidak tahu apa pun soal boss, dan membuatnya me-require Waves atau Bosses
 -- akan menukar satu argumen dengan satu lingkaran require. Pemanggilnya sudah
 -- punya jawabannya: `Waves.get(wave).bossId ~= nil`.
-function Balance.waveReward(wave: number, playerCount: number, isBossWave: boolean): number
+function Balance.waveCash(wave: number, isBossWave: boolean): number
 	if wave ~= wave or wave < 1 or wave == math.huge then
 		return 0
 	end
@@ -422,7 +455,7 @@ function Balance.waveReward(wave: number, playerCount: number, isBossWave: boole
 	if isBossWave then
 		base *= Balance.WAVE_REWARD_BOSS_MULT
 	end
-	return math.floor(base * Balance.playerCountMultiplier(playerCount))
+	return math.floor(base)
 end
 
 return Balance

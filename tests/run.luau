@@ -23,6 +23,7 @@ local suites: { { name: string, cases: { Case } } } = {
 	{ name = "BossRules", cases = require("./BossRules.spec") },
 	{ name = "ProgressionRules", cases = require("./ProgressionRules.spec") },
 	{ name = "LeaderboardRules", cases = require("./LeaderboardRules.spec") },
+	{ name = "MatchUpgradeRules", cases = require("./MatchUpgradeRules.spec") },
 }
 
 local passed = 0

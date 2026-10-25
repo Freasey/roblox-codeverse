@@ -41,15 +41,26 @@ export type BossState = {
 	alive: boolean,
 }
 
+-- Level dan alur senjata yang berlaku di match ini, untuk pemain INI.
+-- Dikirim server per pemain, bukan disiarkan ke semua: upgrade senjata milik
+-- masing-masing orang.
+export type UpgradeState = {
+	weaponId: string,
+	level: number,
+	path: string,
+}
+
 MatchStore.onMatchState = Signal.new() :: Signal.Signal<MatchState>
 MatchStore.onCoins = Signal.new() :: Signal.Signal<number>
 MatchStore.onShopState = Signal.new() :: Signal.Signal<ShopState>
 MatchStore.onBossState = Signal.new() :: Signal.Signal<BossState>
+MatchStore.onUpgradeState = Signal.new() :: Signal.Signal<UpgradeState>
 
 local matchState: MatchState? = nil
 local coins = 0
 local shopState: ShopState = { open = false, locked = false, purchases = {}, suspended = false }
 local bossState: BossState? = nil
+local upgradeState: UpgradeState? = nil
 local started = false
 
 local function isNumber(value: unknown): boolean
@@ -104,6 +115,22 @@ function MatchStore.start()
 		MatchStore.onShopState:Fire(shopState)
 	end)
 
+	Remotes.Events.MatchUpgradeState.OnClientEvent:Connect(function(raw: unknown)
+		if type(raw) ~= "table" then
+			return
+		end
+		local payload = raw :: { [string]: unknown }
+		if
+			type(payload.weaponId) ~= "string"
+			or not isNumber(payload.level)
+			or type(payload.path) ~= "string"
+		then
+			return
+		end
+		upgradeState = raw :: UpgradeState
+		MatchStore.onUpgradeState:Fire(upgradeState :: UpgradeState)
+	end)
+
 	Remotes.Events.BossState.OnClientEvent:Connect(function(raw: unknown)
 		if type(raw) ~= "table" then
 			return
@@ -137,6 +164,10 @@ end
 
 function MatchStore.getShopState(): ShopState
 	return shopState
+end
+
+function MatchStore.getUpgradeState(): UpgradeState?
+	return upgradeState
 end
 
 function MatchStore.getBossState(): BossState?
