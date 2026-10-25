@@ -37,6 +37,7 @@ local CASES: { CaseSpec } = {
 	{ name = "enemy_core", file = "cases/enemy_core.luau", deadline = 150 },
 	{ name = "remote_reject", file = "cases/remote_reject.luau", deadline = 120 },
 	{ name = "core_wave", file = "cases/core_wave.luau", deadline = 150 },
+	{ name = "path_effects", file = "cases/path_effects.luau", deadline = 150 },
 }
 
 -- --------------------------------------------------------------------------

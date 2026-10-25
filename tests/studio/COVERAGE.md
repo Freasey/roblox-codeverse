@@ -26,10 +26,17 @@ Arti kolom Dasar:
 
 > ⚠️ **Angka di bawah dihitung terhadap `docs/TEST_CASES.md` versi 126 case,
 > sebelum dokumen itu digabung dengan `STUDIO_CHECKLIST.md`.** Dokumen sekarang
-> berisi 162 case, jadi penyebutnya sudah historis dan persentasenya **bukan**
+> jauh lebih besar, jadi penyebutnya sudah historis dan persentasenya **bukan**
 > cakupan terkini. Yang masih berlaku apa adanya: daftar per-ID di bawah, dan
-> alasan setiap label. Menghitung ulang berarti menilai ~36 case baru satu per
+> alasan setiap label. Menghitung ulang berarti menilai tiap case baru satu per
 > satu terhadap kode — pekerjaan tersendiri, belum dikerjakan.
+>
+> ⚠️ **Pembilangnya juga historis.** Angka ini ditulis saat harness punya tiga
+> case dan 82 assertion; sekarang lima case dan 251 assertion, dan rancangan
+> ulang arena (`docs/ARENA_REDESIGN.md`) sudah menambah case `path_effects`
+> beserta cakupan baru untuk slow, zona, dan tanda yang tidak tercermin di
+> daftar per-ID di bawah. **Sumber yang benar untuk cakupan harness terkini
+> adalah `docs/TEST_CASES.md` bagian 3.2**, bukan dokumen ini.
 
 | | Jumlah | Dari 126 (historis) |
 |---|---|---|

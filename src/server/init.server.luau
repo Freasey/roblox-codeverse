@@ -168,6 +168,12 @@ CombatService.setGate(MatchService.canAttack)
 -- yang sama dengan gerbangnya: CombatService tidak boleh bergantung ke
 -- ShopService, dan ShopService sudah bergantung ke MatchService.
 CombatService.setModifiers(ShopService.getModifiers)
+-- Pengurangan damage yang masuk ke pemain (alur senjata "Bertahan", langkah 7
+-- rancangan ulang arena). Arahnya sama dengan dua di atas tapi terbalik
+-- pemiliknya: yang MEMBACA angkanya EnemyService, dan yang TAHU angkanya
+-- CombatService -- karena dia yang memegang resolusi senjata per pemain. Jadi
+-- EnemyService yang disuntik, bukan CombatService.
+EnemyService.setPlayerDamageTakenMult(CombatService.getPlayerDamageTakenMult)
 CombatService.start()
 
 -- Musuh berhenti bergerak di luar WaveActive, dan dibersihkan saat kembali ke

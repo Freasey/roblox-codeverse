@@ -12,7 +12,7 @@ keputusan implementasi — pindah ke sini.
 >
 > **Tidak satu baris pun kode M1 sampai M5 pernah dimainkan sebagai game di
 > Roblox Studio.** Yang sudah hijau: `stylua --check`, `selene`,
-> `luau-lsp analyze`, 221 unit test Lune, `rojo build`, dan — sejak harness
+> `luau-lsp analyze`, 243 unit test Lune, `rojo build`, dan — sejak harness
 > `tests/studio` ada — sisi server yang dijalankan engine sungguhan dalam mode
 > Run (lihat [bagian 3.2](#32-cakupan-harness-studio)). Lolos type check bukan
 > berarti jalan di engine, dan jalan di mode Run bukan berarti bisa dimainkan:
@@ -77,8 +77,8 @@ Ringkasan apa yang bisa dikerjakan hari ini:
 
 | Kelompok | Bisa sekarang (`solo`/`2P`/`4P`/`LAG`/`EDIT`) | Tertunda (`PUB`/`LIVE`) | Belum ada (`BELUM`) |
 |---|---|---|---|
-| BOOT, MATCH, WAVE, CORE, COMBAT, SHOP, BOSS, HUD | hampir semuanya | sedikit | — |
-| PROG | upgrade, beli, craft, reward, **dan seluruh pilihan alur upgrade** dalam satu sesi | semua yang menyangkut "keluar, join lagi, masih ada" | — |
+| BOOT, MATCH, WAVE, CORE, COMBAT, SHOP, BOSS, HUD | hampir semuanya, termasuk **keenam efek alur upgrade** (COMBAT-18 sampai COMBAT-25) — enam dari delapan baris itu `solo+EDIT`, satu butuh `2P`, dan satu (COMBAT-25) sudah `OK` lewat harness | sedikit | — |
+| PROG | upgrade, beli, craft, reward, **seluruh pilihan alur upgrade, dan stat yang dihasilkan tiap tingkatnya** dalam satu sesi | semua yang menyangkut "keluar, join lagi, masih ada" | — |
 | MP | ready check, koin tim, 4 player | semua rejoin | — |
 | DATA | DATA-01, DATA-09a, DATA-11, DATA-12 | sisanya | — |
 | SEC | semuanya kecuali SEC-08 | — | SEC-08 |
@@ -203,7 +203,7 @@ regresi.
 
 | Yang sudah terverifikasi | Di mana | Catatan |
 |---|---|---|
-| Lint, format, type check, 221 unit test Lune, `rojo build` | CI (`.github/workflows/ci.yml`) | Modul murni di `src/shared/Modules` sudah punya test: pembagian musuh per wave jumlahnya persis `Balance.enemyCount`, ambang boss cuma terpicu sekali, seluruh daftar penolakan toko dan progres, kurva level yang aman terhadap XP inf/NaN, material drop boss cocok dengan bahan craft, daftar state yang membolehkan loadout diganti (`MatchRules.canSelectLoadout`), kedua keadaan flag `DEV_ALL_WEAPONS` di `ProgressionRules.ownedWeapons` / `.equippedWeapon`, dan seluruh aturan alur upgrade — kapan pilihan ditagih (`pathChoiceRequired`), urutan pemeriksaan `canUpgrade` (alur sebelum koin, level maksimum sebelum keduanya), alur yang tidak bisa diganti, dan alur yang **tidak** tersimpan sebelum titik percabangan (`pathToApply`). |
+| Lint, format, type check, 243 unit test Lune, `rojo build` | CI (`.github/workflows/ci.yml`) | Modul murni di `src/shared/Modules` sudah punya test: pembagian musuh per wave jumlahnya persis `Balance.enemyCount`, ambang boss cuma terpicu sekali, seluruh daftar penolakan toko dan progres, kurva level yang aman terhadap XP inf/NaN, material drop boss cocok dengan bahan craft, daftar state yang membolehkan loadout diganti (`MatchRules.canSelectLoadout`), kedua keadaan flag `DEV_ALL_WEAPONS` di `ProgressionRules.ownedWeapons` / `.equippedWeapon`, seluruh aturan alur upgrade — kapan pilihan ditagih (`pathChoiceRequired`), urutan pemeriksaan `canUpgrade` (alur sebelum koin, level maksimum sebelum keduanya), alur yang tidak bisa diganti, dan alur yang **tidak** tersimpan sebelum titik percabangan (`pathToApply`) — dan sejak langkah 7, aritmetika efek alur yang punya umur di `tests/CombatEffects.spec.luau`: terkuat-menang di `CombatEffects.merge`, slow zona yang diambil terkuat sementara dps-nya dijumlahkan, pemilihan korban splash yang mengecualikan target utama (`withinRadius`), dan urutan deterministik `nearest` untuk penularan tanda. Plus dua test yang menjaga kosakata `effects` dari **dua arah**: kunci di `Weapons.luau` yang tidak ada di `Balance.PATH_EFFECT_KEYS` ditolak, dan kunci di `PATH_EFFECT_KEYS` yang tidak dipakai satu alur pun juga ditolak — yang pertama menangkap salah tulis yang diam-diam tidak pernah terbaca, yang kedua menangkap kosakata mati yang tetap terbaca sebagai janji. |
 | **Relative require jalan di engine Roblox** (DEVELOPMENT_PLAN.md bagian 1.5) | Playtest Studio pertama, lalu tiap run harness (`boot.log: [CodeVerse] relative require OK`) | Place lokal dijalankan dan eksekusi sampai masuk ke `PlayerDataService`, artinya seluruh rantai require di atasnya sukses — termasuk `require(Shared.Config)`, dan `Config.luau` baris 5 adalah `require("./Modules/Types")`. Rencana cadangan di bagian 1.5 **tidak** dipakai. |
 | **API web Roblox tidak boleh dipanggil di module scope** | Playtest Studio pertama | `GetDataStore` dulu dipanggil di module scope `PlayerDataService`; di place yang belum pernah di-publish, Roblox melempar error tepat di baris itu, require-nya gagal, dan SELURUH script server mati sebelum satu baris pun jalan — dengan pesan "Requested module experienced an error while loading" yang tidak menunjuk ke penyebabnya. Sudah diperbaiki jadi lazy + `pcall`. **Aturan ini berlaku untuk semua kode berikutnya:** `DataStoreService`, `OrderedDataStore`, `MessagingService`, `HttpService`, `MarketplaceService`, dan sejenisnya hanya dipanggil di dalam fungsi. |
 
@@ -225,9 +225,10 @@ Humanoid, tidak ada input, tidak ada kamera, dan tidak ada satu pun
 menyebut HUD, panel, bar HP, klik, atau posisi karakter berada di luar
 jangkauannya secara permanen — bukan karena harness-nya belum selesai.
 
-Run terakhir: **222 assertion lulus, 0 gagal, 17 dilewati, exit 0**, dari case
-`boot`, `enemy_core`, `remote_reject`, dan `core_wave`. Yang dilewati itu
-**bukan lulus**, dan ketujuh belasnya punya dua sebab yang berbeda.
+Run terakhir: **251 assertion lulus, 0 gagal, 22 dilewati, exit 0**, dari lima
+case: `boot`, `enemy_core`, `remote_reject`, `core_wave`, dan `path_effects`.
+Yang dilewati itu **bukan lulus**, dan kedua puluh duanya punya **tiga** sebab
+yang berbeda — dulu dua, dan yang ketiga datang bersama `path_effects`.
 
 **Tiga belas** dari `remote_reject`: kedelapan handler remote C → S memanggil
 `RateLimit.check(player.UserId)` sebelum memvalidasi argumennya, jadi tanpa
@@ -238,31 +239,55 @@ delapan SKIP untuk handler-nya, empat lagi untuk varian argumen
 [bagian 16](#16-keamanan-remote-sec) dan tetap harus dijalankan dari command bar
 client.
 
-**Empat sisanya** butuh mata manusia, Humanoid, atau transisi state yang tidak
-bisa terjadi tanpa Player: `warna.terlihatPemainTanpaHud` (butuh melihat
-arenanya), `habis.stateBerubahKeEnded` dan
-`habis.musuhDibersihkanSaatMatchBerakhir` (dua-duanya lewat
-`MatchService.endMatch`, yang cuma jalan dari `WaveActive`/`Intermission`), dan
-`damage.pukulanKePlayer` di `enemy_core` (butuh Humanoid untuk diukur). Angka 13
-dan 17 dua-duanya benar dan bukan salah tulis: 13 itu sebab yang pertama, 17
-itu totalnya.
+**Empat** dari `boot`, `core_wave`, dan `enemy_core` butuh mata manusia,
+Humanoid, atau transisi state yang tidak bisa terjadi tanpa Player:
+`warna.terlihatPemainTanpaHud` (butuh melihat arenanya),
+`habis.stateBerubahKeEnded` dan `habis.musuhDibersihkanSaatMatchBerakhir`
+(dua-duanya lewat `MatchService.endMatch`, yang cuma jalan dari
+`WaveActive`/`Intermission`), dan `damage.pukulanKePlayer` di `enemy_core`
+(butuh Humanoid untuk diukur).
 
-Akibatnya untuk kolom Status: **tiga baris M1 dibuktikan seluruhnya dan sudah
-`OK`** — WAVE-12, CORE-04, dan CORE-06. WAVE-11 sempat `OK` dan turun lagi ke
+**Lima sisanya** dari `path_effects`, dan sebabnya satu: **tiga dari enam efek
+alur masuk lewat `CombatService.onAttack`**, yang menuntut `Player` sungguhan
+beserta karakternya untuk membaca titik asal dan arah bidik — dan harness tidak
+bisa membuat satu pun, karena `Players:CreateLocalPlayer` ditolak engine dengan
+"lacking capability LocalUser". Kelimanya: `splash.korbanDiSekitarTitikKena`,
+`splash.targetUtamaTidakKenaDuaKali`, `kerucut.melebarDiTingkat2`,
+`bertahan.damageKePlayerDikurangi`, dan `tanda.menularKeMusuhTerdekat`. Itu
+sebab yang **berbeda** dari tiga belas SKIP `remote_reject`, yang juga soal
+Player: di sana yang error adalah `RateLimit.check(player.UserId)` di gerbang
+pertama handler-nya, di sini jalur kodenya baik-baik saja dan yang tidak ada
+cuma pemanggilnya. Kelima baris itu milik [bagian 10](#10-combat-combat) dan
+tetap tugas playtest manusia (COMBAT-18 sampai COMBAT-22).
+
+Angka 13, 4, 5, dan 22 semuanya benar dan bukan salah tulis: 13 + 4 + 5 = 22,
+dan tiga angka pertama itu tiga sebab yang berbeda, bukan tiga potongan dari
+satu sebab.
+
+Akibatnya untuk kolom Status: **tiga baris M1 dan satu baris M5 dibuktikan
+seluruhnya dan sudah `OK`** — WAVE-12, CORE-04, CORE-06, dan COMBAT-25 (zona
+jebakan tidak terbawa ke match berikutnya, dibuktikan
+`zona.dibuangSaatClearAll`). WAVE-11 sempat `OK` dan turun lagi ke
 `-` setelah rancangan ulang arena: harapannya sekarang menuntut musuh yang
 sampai **berhenti dan tetap ada** di cincin sekitar Core, dan bagian "bar HP-nya
-masih di atasnya" tidak bisa dibuktikan tanpa client. Ketiga yang `OK` tidak
+masih di atasnya" tidak bisa dibuktikan tanpa client. Keempat yang `OK` tidak
 punya bagian client di kolom harapannya: yang diuji gerak musuh, pembagian lane,
-HP Core, dan warna sebuah Part, semuanya milik server.
+HP Core, warna sebuah Part, dan HP satu musuh yang tidak diserang — semuanya
+milik server.
 
 Sisanya tetap `-`, dan aturan di [bagian 1](#1-cara-memakai-dokumen-ini) berlaku
-apa adanya: sebagian sesuai bukan `OK`. Dua yang paling dekat tapi tidak lolos
+apa adanya: sebagian sesuai bukan `OK`. Empat yang paling dekat tapi tidak lolos
 patut disebut, supaya tidak ada yang menaikkannya belakangan tanpa alasan baru:
 **BOOT-06** (jalur lane 1 terbukti utuh, tapi lane 2 tidak disentuh dan flag
-`DEBUG_VISIBLE_WAYPOINTS` memang untuk dilihat mata) dan **CORE-03** (HP berhenti
+`DEBUG_VISIBLE_WAYPOINTS` memang untuk dilihat mata), **CORE-03** (HP berhenti
 tepat di 0 dan `onDestroyed` menyala sekali, tapi transisi ke `Ended` dan
 pembersihan arena ada di `MatchService.endMatch` yang tidak bisa dicapai tanpa
-Player).
+Player), **COMBAT-23** (slow terbukti benar-benar memperlambat gerak Part —
+rasio terukur 0.36 untuk pengali 0.40 — tapi yang menyetel slow itu di match
+adalah serangan pemain lewat `onAttack`, dan harness memanggil `applySlow`
+langsung), dan **COMBAT-24** (zona terbukti memberi damage sebanding waktu dan
+memperlambat, tapi zonanya ditaruh `addZone` langsung, bukan ditinggalkan oleh
+tembakan pemain).
 
 Untuk baris yang masih `-`, tabel di bawah menyebut bagian mana yang sudah
 berdiri sendiri, supaya kerja tangannya lebih pendek dan bukan diulang dari nol.
@@ -276,6 +301,9 @@ berdiri sendiri, supaya kerja tangannya lebih pendek dan bukan diulang dari nol.
 | CORE-01 | HP Core 1000 / 1000 dan Core belum hancur tepat setelah boot (`boot.coreHpPenuh`, `boot.coreTidakHancur`, `prasyarat.coreHpPenuh`) | Bahwa HUD menampilkannya: "Core 1000 / 1000" dan bar penuh adalah UI client |
 | CORE-02 | **Kelima angka damage ke base per pukulan sudah dipatok**, semuanya lewat jalur asli `step()` → `enterAttackingBase()` → `CoreService.damage()`, dan terukur di engine persis `attackDamage * 0.2`: `basic` 5, `fast` 3, `tank` 12, Splitter 16, Locker 24 (`damageTipe.*.hpCoreTurunSebesarSatuPukulan`). **Pukulan yang berulang** juga dipatok, bukan cuma yang pertama (`damage.pukulanBerulang`, `.besarPukulanKedua`, `.pukulanKetigaDanSeterusnya`), begitu juga musuhnya yang **tetap hidup** setelah sampai (`damage.musuhTetapHidupSetelahSampai`, `.stateAttackingBase`, `.ringSlotTerisi`). Plus patokan yang menjawab pertanyaan yang mudah salah: `tank` di `hard` + 4 player tetap memukul 12 sementara HP-nya ikut naik jadi 1476 (`damageTipe.hard4Player.hpCoreTurunAngkaDasar`, `.hpIkutPengali`) — jadi "tidak ada pengali yang sampai ke entitas ini" tidak bisa jadi penjelasan alternatif | Cuma tampilan **bar Core** di HUD. Menggiring `tank` dan dua boss sampai ke Core — yang menuntut mencapai wave 5 dan 10 — sudah tidak perlu |
 | CORE-03 | HP berhenti **tepat di 0** dan tidak pernah negatif walau di-damage tiga kali HP yang ada, `onDestroyed` menyala tepat sekali dengan HP sudah 0, damage dan heal sesudahnya ditolak, dan musuh yang sampai lewat jalur normal (`step` → `enterAttackingBase`) tetap memukul tanpa pernah menembus 0 — `isClear()` juga tetap false walaupun Core sudah hancur, jadi tidak ada yang bisa diam-diam membuatnya true sebagai jalan pintas (`habis.*`) | Transisi state ke `Ended` dan pembersihan arena: keduanya di `MatchService.endMatch`, yang cuma terpanggil dari handler `onDestroyed` saat state `WaveActive` atau `Intermission` — dan state tidak bisa keluar dari `Lobby` tanpa Player |
+| COMBAT-21 | Pemilihan musuh terdekat untuk penularan tanda dipatok unit test `CombatEffects.nearest`, termasuk pemecah seri lewat id yang membuat hasilnya deterministik walau dua musuh berjarak sama persis. Dan bahwa tanda yang menempel benar-benar mengalikan damage dipatok `tanda.damageDikaliTanpaPemain` di engine | Siapa yang **ditulari**, dan bahwa target utama tidak ikut terpilih dua kali: penularannya dipasang `CombatService.onAttack`, yang butuh Player (`tanda.menularKeMusuhTerdekat` SKIP) |
+| COMBAT-23 | Slow benar-benar sampai ke gerak Part, bukan cuma ke angka: satu musuh diukur di dua jendela yang sama panjang, dan rasio jarak tempuhnya **0.36** untuk pengali 0.40 (`slow.jarakTurunSesudahDiperlambat`). Musuhnya juga tidak berhenti total (`slow.musuhTidakBerhentiTotal`), yang menutup "pengalinya dipakai sebagai pengganti kecepatan". Dan pukulan **lemah** tidak membatalkan slow kuat yang masih aktif (`slow.pukulanLemahTidakMembatalkan`), jadi `applySlow` terbukti lewat `CombatEffects.merge` dan bukan menimpa langsung | Bahwa **serangan pemain** yang memasangnya: harness memanggil `EnemyService.applySlow` langsung, sementara di match angkanya datang dari `stats.effects.slowMult` lewat `onAttack`. Dan bahwa pemain **melihat** musuh melambat |
+| COMBAT-24 | Zona memberi damage **sebanding waktu dan bukan sekali habis** (`zona.damageSebandingWaktuBukanSekaliHabis`), HP musuh turun tanpa ada yang menyerangnya (`zona.hpMusuhTurunTanpaDiserang`), zona di luar radius tidak kena (`zona.diLuarRadiusTidakKena`), dan ketiga API-nya aman untuk id musuh yang sudah mati (`jaga.efekPadaIdMatiTidakError`, `jaga.posisiIdMatiNil`) | Bahwa **tembakan pemain** yang meninggalkan zonanya, bahwa zona cuma lahir dari serangan yang mengenai sesuatu, dan bahwa perlambatan zonanya terlihat. Harness memanggil `EnemyService.addZone` langsung di titik yang dia pilih sendiri |
 
 Tiga belas baris M1 sisanya **tidak disentuh harness sama sekali** dan dikerjakan
 dari nol: BOOT-03 (butuh map-nya dihilangkan, dan menilai HUD), WAVE-07, WAVE-13,
@@ -405,20 +433,246 @@ Wrench berarti Ayunan Berat, `path = "a"` di Packet Rifle berarti Sniper. Jadi
 membaca `path` dari `GetProfile` tanpa melihat senjata mana yang memuatnya tidak
 memberitahu apa pun.
 
-**Dan ini batas yang paling penting untuk dibaca sebelum menilai hasil test: di
-`Weapons.luau` sekarang tidak satu pun tingkat alur mengubah stat apa pun.**
-Ketiga tingkat tiap alur cuma punya `level` dan `summary` — `damageMult`,
-`cooldownMult`, `range`, `projectiles`, dan `effects` semuanya belum ada. Angkanya
-diputuskan di langkah 7 (lampiran A `ARENA_REDESIGN.md` menulisnya dengan judul
-"belum diputuskan"). Konsekuensinya, dan dia harus dibedakan dari bug: **memilih
-alur mengunci keputusan permanen tanpa memberi apa pun sekarang**, dan dua senjata
-yang sama di alur yang berbeda bertarung **identik** — damage, cooldown,
-jangkauan, dan jumlah proyektilnya sama persis. Yang diuji di dokumen ini adalah
-bahwa pilihannya **ditagih, tersimpan, dan tidak bisa diganti**, bukan bahwa dia
-mengubah pertarungan. Baris `summary` sudah menyebut apa yang AKAN terbuka karena
-panel pemilihan alur membacanya — jadi kalau nanti salah satu baris itu berjanji
-sesuatu yang tidak dilakukan `weaponStats`, itu janji yang bohong ke pemain, bukan
-placeholder yang tidak apa-apa.
+**Sejak langkah 7 tiap tingkat alur benar-benar berlaku.** Sebelum ini ketiga
+tingkat tiap alur cuma punya `level` dan `summary`, dan memilih alur mengunci
+keputusan permanen tanpa memberi apa pun. Sekarang tiap tingkat membawa
+`damageMult`, `cooldownMult`, `cooldown`, `range`, `projectiles`, atau `effects`,
+dan `Balance.weaponStats` menerapkannya **berurutan dari tingkat terendah** ke
+tingkat tertinggi yang levelnya sudah terbuka. Empat aturan penggabungan yang
+menentukan setiap angka di tabel berikutnya, dan semuanya mudah terbaca salah:
+
+- `damageMult` dan `cooldownMult` **menumpuk** (dikalikan ke hasil sebelumnya).
+- `cooldown`, `range`, dan `projectiles` nilai **absolut** yang **ditimpa**
+  tingkat yang lebih tinggi. Dalam satu tingkat, `cooldown` absolut diterapkan
+  **sesudah** `cooldownMult`, jadi tingkat yang menulis `cooldown = 0.32` benar
+  menghasilkan 0.32 dan bukan 0.32 dikali apa pun.
+- kunci di `effects` **digabung per kunci**: yang tidak disebut tingkat
+  berikutnya **dipertahankan**. Itu sebabnya Ayunan Cepat tingkat 3 cuma menulis
+  `slowMult` dan `slowSeconds` tingkat 2 tetap berlaku.
+- Lantai di akhir, di satu tempat: `cooldown` minimal **0.05**, `projectiles`
+  minimal **1**, `damage` dan `range` tidak boleh negatif.
+
+**Dasar kurva levelnya tidak berubah**: `baseDamage * (1 + 0.12*(level-1))`
+dihitung lebih dulu, lalu pengali alur dikenakan ke hasil itu. Jadi damage dasar
+di level 4 / 7 / 10 tetap 34 / 43 / 52 (Patch Wrench), 19.04 / 24.08 / 29.12
+(Packet Rifle), dan 40.8 / 51.6 / 62.4 (Fork Bomb) sebelum alurnya menyentuhnya.
+
+**Sembilan alur x tiga tingkat, dengan stat yang benar-benar berlaku.** Kolom
+"Yang berubah di tingkat ini" adalah isi `WeaponPathTier`-nya apa adanya; kolom
+"Stat jadi" adalah hasil `Balance.weaponStats` pada level tingkat itu, yaitu
+angka yang bisa dihitung di muka sebelum playtest:
+
+| Senjata | Alur | Tingkat (level) | Yang berubah di tingkat ini | Stat jadi di level itu |
+|---|---|---|---|---|
+| Patch Wrench | `a` Ayunan Berat | 1 (L4) | `damageMult` 1.5, `cooldownMult` 1.4 | damage **51**, cooldown **0.7 s**, range 12, proyektil 1 |
+| Patch Wrench | `a` Ayunan Berat | 2 (L7) | `effects.coneMinCos` **-0.1** | damage **64.5**, cooldown **0.7 s**, range 12, proyektil 1, kerucut ~96° |
+| Patch Wrench | `a` Ayunan Berat | 3 (L10) | `projectiles` 3 | damage **78**, cooldown **0.7 s**, range 12, proyektil **3**, kerucut ~96° |
+| Patch Wrench | `b` Ayunan Cepat | 1 (L4) | `cooldown` **0.32** | damage **34**, cooldown **0.32 s**, range 12, proyektil 1 |
+| Patch Wrench | `b` Ayunan Cepat | 2 (L7) | `effects.slowMult` 0.65, `slowSeconds` 1.5 | damage **43**, cooldown **0.32 s**, slow **x0.65 selama 1.5 s** |
+| Patch Wrench | `b` Ayunan Cepat | 3 (L10) | `cooldown` **0.25**, `effects.slowMult` 0.5 | damage **52**, cooldown **0.25 s**, slow **x0.5 selama 1.5 s** |
+| Patch Wrench | `c` Bertahan | 1 (L4) | `effects.damageTakenMult` 0.75 | damage **34**, cooldown 0.5 s, range 12, damage masuk **x0.75** |
+| Patch Wrench | `c` Bertahan | 2 (L7) | `range` **18**, `damageMult` 1.2 | damage **51.6**, cooldown 0.5 s, range **18**, damage masuk x0.75 |
+| Patch Wrench | `c` Bertahan | 3 (L10) | `effects.damageTakenMult` 0.55 | damage **62.4**, cooldown 0.5 s, range **18**, damage masuk **x0.55** |
+| Packet Rifle | `a` Sniper | 1 (L4) | `damageMult` 1.8, `cooldownMult` 1.6 | damage **34.272**, cooldown **0.4 s**, range 60, proyektil 1 |
+| Packet Rifle | `a` Sniper | 2 (L7) | `range` **90** | damage **43.344**, cooldown **0.4 s**, range **90** |
+| Packet Rifle | `a` Sniper | 3 (L10) | `projectiles` 3 | damage **52.416**, cooldown **0.4 s**, range **90**, proyektil **3** |
+| Packet Rifle | `b` Semburan | 1 (L4) | `cooldown` **0.15**, `damageMult` 0.8 | damage **15.232**, cooldown **0.15 s**, range 60 |
+| Packet Rifle | `b` Semburan | 2 (L7) | `range` **40**, `damageMult` 1.1 | damage **21.1904** (0.8 x 1.1 = **x0.88** dari dasar), cooldown **0.15 s**, range **40** |
+| Packet Rifle | `b` Semburan | 3 (L10) | `projectiles` 2, `cooldown` **0.12** | damage **25.6256**, cooldown **0.12 s**, range **40**, proyektil **2** |
+| Packet Rifle | `c` Dukungan | 1 (L4) | `effects.markMult` 1.25, `markSeconds` 4 | damage **19.04**, cooldown 0.25 s, range 60 — tanda **x1.25 selama 4 s** |
+| Packet Rifle | `c` Dukungan | 2 (L7) | `effects.markMult` 1.4 | damage **24.08**, tanda **x1.4 selama 4 s** |
+| Packet Rifle | `c` Dukungan | 3 (L10) | `effects.markSpread` 2 | damage **29.12**, tanda x1.4 / 4 s, **menular ke 2 musuh terdekat** |
+| Fork Bomb | `a` Shotgun | 1 (L4) | `projectiles` 5, `range` **30** | damage **40.8**, cooldown 0.6 s, range **30**, proyektil **5** |
+| Fork Bomb | `a` Shotgun | 2 (L7) | `damageMult` 1.3 | damage **67.08**, cooldown 0.6 s, range **30**, proyektil **5** |
+| Fork Bomb | `a` Shotgun | 3 (L10) | `projectiles` 7 | damage **81.12**, cooldown 0.6 s, range **30**, proyektil **7** |
+| Fork Bomb | `b` Ledakan | 1 (L4) | `projectiles` 1, `effects.splashRadius` 8, `splashMult` 0.5 | damage **40.8**, cooldown 0.6 s, proyektil **1**, splash **8 stud x0.5 = 20.4** |
+| Fork Bomb | `b` Ledakan | 2 (L7) | `cooldownMult` 0.8 | damage **51.6**, cooldown **0.48 s**, proyektil 1, splash 8 stud x0.5 = **25.8** |
+| Fork Bomb | `b` Ledakan | 3 (L10) | `effects.splashRadius` 12, `splashMult` 0.75 | damage **62.4**, cooldown **0.48 s**, proyektil 1, splash **12 stud x0.75 = 46.8** |
+| Fork Bomb | `c` Jebakan | 1 (L4) | `effects.zoneRadius` 8, `zoneSeconds` 3, `zoneSlowMult` 0.6 | damage **40.8**, cooldown 0.6 s, proyektil 3 — zona **8 stud, 3 s, slow x0.6** |
+| Fork Bomb | `c` Jebakan | 2 (L7) | `effects.zoneRadius` 12, `zoneSlowMult` 0.45 | damage **51.6** — zona **12 stud, 3 s, slow x0.45** |
+| Fork Bomb | `c` Jebakan | 3 (L10) | `effects.zoneDps` 6 | damage **62.4** — zona 12 stud, 3 s, slow x0.45, **6 damage/detik** |
+
+Tiga hal di tabel itu yang paling mudah salah dibaca, dan ketiganya **benar**:
+Ayunan Berat tingkat 2 dan 3 **tidak** menyentuh damage lagi, jadi damage-nya
+tetap dasar x1.5 dari tingkat 1; Semburan tingkat 2 memberi `damageMult` 1.1
+yang **menumpuk** di atas 0.8 tingkat 1 jadi x0.88, bukan menggantinya jadi
+x1.1; dan Dukungan sama sekali **tidak** menaikkan damage senjatanya sendiri —
+seluruh kekuatannya ada di tanda, yang berlaku untuk semua orang.
+
+**Kosakata `effects`** (`Balance.PATH_EFFECT_KEYS`, dan ada unit test yang
+menolak kunci di `Weapons.luau` yang tidak ada di daftar ini). Kolom "Dibaca di"
+penting untuk mendiagnosis: kunci yang salah tulis tidak error, dia cuma tidak
+pernah terbaca, dan gejalanya "alur itu tidak terasa":
+
+| Kunci | Arti | Dibaca di |
+|---|---|---|
+| `coneMinCos` | ganti `Balance.MELEE_MIN_COS`; **lebih kecil = kerucut lebih lebar** | `CombatService.collectTargets`, saat `HitTest.inCone` |
+| `slowMult` | pengali speed musuh yang **kena pukulan**, ikut dia ke mana pun | `CombatService.onAttack` → `EnemyService.applySlow` |
+| `slowSeconds` | berapa lama slow pukulan itu bertahan | sama |
+| `damageTakenMult` | pengali damage musuh yang masuk ke **pemain** pemakai senjata itu | `EnemyService` loop `step`, lewat `CombatService.getPlayerDamageTakenMult` yang disuntik di `init.server.luau` |
+| `splashRadius` | radius ledakan dari titik kena | `CombatService.onAttack` → `CombatEffects.withinRadius` |
+| `splashMult` | pengali damage untuk korban splash | sama |
+| `markMult` | pengali damage ke musuh yang ditandai, **dari siapa pun** | `EnemyService.damage` |
+| `markSeconds` | berapa lama tanda itu bertahan | `CombatService.onAttack` → `EnemyService.applyMark` |
+| `markSpread` | berapa musuh terdekat ikut ditandai | `CombatService.onAttack` → `CombatEffects.nearest` |
+| `zoneRadius` | radius zona yang ditinggalkan di titik kena | `CombatService.onAttack` → `EnemyService.addZone` |
+| `zoneSeconds` | umur zona itu | sama |
+| `zoneSlowMult` | pengali speed musuh **di dalam** zona, berhenti begitu dia keluar | `EnemyService` loop `step`, tiap frame |
+| `zoneDps` | damage per detik dari zona | sama |
+
+**Slow punya dua pasang kunci, dan itu bukan duplikasi.** `slowMult` /
+`slowSeconds` menempel ke **MUSUH** yang kena pukulan dan ikut dia ke mana pun
+dia jalan; `zoneSlowMult` / `zoneSeconds` menempel ke **TEMPAT** dan berhenti
+begitu musuhnya keluar dari radius. Dua umur yang berbeda, jadi dua nama.
+Keduanya bisa aktif sekaligus dan **dikalikan** di `step`: Ayunan Cepat tingkat 3
+(x0.5) di atas zona Jebakan tingkat 2 (x0.45) membuat `basic` berjalan
+`8 * 0.5 * 0.45` = **1.8 stud/detik**, dan itu disengaja — dua pemain yang
+masing-masing membayar alurnya sendiri memang sedang menumpuk dua efek.
+
+**Enam mekanik yang bisa salah dibaca sebagai bug**, dan semuanya keputusan:
+
+1. **Dua slow yang bertumpuk: yang terkuat menang, dan yang terlama menang**
+   (`CombatEffects.merge`). Pukulan lemah **tidak** membatalkan slow kuat yang
+   masih aktif. Kalau "terbaru menang", Ayunan Cepat yang memukul tiap 0.25
+   detik akan membuat musuh kadang melambat kadang tidak tanpa pola. Berlaku
+   sama untuk tanda, cuma arah "lebih kuat"-nya terbalik: pengali lebih **besar**
+   yang menang.
+2. **Zona yang bertumpuk memakai slow terkuat, tapi dps-nya dijumlahkan.**
+   Alasannya ada di komentar `CombatEffects.zoneSlowAt` dan `zoneDamageAt`: tiga
+   zona slow 55% yang dikalikan jadi x0.091, yaitu musuh yang praktis berhenti
+   dari tiga tembakan biasa, dan itu tidak dijanjikan satu pun tingkat alur.
+   Damage satu-satunya efek yang penjumlahannya tidak menghasilkan keadaan
+   ekstrem, jadi dua jebakan yang bertumpuk memang dua jebakan.
+3. **Tanda menaikkan damage dari SIAPA PUN**, bukan cuma dari penandanya:
+   pengalinya diterapkan di `EnemyService.damage`, jadi turret Toko Match,
+   splash pemain lain, dan damage per detik zona semuanya ikut terkali. Itu yang
+   membuat Dukungan **paling kuat di tim berempat dan paling lemah solo** — dan
+   itu disengaja, dia memberi alasan mekanis untuk main bareng.
+4. **Splash mengecualikan target yang sudah kena penuh.** Tanpa itu target utama
+   kena dua kali — sekali penuh, sekali lagi dikali `splashMult` — dan damage
+   senjatanya terlihat lebih besar daripada yang tertulis di panel.
+5. **Zona dan splash cuma lahir dari serangan yang MENGENAI sesuatu.** Titik
+   kenanya posisi musuh **pertama** yang kena, dibaca sebelum musuh itu
+   di-damage. Tembakan ke udara tidak meninggalkan apa pun — kalau dia
+   meninggalkan zona, pemain bisa melapisi seluruh lane tanpa membidik apa pun.
+6. **`damageTakenMult` mengurangi damage, bukan menghentikan pukulan.** Jadwal
+   pukulan musuh berikutnya **tetap** disetel walau pengalinya mengecilkan
+   damage sampai hampir nol; musuh yang berhenti memukul juga tidak akan pernah
+   terlihat menyerang. Pengali di luar rentang (0, 1] **diabaikan**
+   (`CombatService.getPlayerDamageTakenMult` mengembalikan 1): nol berarti
+   pemain tidak bisa mati, dan di atas 1 berarti alur bertahan yang justru
+   menaikkan damage masuk — dua-duanya cuma bisa datang dari data alur yang
+   rusak, dan dua-duanya tidak akan dilaporkan pemain yang diuntungkan.
+
+**Dan satu kekurangan yang diketahui, bukan kelupaan: zona tidak kelihatan di
+layar sama sekali.** `EnemyService` menyimpannya sebagai tabel Lua tanpa satu
+Part pun, jadi tidak ada apa-apa yang terlihat di tempat zona berada — yang
+dibutuhkan langkah 7 adalah efeknya bekerja, dan menggambarnya butuh Part dan
+aset. **Jangan melaporkan ini sebagai bug.** Akibatnya untuk playtest: musuh
+yang melambat dan kehilangan HP di tempat yang terlihat kosong adalah hal yang
+benar (T15 di
+[bagian 5.3](#53-perilaku-baru-yang-akan-terlihat-seperti-bug)). Zona ikut
+dibuang `EnemyService.clearAll()`, jadi dia tidak terbawa ke match berikutnya
+(COMBAT-25).
+
+**Angka turunan yang paling berguna saat playtest.** Semuanya dihitung dari
+tabel di atas, dan semuanya bisa diperiksa dengan menghitung klik — jadi inilah
+yang membuat "alurnya berlaku" bisa dinilai tanpa alat ukur.
+
+Patch Wrench, tiga alur yang sama senjatanya, di tiga level tingkat alurnya:
+
+| | L4 alur `a` | L4 alur `b` | L4 alur `c` | L7 `a` | L7 `b` | L7 `c` | L10 `a` | L10 `b` | L10 `c` |
+|---|---|---|---|---|---|---|---|---|---|
+| Damage | **51** | 34 | 34 | **64.5** | 43 | 51.6 | **78** | 52 | 62.4 |
+| Cooldown | **0.7 s** | **0.32 s** | 0.5 s | 0.7 s | 0.32 s | 0.5 s | 0.7 s | **0.25 s** | 0.5 s |
+| Damage/detik | 72.9 | **106.3** | 68 | 92.1 | **134.4** | 103.2 | 111.4 (x3 target) | **208** | 124.8 |
+| Serangan untuk `basic` wave 1 (100 HP) | **2** | 3 | 3 | **2** | 3 | 2 | 2 | 2 | 2 |
+| Serangan untuk `tank` wave 1 (400 HP) | **8** | 12 | 12 | **7** | 10 | 8 | **6** | 8 | 7 |
+
+Baris `basic` wave 1 itu yang paling cepat dipakai dan juga yang paling mudah
+menipu: di level 10 ketiga alur sama-sama **2** serangan, karena 100 HP terlalu
+sedikit untuk memisahkan 52 dari 78. Yang memisahkan ketiganya di level 10
+adalah `tank` (6 / 8 / 7) dan cooldown-nya. Di **level 4** `basic` sudah cukup:
+**2 serangan untuk alur `a`, 3 untuk `b` dan `c`**, dan itu angka paling murah
+untuk membuktikan alurnya sampai ke `CombatService`.
+
+Pengurangan damage ke pemain, alur Patch Wrench `c` Bertahan. Kolom "tanpa
+alur" sama dengan [aritmetika serangan](#42-angka-patokan) di atas:
+
+| Penyerang | Damage/pukulan tanpa alur | Pukulan sampai mati tanpa alur | x0.75 (L4) | Pukulan | x0.55 (L10) | Pukulan |
+|---|---|---|---|---|---|---|
+| `basic` | 25 | 4 | 18.75 | **6** | 13.75 | **8** |
+| `fast` | 15 | 7 | 11.25 | **9** | 8.25 | **13** |
+| `tank` | 60 | 2 | 45 | **3** | 33 | **4** |
+| Splitter | 80 | 2 | 60 | 2 | 44 | **3** |
+| Locker | 120 | **1** | 90 | **2** | 66 | **2** |
+
+Baris Locker yang paling tegas: tanpa alur dia membunuh pemain HP penuh dengan
+**satu** pukulan, dan tingkat 1 Bertahan sudah membuatnya butuh **dua**. Baris
+Splitter yang paling tumpul: **2** pukulan tanpa alur dan **2** juga di tingkat
+1, jadi jangan memakai Splitter untuk menguji tingkat 1 — angka yang tidak
+bergerak di situ bukan bukti apa pun.
+
+Splash, alur Fork Bomb `b` Ledakan, terhadap `basic` wave 1 (100 HP):
+
+| | Target utama | Korban splash | Radius | Serangan untuk target utama | Serangan untuk korban splash |
+|---|---|---|---|---|---|
+| L4 (x0.5) | **40.8** | **20.4** | 8 stud | 3 | 5 |
+| L7 (x0.5) | **51.6** | **25.8** | 8 stud | 2 | 4 |
+| L10 (x0.75) | **62.4** | **46.8** | 12 stud | 2 | 3 |
+
+Tanda, alur Packet Rifle `c` Dukungan, terhadap `basic` wave 1 (100 HP). Urutan
+di `onAttack` menentukan satu hal yang akan terlihat aneh: `EnemyService.damage`
+dipanggil **sebelum** `applyMark`, jadi **tembakan yang memasang tanda itu
+sendiri tidak ikut terkali** — yang terkali tembakan kedua dan seterusnya:
+
+| | Damage senjata | Tembakan pertama (belum bertanda) | Tembakan berikutnya | Tembakan sampai `basic` mati | Tanpa tanda |
+|---|---|---|---|---|---|
+| L4 (tanda x1.25) | 19.04 | 19.04 | **23.8** | **5** | 6 |
+| L7 (tanda x1.4) | 24.08 | 24.08 | **33.712** | **4** | 5 |
+| L10 (tanda x1.4, menular 2) | 29.12 | 29.12 | **40.768** | **3** | 4 |
+
+Dan karena tanda berlaku untuk semua sumber damage: turret Toko Match yang
+memberi **12** memberi **15** ke musuh bertanda x1.25 dan **16.8** ke musuh
+bertanda x1.4, dan satu zona Jebakan tingkat 3 yang memberi 6 dps memberi 8.4
+dps di musuh bertanda x1.4.
+
+Zona, alur Fork Bomb `c` Jebakan, terhadap musuh yang **berdiri diam** di dalam
+zona sepanjang umurnya (3 detik):
+
+| | Radius | Slow | Speed `basic` (8) di dalamnya | dps | Damage total kalau musuh tidak keluar |
+|---|---|---|---|---|---|
+| L4 | 8 stud | x0.6 | 4.8 | 0 | **0** |
+| L7 | 12 stud | x0.45 | 3.6 | 0 | **0** |
+| L10 | 12 stud | x0.45 | 3.6 | **6** | **18** |
+
+Tingkat 1 dan 2 memberi **nol** damage, dan itu benar: dua tingkat pertama cuma
+memperlambat. Musuh yang kehilangan HP dari zona cuma mungkin di level 10.
+
+Kerucut melee, alur Patch Wrench `a` Ayunan Berat tingkat 2: ambangnya turun
+dari `Balance.MELEE_MIN_COS` **0.2** (≈ **78.5°** setengah sudut) ke **-0.1**
+(≈ **95.7°**). Jadi ayunannya mengenai musuh yang sudah **di belakang garis
+samping** pemain, lebih dari separuh lingkaran di sekitarnya — dan arah
+angkanya terbalik dari yang intuitif: **lebih kecil berarti lebih lebar.**
+
+Jangkauan yang berubah, dengan toleransi uji kena-nya ikut dihitung. Melee
+memakai `stats.range + Balance.MELEE_RADIUS_BONUS` (5 stud), ranged memakai
+`stats.range` apa adanya dengan silinder radius 5 di sekitar garis bidik:
+
+| Senjata dan alur | Range dasar | Range sesudah alur | Jangkauan efektif |
+|---|---|---|---|
+| Patch Wrench `c` L7 | 12 | **18** | 23 stud (melee, +5) |
+| Packet Rifle `a` L7 | 60 | **90** | 90 stud |
+| Packet Rifle `b` L7 | 60 | **40** | 40 stud |
+| Fork Bomb `a` L4 | 45 | **30** | 30 stud |
+
+Yang **tidak** berubah: baris `summary` tetap janji ke pemain. Panel pemilihan
+alur menampilkannya apa adanya, dan pemain mengunci pilihan permanen
+berdasarkan apa yang dia baca di situ — jadi `summary` yang menyebut angka yang
+tidak dihasilkan `weaponStats` adalah **GAGAL**, bukan placeholder yang tidak
+apa-apa. Semua angka di tabel di atas bisa dibandingkan baris per baris dengan
+`summary`-nya di `Weapons.luau`, dan itu pemeriksaan yang bisa dilakukan tanpa
+membuka Studio sama sekali.
 
 **Serangan musuh, mekanismenya dulu.** Musuh punya **satu** angka serangan,
 `attackDamage`, dan satu jadwal, `attackInterval`. Satu angka itu berarti dua hal
@@ -589,7 +843,11 @@ tidak bisa diperiksa dari Output — yang memeriksanya MATCH-02 dan MATCH-11.
 
 Toleransi uji kena: melee radius +5 stud di luar `range` dengan kerucut
 `cos >= 0.2` (~78 derajat setengah sudut), ranged silinder radius 5 stud di
-sekitar garis bidik.
+sekitar garis bidik. Angka kerucut itu **defaultnya**, bukan satu-satunya:
+`CombatService.collectTargets` memakai `stats.effects.coneMinCos` kalau alur
+senjatanya menyetelnya, dan Patch Wrench alur `a` tingkat 2 menurunkannya ke
+-0.1 (~96 derajat). `range` juga dibaca dari `stats.range`, bukan `def.range`,
+jadi tiga alur menggesernya (lihat tabel jangkauan di atas).
 
 **Jumlah musuh biasa per wave** = `floor(6 + 2*wave*(1 + 0.25*(player-1)))`:
 
@@ -623,9 +881,15 @@ starter, jadi senjata yang diam-diam jatuh ke starter akan terlihat lulus.
 Rumusnya `ceil(hp / damage)`; `projectiles` tidak mengubahnya, karena jumlah
 proyektil menentukan berapa **musuh** yang kena sekali serang, bukan berapa
 damage yang masuk ke satu musuh. Ketiga angka itu dibaca dari
-`Balance.weaponStats`, dan sampai langkah 7 mengisi tingkat alurnya, **alur yang
-terpilih tidak menggeser satu pun dari mereka** — jadi hitungan serangan di atas
-berlaku apa pun alur yang dipilih pemain.
+`Balance.weaponStats`, jadi **ketiganya cuma berlaku untuk senjata level 1 sampai
+3** — yaitu senjata yang belum melewati titik percabangan. Sejak langkah 7 tiap
+tingkat alur benar-benar menggeser damage, cooldown, jangkauan, atau jumlah
+proyektil, jadi hitungan serangan di atas **tidak** lagi berlaku apa pun alur
+yang dipilih pemain: untuk level 4 ke atas pakai tabel per alur di atas. Dua
+akibat praktis untuk baris test di bawah: MATCH-18 dan MATCH-22 harus dijalankan
+dengan senjata yang masih **level 1** supaya angka 4 dan 8 itu yang berlaku, dan
+baris mana pun yang menghitung serangan pada level 4 atau lebih harus menyebut
+alur mana yang terpilih.
 
 **Reward akhir match**: koin = `floor((10*wave + (menang ? 50 : 0)) * rewardMult)`,
 XP = `20*wave + (menang ? 100 : 0)`. XP **tidak** dikali rewardMult. Jadi wave 10
@@ -645,12 +909,15 @@ dijelaskan.
 
 Sejak itu empat hal berubah besar: perilaku musuh (`docs/ARENA_REDESIGN.md`
 bagian 4 dan 5), ekonomi koin match (bagian 6), fase `Loadout` beserta flag dev
-semua senjata terbuka (bagian 2), dan pohon tiga alur upgrade (bagian 3).
-Langkah 1 sampai 6 sudah mendarat (`docs/STATUS.md`).
-Tujuh akibatnya **pasti** terlihat salah waktu dimainkan padahal benar — satu di
-antaranya terlihat seperti game yang menggantung, satu seperti harga toko yang
-berubah sendiri, satu seperti tombol Ready yang tidak jalan, dan satu seperti
-keputusan permanen yang tidak melakukan apa-apa. Itu
+semua senjata terbuka (bagian 2), dan pohon tiga alur upgrade beserta isi efek
+tiap tingkatnya (bagian 3 dan lampiran A). **Langkah 1 sampai 7 sudah mendarat,
+jadi seluruh rancangan ulang arena selesai** (`docs/STATUS.md`).
+Sembilan akibatnya **pasti** terlihat salah waktu dimainkan padahal benar — satu
+di antaranya terlihat seperti game yang menggantung, satu seperti harga toko yang
+berubah sendiri, satu seperti tombol Ready yang tidak jalan, satu seperti senjata
+yang rusak justru sesudah di-upgrade, satu seperti musuh yang kehilangan HP tanpa
+ada yang menyerangnya, dan satu seperti damage yang berbeda ke musuh yang sama
+tanpa sebab. Itu
 [bagian 5.3](#53-perilaku-baru-yang-akan-terlihat-seperti-bug),
 dan di antara seluruh bagian 5 itulah yang paling perlu dibaca sebelum Studio
 dibuka.
@@ -681,8 +948,11 @@ ada yang melaporkannya sebagai temuan baru setiap kali dokumen ini diisi.
 
 ### 5.3 Perilaku baru yang akan terlihat seperti bug
 
-Tujuh baris di bawah datang dari empat perubahan yang berbeda, dan keempatnya
-cuma masuk akal kalau mekanisme sebelumnya dibaca dulu.
+Sembilan baris di bawah datang dari empat perubahan yang berbeda, dan keempatnya
+cuma masuk akal kalau mekanisme sebelumnya dibaca dulu. Perubahan keempat
+menyumbang tiga baris sendiri (T14, T15, T16), karena langkah 7 mengubah arahnya:
+baris T14 yang lama mencatat alur yang **tidak** melakukan apa-apa, dan sekarang
+yang perlu dicatat justru sebaliknya.
 
 **Perubahan pertama — musuh yang lolos.** **Dulu** musuh yang mencapai ujung lane
 men-damage Core sekali sebesar `coreDamage` lalu dihapus dari arena; kebocoran
@@ -715,18 +985,25 @@ bersama: selama fase itu tombol kesulitan dan "Pakai" **hidup** sementara
 "Upgrade/Beli/Craft" **mati**, lalu di `Countdown` semuanya mati dan loadout
 terkunci sampai match selesai. Itu T13.
 
-**Perubahan keempat — pohon tiga alur upgrade.** **Dulu** upgrade senjata adalah
-satu tombol, satu harga, dan satu akibat: level naik satu, damage naik 12%, dan
-itu seluruh ceritanya. Tidak ada keputusan di dalamnya — pemain yang punya koin
-menekan tombolnya, dan tidak ada cara menekannya dengan salah. **Sekarang**
-level 4 memaksa **satu keputusan permanen**: pilih 1 dari 3 alur, tidak bisa
-diganti sampai akhir hayat akun itu. Dan keputusan itu **belum punya satu pun
-akibat mekanis** — tingkat alurnya ada di `Weapons.luau` sebagai nama, tema, dan
-tiga baris `summary`, tanpa satu angka stat; angkanya milik langkah 7. Jadi satu
-upgrade mendadak menagih keputusan terbesar di seluruh progres permanen, lalu
-tidak mengubah apa pun yang bisa diukur. Itu T14.
+**Perubahan keempat — pohon tiga alur upgrade, dan sejak langkah 7 isi
+efeknya.** **Dulu** upgrade senjata adalah satu tombol, satu harga, dan satu
+akibat: level naik satu, damage naik 12%, dan itu seluruh ceritanya. Tidak ada
+keputusan di dalamnya — pemain yang punya koin menekan tombolnya, dan tidak ada
+cara menekannya dengan salah. **Lalu langkah 6** menambahkan keputusan permanen
+di level 4 tapi belum mengisinya: tingkat alurnya ada di `Weapons.luau` sebagai
+nama, tema, dan tiga baris `summary`, tanpa satu angka stat, jadi memilih alur
+mengunci keputusan terbesar di seluruh progres permanen lalu tidak mengubah apa
+pun yang bisa diukur. **Sekarang langkah 7 mengisinya, dan arah masalahnya
+terbalik.** Tiap tingkat benar-benar berlaku — damage, cooldown, jangkauan, dan
+jumlah proyektil bisa bergeser **besar** di satu level — dan empat mekanik baru
+masuk ke arena bersamanya: slow yang menempel ke musuh, zona yang menempel ke
+tempat, tanda yang menaikkan damage dari siapa pun, dan pengurangan damage yang
+masuk ke pemain. Tiga di antaranya **tidak punya satu pun tanda visual**, jadi
+yang dilihat pemain adalah akibat tanpa sebab. Itu T14, T15, dan T16.
 
-Angka untuk keempatnya ada di [bagian 4.2](#42-angka-patokan).
+Angka untuk keempatnya ada di [bagian 4.2](#42-angka-patokan), yang sejak
+langkah 7 memuat tabel sembilan alur x tiga tingkat beserta damage, cooldown,
+jangkauan, dan jumlah serangan yang bisa dihitung di muka.
 
 | # | Perilaku | Kenapa begitu |
 |---|---|---|
@@ -736,7 +1013,9 @@ Angka untuk keempatnya ada di [bagian 4.2](#42-angka-patokan).
 | T11 | **Harga item toko berubah tiap kali dibeli, dan itu akan terlihat seperti bug.** Exploit Patch yang tadi 200 jadi 250, lalu 312, lalu 390. Tombolnya juga tidak lagi memuat "· sisa N" untuk empat dari lima item, jadi baris yang dulu berbunyi "200 koin · sisa 5 — ..." sekarang berbunyi "250 koin — ...". | Jatah pembelian (`maxPurchases`) diganti harga yang naik x1.25 per pembelian item yang sama; kurvanya di [bagian 4.2](#42-angka-patokan). Alasannya ada di hadiah per wave di baris berikutnya: dengan solo mengumpulkan 21.200 koin, toko yang seluruh itemnya dibatasi cuma bisa menyerap 3.450 — habis diborong di wave 3-4, lalu enam wave sisanya koinnya tidak ada gunanya. Harga yang naik membuat uang selalu punya tujuan. **Yang bukan bug:** angka di tombol berubah sendiri antar pembelian, dan empat item tidak punya "· sisa N" lagi. **Yang GAGAL:** tombol menulis satu angka tapi kolam terpotong angka lain — harga di tombol dan potongan koin dihitung dari sumber yang sama (`ShopRules.priceFor` dengan `purchases` sebelum dinaikkan), jadi selisih di antara keduanya berarti salah satu sisi memakai `def.cost`. Dites SHOP-20, dan `shop_barrier` yang batasnya memang dipertahankan dites SHOP-22. |
 | T12 | **Saldo koin tim melompat ratusan sampai ribuan di detik wave selesai.** Solo wave 1 melompat dari 40 ke 840; wave 10 solo menambah 5.200 sekaligus. Jauh lebih besar daripada 5 koin per `basic` yang jadi satu-satunya sumber sebelum ini. | Hadiah koin match per wave, `200 + 50*(wave-1)`, wave boss x2, dikali pengali jumlah pemain (solo x4). Angka dan kurvanya di [bagian 4.2](#42-angka-patokan). Lompatannya memang ordenya segitu: hadiah satu wave sengaja beberapa kali lebih besar daripada seluruh koin musuh wave itu, karena koin musuh saja tidak pernah cukup untuk membeli apa pun yang berarti sejak wave awal. **Yang bukan bug:** saldo naik tanpa ada musuh yang mati, tepat saat state pindah ke `Intermission`. **Yang GAGAL:** tidak ada lompatan sama sekali, atau angkanya tidak cocok dengan baris `[ShopService] hadiah wave N: ...` di Output server. Hadiah masuk kolam koin **match**, jadi jangan mencarinya di koin permanen di panel lobby — di sana tidak akan pernah muncul. Dites SHOP-17 sampai SHOP-19 dan SHOP-23, SHOP-24. |
 | T13 | **Menekan Ready tidak lagi langsung memulai hitung mundur, dan tombol Upgrade/Beli/Craft mendadak mati walau panelnya masih terlihat.** Yang muncul di HUD setelah Ready adalah **"Pilih senjata · 20s"**, bukan "Match mulai dalam · 10s" — dan "Match mulai dalam · 10s" baru datang 20 detik kemudian, jadi dari Ready sampai musuh pertama ada **30 detik**, tiga kali lebih lama dari sebelumnya. Di panel lobby selama 20 detik itu, tombol kesulitan dan "Pakai" tetap biru dan bisa diklik sementara tombol "Upgrade 50" / "Beli 1500" / "Craft" jadi abu-abu — tiga tombol yang semenit sebelumnya hidup di `Lobby`. | Fase `Loadout` (`MatchService.LOADOUT_SECONDS` = 20) disisipkan antara `Lobby` dan `Countdown`, dan dia ada supaya pemilihan senjata punya tempatnya sendiri: sesudah fase ini loadout **terkunci sampai match selesai**, termasuk saat `Intermission`. Tombol yang hidup dan yang mati ditentukan dua daftar yang berbeda, dan bedanya disengaja: "Pakai" dan kesulitan memakai `MatchRules.canSelectLoadout` (`Lobby` + `Loadout`), sementara upgrade/beli/craft memakai `ProgressionRules.ALLOWED_STATE` yang tetap **`Lobby` saja** — ketiganya mengubah data permanen, dan memilih alur upgrade permanen (ARENA_REDESIGN bagian 3) di bawah timer 20 detik adalah keputusan besar yang diambil terburu-buru. Baris petunjuk panel lobby yang mengatakannya ke pemain: **"Pilih senjata sekarang — terkunci setelah ini. Upgrade cuma di lobby."** **Yang bukan bug:** Ready yang tidak memulai hitung mundur, 30 detik sebelum wave 1, panel lobby yang masih terlihat dengan sebagian tombol mati, dan tingkat kesulitan yang masih bisa diganti setelah Ready. **Yang GAGAL:** tombol "Pakai" yang **mati** selama `Loadout` — fase itu justru dibuat untuk menekannya, dan tombol mati di situ membuat seluruh fasenya tidak ada artinya; `SelectLoadout` yang masih **diterima** di `Intermission` (atau `Countdown`, `WaveActive`, `Ended`), karena kuncinya tidak boleh berhenti di batas fase saja; panel lobby yang **hilang** selama `Loadout`; dan tingkat kesulitan yang dipilih **di dalam** fase itu diabaikan tanpa pesan apa pun, yang berarti `lockDifficulty()` kembali dipanggil di awal fase alih-alih di akhirnya. Dites MATCH-02, MATCH-03, MATCH-17 sampai MATCH-21, dan dipatok unit test `MatchRules.canSelectLoadout`. |
-| T14 | **Memilih alur upgrade tidak mengubah apa pun yang bisa diukur, padahal pilihannya permanen.** Upgrade ke level 4 mendadak tidak bisa lagi dilakukan dengan satu klik: panel pemilihan alur muncul dan menagih satu dari tiga alur sebelum upgrade-nya diterima. Sesudah dipilih, damage senjata naik 12% seperti level lain — sama persis seperti kalau alur yang lain dipilih — dan cooldown, jangkauan, serta jumlah proyektilnya tidak bergeser sedikit pun. Dua pemain yang meng-upgrade senjata yang sama ke level 10 lewat tiga alur yang berbeda membunuh satu `basic` dalam jumlah serangan yang **sama**. | Kerangkanya sudah ada, isinya belum: ketiga tingkat tiap alur di `Weapons.luau` cuma punya `level` dan `summary`, tanpa `damageMult`, `cooldownMult`, `range`, `projectiles`, maupun `effects`. Angkanya diputuskan langkah 7, dan lampiran A `ARENA_REDESIGN.md` memang menulisnya dengan judul "belum diputuskan". Strukturnya didahulukan dengan sengaja: `data.weapons[id].path` masuk DataStore, jadi dia harus benar **sebelum** ada pemain yang menyimpannya — mengganti arti alur `"a"` setelah ada yang memilihnya berarti semua pemilih `"a"` mendapat alur berbeda tanpa pernah menyetujuinya. Mengisi angkanya belakangan tidak punya biaya seperti itu. Ketiga alur per senjata dan temanya ada di [bagian 4.2](#42-angka-patokan). **Yang bukan bug:** panel yang menagih pilihan dan menolak upgrade sampai satu alur dipilih; damage yang naik 12% biasa sesudah memilih, tanpa tambahan apa pun dari alurnya; dan dua senjata di alur berbeda yang bertarung identik. **Yang GAGAL:** pilihan yang **tidak tersimpan** — `R.GetProfile:InvokeServer().weapons["weapon_starter"].path` masih `"none"` sesudah upgrade yang diterima; pilihan yang **bisa diganti** lewat upgrade berikutnya dengan `pathId` yang lain; panel yang menagih pilihan di level **selain** titik percabangan, atau yang **tidak** muncul saat naik ke level 4; dan `path` yang masih **`nil`** di data yang sudah tersimpan sekali — `nil` tidak bertahan di JSON DataStore, jadi "belum memilih" dan "save dari sebelum fitur ini ada" jadi tidak bisa dibedakan lagi, dan `DataSchema.migrate` yang seharusnya mencegahnya. Dites PROG-19 sampai PROG-26, DATA-12, DATA-13, dan dipatok unit test `ProgressionRules` serta `Balance.weaponStats`. |
+| T14 | **Satu upgrade mengubah rasa senjata secara besar, dan satu alur akan dilaporkan sebagai senjata yang rusak.** Di level 4 damage dan kecepatan serangan tidak lagi bergeser 12% — mereka melompat. Patch Wrench alur `a` Ayunan Berat jadi **damage 51** tapi **cooldown 0.7 detik**, dari 0.5: pemain yang baru membayar 91 koin akan merasa senjatanya jadi **lebih lambat** dan melaporkannya sebagai bug, karena yang paling cepat terasa adalah jedanya dan bukan damage-nya. Packet Rifle alur `b` Semburan arah kebalikannya: cooldown 0.25 jadi **0.15** tapi damage turun jadi **15.232**, lebih kecil daripada 19.04 yang dia punya satu level sebelumnya. Dan di level 7 Semburan **memendekkan jangkauannya sendiri** dari 60 jadi 40 stud, sementara Fork Bomb alur `a` Shotgun sudah memendekkannya dari 45 jadi 30 di level 4 — upgrade yang membuat senjata tidak bisa lagi menjangkau musuh yang tadi kena. | Ini langkah 7 bekerja, bukan rusak: setiap angka di atas ada di `Weapons.luau` sebagai `damageMult`, `cooldownMult`, `cooldown`, `range`, atau `projectiles`, dan `Balance.weaponStats` menerapkannya dengan pengali yang **menumpuk** dan nilai absolut yang **ditimpa** tingkat lebih tinggi. Tabel lengkap sembilan alur x tiga tingkat, beserta damage per detik dan jumlah serangan yang bisa dihitung di muka, ada di [bagian 4.2](#42-angka-patokan). Pertukaran yang terasa buruk itu memang isi alurnya — alur yang cuma menaikkan semuanya bukan pilihan, cuma tombol. Dan itu sebabnya `summary` wajib benar: pemain mengunci pilihan permanen dari apa yang dia baca di panel, jadi "jeda antar serangan x1.4" harus tertulis di situ **sebelum** dia menekan konfirmasi. **Yang bukan bug:** cooldown yang naik, damage yang turun, dan jangkauan yang memendek sesudah upgrade; dua senjata yang sama di alur berbeda yang sekarang bertarung **sangat** berbeda; dan `basic` wave 1 yang di level 10 butuh **2** serangan di ketiga alur, karena 100 HP terlalu sedikit untuk memisahkan damage 52 dari 78 (pakai `tank`: 6 / 8 / 7). **Yang GAGAL:** stat yang **tidak** bergeser sama sekali sesudah titik percabangan — itu langkah 7 yang tidak sampai ke `weaponStats`; angka yang berbeda dari tabel bagian 4.2; `summary` yang menjanjikan angka yang tidak dihasilkan `weaponStats`; pilihan yang **tidak tersimpan** (`R.GetProfile:InvokeServer().weapons["weapon_starter"].path` masih `"none"` sesudah upgrade yang diterima); pilihan yang **bisa diganti** lewat upgrade berikutnya dengan `pathId` lain; panel yang menagih pilihan di level **selain** titik percabangan atau yang **tidak** muncul saat naik ke level 4; dan `path` yang masih **`nil`** di data yang sudah tersimpan sekali. Dites PROG-19 sampai PROG-28, COMBAT-12, COMBAT-19, COMBAT-20, DATA-12, DATA-13, dan dipatok unit test `ProgressionRules` serta `Balance.weaponStats`. |
+| T15 | **Musuh melambat dan kehilangan HP tanpa ada apa pun yang terlihat menyentuhnya.** Dua gejala yang berbeda dari satu sebab. Pertama, musuh yang lewat satu titik di lane mendadak berjalan setengah kecepatan lalu normal lagi beberapa stud kemudian, dan di titik itu **tidak ada apa-apa di layar** — bukan Part, bukan efek, bukan dekal. Kedua, bar HP musuh turun pelan-pelan sementara tidak ada pemain yang menyerang, tidak ada turret dalam jangkauan, dan tidak ada angka damage di mana pun. Ketiga, dan ini yang paling membingungkan: dua musuh yang berdiri **berdampingan** bisa berjalan dengan kecepatan berbeda, karena yang satu kena slow yang menempel ke dirinya dan yang satu tidak. | Zona jebakan (Fork Bomb alur `c`). **Zona tidak punya Instance apa pun** — `EnemyService` menyimpannya sebagai tabel Lua dengan posisi, radius, dan waktu kedaluwarsa, dan tidak ada satu Part pun yang digambar di situ. Itu **kekurangan yang diketahui, bukan kelupaan**: menggambarnya butuh Part dan aset, dan yang dibutuhkan langkah 7 adalah efeknya bekerja. Jangan melaporkannya sebagai bug. Dua gejala pertama juga berasal dari dua kunci yang berbeda dan harus dibedakan: `zoneSlowMult` memperlambat (tingkat 1 dan 2, x0.6 lalu x0.45) sementara `zoneDps` baru ada di tingkat **3** (6 damage/detik), jadi musuh yang melambat tanpa kehilangan HP adalah alur yang belum level 10 — bukan dps yang hilang. Dan gejala ketiga dari pembagian yang disengaja: `slowMult` menempel ke **MUSUH** dan ikut dia ke mana pun, `zoneSlowMult` menempel ke **TEMPAT** dan berhenti begitu musuh keluar radius; keduanya dikalikan di loop `step`, jadi musuh yang kena dua-duanya bisa berjalan 1.8 stud/detik. **Yang bukan bug:** tidak ada apa pun yang terlihat di posisi zona; musuh yang melambat lalu normal lagi tanpa sebab terlihat; HP yang turun tanpa penyerang; dan dua musuh berdampingan dengan kecepatan berbeda. **Yang GAGAL:** zona yang terbawa ke match berikutnya — gejalanya musuh pertama wave 1 yang jalannya aneh tanpa ada yang menembaknya, dan `EnemyService.clearAll()` memang membuang daftar zonanya (COMBAT-25); zona yang lahir dari tembakan yang **tidak mengenai apa pun**, karena titik kenanya dibaca dari posisi musuh pertama yang kena dan tembakan tanpa korban melewatkan seluruh blok itu; dan zona yang **tidak pernah habis** walau `zoneSeconds` 3 detik sudah lewat. Dites COMBAT-24 dan COMBAT-25, dan dipatok unit test `CombatEffects` plus harness Studio `path_effects`. |
+| T16 | **Musuh yang sama menerima damage yang berbeda dari serangan yang sama, dan yang kedua juga tanpa tanda visual.** Satu `basic` wave 1 kadang mati dalam 4 tembakan Packet Rifle dan kadang 5, dari pemain yang sama dengan senjata yang sama. Turret Toko Match yang jelas-jelas memberi 12 kadang memberi 16.8. Dan di tim berempat: pemain yang memakai **Patch Wrench** melihat damage-nya naik tanpa dia mengubah apa pun, karena yang menandai musuhnya pemain lain dengan **Packet Rifle**. | Tanda (Packet Rifle alur `c` Dukungan). Pengalinya diterapkan di **`EnemyService.damage`**, bukan di `CombatService`, dan itu seluruh bedanya antara "tanda menaikkan damage penandanya" dan "tanda menaikkan damage siapa pun": turret, splash pemain lain, dan damage per detik zona semuanya lewat fungsi yang sama, jadi semuanya ikut terkali. Itu yang membuat Dukungan **paling kuat di tim berempat dan paling lemah solo** — disengaja, dia memberi alasan mekanis untuk main bareng alih-alih cuma pengali reward. Tandanya juga tidak punya tanda visual apa pun, sama seperti zona di T15. Satu urutan yang akan terlihat seperti setengah bekerja dan sebenarnya benar: `EnemyService.damage` dipanggil **sebelum** `applyMark` di `onAttack`, jadi **tembakan yang memasang tanda itu sendiri tidak ikut terkali** — yang terkali tembakan kedua dan seterusnya (angkanya di [bagian 4.2](#42-angka-patokan)). Dan dua tanda yang bertumpuk: **yang terkuat menang, bukan yang terbaru** (`CombatEffects.merge`), jadi tembakan dari pemain yang alurnya masih tingkat 1 (x1.25) **tidak** menurunkan tanda x1.4 yang masih aktif. **Yang bukan bug:** damage yang berbeda ke musuh yang sama; damage pemain lain yang naik tanpa dia melakukan apa pun; turret dan zona yang ikut terkali; tembakan pertama yang belum terkali; dan tanda yang hilang sendiri setelah `markSeconds` (4 detik) habis. **Yang GAGAL:** tanda yang cuma menaikkan damage penandanya — itu pengalinya pindah ke `CombatService` dan seluruh alasan alur ini hilang; tanda lemah yang **menurunkan** tanda kuat yang masih aktif; dan penularan (tingkat 3, `markSpread` 2) yang mengenai target utama dua kali alih-alih dua musuh **lain** yang terdekat. Dites COMBAT-21 dan COMBAT-22, dan dipatok unit test `CombatEffects.nearest` plus `tanda.*` di harness `path_effects`. |
 
 ## 6. Boot dan map (BOOT)
 
@@ -796,16 +1075,25 @@ terkunci sampai match selesai (T13 di
 | MATCH-15 | **Dua percobaan, satu baris**: (a) state `Loadout`, timer 20 detik masih jalan; (b) state `Countdown`, hitung mundur masih jalan | Tekan **"Batal siap"** di masing-masing | Di dua-duanya timer berhenti dan state kembali "Di lobby", match tidak dimulai, dan tombolnya kembali jadi "Ready". Satu baris untuk dua fase karena kodenya memang satu syarat yang sama (`everyoneReady()`) yang diperiksa tiap tick di kedua cabang — tapi dua-duanya tetap harus dijalankan, karena cabangnya ditulis **dua kali** di `tick()` dan satu cabang yang kelewat tidak akan terlihat dari cabang yang lain. Batal dari `Loadout` adalah satu-satunya jalan keluar dari 20 detik itu: tanpa gerbang itu fase baru ini tidak bisa dibatalkan sama sekali | M2 | solo | - |
 | MATCH-16 | Match di server live, dua pemain Ready sehingga masuk `Loadout`. Ulangi sekali lagi setelah fase itu lewat, saat `Countdown` | Pemain ketiga join saat timer masih jalan — sekali di `Loadout`, sekali di `Countdown` | Di **dua-duanya** timer **dibatalkan** dan state kembali `Lobby` — pemain baru otomatis belum Ready, jadi syarat "semua pemain di server siap" tidak lagi terpenuhi, dan syarat itu diperiksa tiap tick di kedua fase. Lihat [tabel keputusan M2](#202-keputusan-m2). Perhatikan bahwa fase `Loadout` memperlebar jendela waktunya dari 10 detik jadi 30, jadi pembatalan ini sekarang **tiga kali lebih mudah terpicu** di server yang ramai daripada saat baris ini pertama ditulis. Berkode `LIVE` karena sesi Clients and Servers di Studio memulai semua client berbarengan; tidak ada cara menambah pemain di tengah sesi | M2 | LIVE | - |
 | MATCH-17 | State `Loadout` (tekan Ready dan jangan tunggu sampai habis), 1 player, `weapon_ranged` belum dimiliki dan koin kurang dari 1500 | Lihat panel lobby dan coba klik tiap tombolnya satu per satu | Panel lobby **tetap terlihat**, tidak hilang seperti di `WaveActive`. Yang **hidup**: tombol tingkat kesulitan yang sudah terbuka, dan tombol "Pakai" pada baris senjata yang dimiliki dan belum dipakai. Yang **mati**: "Upgrade N" pada baris senjata yang dimiliki, "Beli 1500" pada Packet Rifle, "Craft" pada Fork Bomb, dan "Pakai" pada senjata yang belum dimiliki atau yang sedang dipakai. Baris petunjuk di bawah panel berbunyi **"Pilih senjata sekarang — terkunci setelah ini. Upgrade cuma di lobby."**, warna abu-abu biasa. Mengklik tombol yang mati **tidak mengirim apa pun** ke server. Panel Toko Match tetap tidak terlihat. Kalau "Pakai" ikut mati di sini, itu GAGAL dan bukan hal kecil: fase ini satu-satunya gunanya menekan tombol itu (T13) | M2 | solo | - |
-| MATCH-18 | `weapon_ranged` sudah dimiliki dan `weapon_starter` yang sedang dipakai (beli Packet Rifle 1500 koin dulu, atau naikkan `Config.DEFAULT_DATA.coins` sementara). State `Lobby`, solo `normal` | Tekan Ready. **Setelah** state jadi "Pilih senjata · 20s", tekan "Pakai" di baris Packet Rifle, biarkan 20 detik habis, lalu hitung serangan untuk membunuh satu `basic` di wave 1 | "Pakai" diterima: judul barisnya berubah jadi **"Packet Rifle (dipakai)"** dan `ActionResult` yang balas berisi `ok = true` (tanpa alasan). Di wave 1, satu `basic` (100 HP) mati **tepat setelah 8 serangan**, bukan 4 — Packet Rifle 14 damage, Patch Wrench 25 ([bagian 4.2](#42-angka-patokan)). 4 serangan berarti pilihan di dalam fase `Loadout` diterima di UI tapi tidak sampai ke `CombatService.resolveWeapon`, dan itu persis kegagalan diam-diam yang membuat fase ini butuh test sendiri. Serangannya juga mengenai musuh di 40-55 stud, bukan cuma 17 (COMBAT-07) | M5 | solo (atau solo+EDIT) | - |
+| MATCH-18 | `weapon_ranged` sudah dimiliki dan `weapon_starter` yang sedang dipakai (beli Packet Rifle 1500 koin dulu, atau naikkan `Config.DEFAULT_DATA.coins` sementara). **Dua-duanya harus level 1** — angka 8 dan 4 di kolom harapan datang dari damage 14 dan 25, dan sejak langkah 7 alur yang terpilih menggesernya ([bagian 4.2](#42-angka-patokan)). State `Lobby`, solo `normal` | Tekan Ready. **Setelah** state jadi "Pilih senjata · 20s", tekan "Pakai" di baris Packet Rifle, biarkan 20 detik habis, lalu hitung serangan untuk membunuh satu `basic` di wave 1 | "Pakai" diterima: judul barisnya berubah jadi **"Packet Rifle (dipakai)"** dan `ActionResult` yang balas berisi `ok = true` (tanpa alasan). Di wave 1, satu `basic` (100 HP) mati **tepat setelah 8 serangan**, bukan 4 — Packet Rifle 14 damage, Patch Wrench 25 ([bagian 4.2](#42-angka-patokan)). 4 serangan berarti pilihan di dalam fase `Loadout` diterima di UI tapi tidak sampai ke `CombatService.resolveWeapon`, dan itu persis kegagalan diam-diam yang membuat fase ini butuh test sendiri. Serangannya juga mengenai musuh di 40-55 stud, bukan cuma 17 (COMBAT-07) | M5 | solo (atau solo+EDIT) | - |
 | MATCH-19 | `hard` sudah terbuka (PROG-06), state `Lobby`, tombol kesulitan menunjuk **Normal**, solo | Tekan Ready. **Setelah** state jadi "Pilih senjata · 20s", tekan tombol **Hard**, biarkan 20 detik habis, lalu hitung serangan untuk membunuh satu `basic` di wave 1 | Tombol Hard bisa diklik di fase ini (MATCH-17) dan pilihannya **berlaku**: `basic` wave 1 butuh **8** serangan `weapon_starter` level 1 (HP 180 = 100 x hpMult 1.8), bukan 4, dan print akhir match berbunyi `... (hard)`. **Ini kasus regresi**, bukan fitur baru: `lockDifficulty()` dulu dipanggil saat semua pemain Ready, dan `SelectLoadout` membawa `weaponId` **dan** `difficulty` dalam satu remote — jadi mengunci di awal fase berarti tingkat yang dipilih di dalam fase diabaikan **tanpa pesan apa pun** sementara senjatanya diterima. Satu remote, dua argumen, cuma satu yang berlaku: tidak ada cara pemain menebaknya. 4 serangan di sini berarti `lockDifficulty()` kembali dipanggil terlalu awal | M5 | solo | - |
 | MATCH-20 | State `Lobby`, `weapon_ranged` dimiliki dan **sedang dipakai** dari match sebelumnya (judul barisnya bertanda "(dipakai)") | Tekan Ready dan **jangan sentuh apa pun** selama 20 detik fase `Loadout`, lalu hitung serangan untuk membunuh satu `basic` di wave 1 | Match jalan dengan **Packet Rifle**, senjata terakhir yang dipakai: 8 serangan, bukan 4. Tidak memilih **tidak** mengembalikan loadout ke starter dan tidak ada penalti apa pun. Ini tidak butuh satu baris kode pun — `data.equippedWeapon` permanen, jadi tidak memilih berarti tidak mengubahnya — dan itu sebabnya yang diuji di sini justru bahwa **tidak ada** yang me-reset-nya saat fase berakhir | M2 | solo | - |
 | MATCH-21 | State `Intermission` (habiskan wave 1 dan tunggu panel toko muncul). Pasang listener dulu di command bar client: `R.ActionResult.OnClientEvent:Connect(print)` | `R.SelectLoadout:FireServer("weapon_starter", "normal")`, lalu ulangi saat `WaveActive` dan saat `Ended` | Ketiganya ditolak dengan `ActionResult` **"Loadout sudah terkunci sampai match selesai."** dan `equippedWeapon` tidak berubah — kuncinya berlaku di **seluruh** state setelah `Loadout`, bukan cuma `Countdown`. `Intermission` yang paling penting di antara ketiganya: itu satu-satunya jeda nyaman di tengah match, jadi itu juga satu-satunya tempat pemain punya waktu untuk mencoba menukar senjata setelah melihat musuh apa yang datang. Tidak ada panel yang bisa diklik di `Intermission` untuk ini (panel lobby sudah hilang), jadi remote manual satu-satunya cara memicunya. Tidak ada error di Output server | M2 | solo | - |
-| MATCH-22 | **Ubah `Config.DEV_ALL_WEAPONS` jadi `true`** di `src/shared/Config.luau`, sync, F5. Player yang **belum pernah** membeli Packet Rifle — periksa dulu lewat `R.GetProfile:InvokeServer().weapons` dari command bar client, isinya harus cuma `weapon_starter`. Solo `normal` | Di panel lobby lihat baris Packet Rifle, tekan "Pakai", Ready, lewati 20 detik `Loadout`, lalu hitung serangan untuk membunuh satu `basic` di wave 1. Terakhir baca lagi `R.GetProfile:InvokeServer().weapons`. **Balikkan `Config.luau` sebelum commit** | Baris Packet Rifle menampilkan dua hal yang kelihatan bertentangan dan dua-duanya benar: tombol **"Pakai" hidup** sementara tombol aksinya tetap **"Beli 1500"** — "Pakai" memakai `ProgressionRules.ownedWeapons` yang ikut flag, tombol beli memakai `data.weapons` yang tidak. "Pakai" **diterima** server. Lalu yang dibuktikan baris ini: di wave 1 satu `basic` mati setelah **8** serangan, dengan jangkauan **60 stud**. Delapan serangan artinya dia benar-benar **MENGAYUN seperti Packet Rifle**, bukan cuma terpilih di UI. **4 serangan adalah GAGAL**, dan ini jebakan utuhnya: `MatchService.onSelectLoadout` menolak dengan pesan sementara `CombatService.resolveWeapon` **diam-diam jatuh ke starter**, jadi kalau cuma yang pertama mengenal flag, pemain memilih Packet Rifle lalu mengayunkan Patch Wrench **tanpa satu pesan error pun** — bug yang tidak pernah dilaporkan karena tidak ada yang kelihatan rusak. Dan `weapons` di akhir harus **masih cuma `weapon_starter`**: flag hidup di memori saja, jadi senjata hasil flag tidak boleh pernah masuk `data.weapons` dan dari sana ke DataStore. Kalau Packet Rifle muncul di situ, akun itu progresnya rusak permanen dan rusaknya baru kelihatan setelah flag dimatikan | M5 | solo+EDIT | - |
+| MATCH-22 | **Ubah `Config.DEV_ALL_WEAPONS` jadi `true`** di `src/shared/Config.luau`, sync, F5. Player yang **belum pernah** membeli Packet Rifle — periksa dulu lewat `R.GetProfile:InvokeServer().weapons` dari command bar client, isinya harus cuma `weapon_starter`, **dan `weapon_starter` harus level 1 dengan `path = "none"`** — angka 8 dan 4 di kolom harapan hanya berlaku untuk damage 14 dan 25, dan starter yang sudah lewat titik percabangan memberi angka lain ([bagian 4.2](#42-angka-patokan)). Flag dev memberi Packet Rifle **level 1**, jadi damage-nya 14 apa adanya dan alurnya `"none"`. Solo `normal` | Di panel lobby lihat baris Packet Rifle, tekan "Pakai", Ready, lewati 20 detik `Loadout`, lalu hitung serangan untuk membunuh satu `basic` di wave 1. Terakhir baca lagi `R.GetProfile:InvokeServer().weapons`. **Balikkan `Config.luau` sebelum commit** | Baris Packet Rifle menampilkan dua hal yang kelihatan bertentangan dan dua-duanya benar: tombol **"Pakai" hidup** sementara tombol aksinya tetap **"Beli 1500"** — "Pakai" memakai `ProgressionRules.ownedWeapons` yang ikut flag, tombol beli memakai `data.weapons` yang tidak. "Pakai" **diterima** server. Lalu yang dibuktikan baris ini: di wave 1 satu `basic` mati setelah **8** serangan, dengan jangkauan **60 stud**. Delapan serangan artinya dia benar-benar **MENGAYUN seperti Packet Rifle**, bukan cuma terpilih di UI. **4 serangan adalah GAGAL**, dan ini jebakan utuhnya: `MatchService.onSelectLoadout` menolak dengan pesan sementara `CombatService.resolveWeapon` **diam-diam jatuh ke starter**, jadi kalau cuma yang pertama mengenal flag, pemain memilih Packet Rifle lalu mengayunkan Patch Wrench **tanpa satu pesan error pun** — bug yang tidak pernah dilaporkan karena tidak ada yang kelihatan rusak. Dan `weapons` di akhir harus **masih cuma `weapon_starter`**: flag hidup di memori saja, jadi senjata hasil flag tidak boleh pernah masuk `data.weapons` dan dari sana ke DataStore. Kalau Packet Rifle muncul di situ, akun itu progresnya rusak permanen dan rusaknya baru kelihatan setelah flag dimatikan | M5 | solo+EDIT | - |
 | MATCH-23 | Lanjutan MATCH-22 di player yang sama: `equippedWeapon` masih `weapon_ranged` dari sana, lalu **balikkan `Config.DEV_ALL_WEAPONS` jadi `false`**, sync, F5 | Lihat baris Packet Rifle di panel lobby, lalu Ready, lewati `Loadout`, lalu hitung serangan untuk membunuh satu `basic` di wave 1. Lalu `R.SelectLoadout:FireServer("weapon_ranged", "normal")` dari command bar client di state `Lobby` | Tombol "Pakai" pada Packet Rifle **mati** lagi dan remote-nya ditolak dengan "Senjata itu belum kamu miliki." — bukan dengan pesan kunci loadout, karena di `Lobby` gerbang state-nya lolos lebih dulu. Judul barisnya **tetap bertanda "(dipakai)"**, karena itu dibaca dari `data.equippedWeapon` yang memang masih berisi `weapon_ranged`. Dan serangannya **kembali 4**, bukan 8: `ProgressionRules.equippedWeapon` jatuh ke starter tanpa pesan apa pun. Kejatuhan diam-diam itu **disengaja** dan bukan GAGAL — dia dipanggil tiap serangan, jadi tidak ada tempat untuk melapor, dan senjata yang hilang dari data tidak boleh membuat serangan pemain berhenti sama sekali. Gerbang yang berbicara ada di `onSelectLoadout`, dan itu yang baru saja ditolak. Yang GAGAL di sini cuma dua: serangan yang **berhenti sama sekali**, atau error di Output server | M5 | solo+EDIT | - |
 
 ## 8. Wave dan spawn (WAVE)
 
 Acuan: DEVELOPMENT_PLAN.md bagian 1.3, 3.4, 3.5.
+
+> **Setiap jumlah serangan di kelompok ini mengandaikan `weapon_starter` level 1
+> dengan `path = "none"`**, yaitu damage 25 apa adanya. Sejak langkah 7 rancangan
+> ulang arena tingkat alur benar-benar menggeser damage — Patch Wrench alur `a`
+> sudah 51 di level 4 dan 78 di level 10 ([bagian 4.2](#42-angka-patokan)) — jadi
+> baris di bawah yang dijalankan dengan senjata ter-upgrade akan memberi angka
+> yang **berbeda dan tetap benar**, dan itu bukan bug HP musuh. Yang diuji di
+> sini penskalaan HP musuh, bukan senjatanya, jadi senjatanya yang harus
+> dipertahankan di titik awal.
 
 | ID | Prakondisi | Langkah | Hasil yang diharapkan | Milestone | Jalankan? | Status |
 |---|---|---|---|---|---|---|
@@ -843,27 +1131,52 @@ Acuan: DEVELOPMENT_PLAN.md bagian 1.3, 3.4, 3.5.
 
 ## 10. Combat (COMBAT)
 
-Acuan: DEVELOPMENT_PLAN.md bagian 3.7.
+Acuan: DEVELOPMENT_PLAN.md bagian 3.7, dan untuk COMBAT-18 sampai COMBAT-25
+`ARENA_REDESIGN.md` lampiran A.
+
+> **Dua prasyarat yang berlaku untuk setiap angka damage di kelompok ini, dan
+> dua-duanya mudah terlewat.**
+>
+> 1. **Jangan beli Exploit Patch atau Overclock di match yang sedang dipakai
+>    mengukur.** `CombatService.onAttack` mengalikan pengali toko **di atas**
+>    `stats.damage` dan `stats.cooldown` yang sudah termasuk alur
+>    (`damage = stats.damage * mods.damageMult`), jadi satu Exploit Patch
+>    menggeser setiap angka di bawah 10% dan membuatnya tidak bisa dibandingkan
+>    dengan tabel [bagian 4.2](#42-angka-patokan). Damage splash ikut terkali,
+>    karena dia dihitung dari `damage` yang sudah dikali.
+> 2. **Level dan alur senjata harus seperti yang ditulis di kolom Prakondisi.**
+>    Sejak langkah 7 rancangan ulang arena, tingkat alur menggeser damage,
+>    cooldown, jangkauan, dan jumlah proyektil, jadi baris yang tidak menyebut
+>    level dijalankan dengan senjata **di bawah titik percabangan** (level 1
+>    sampai 3) dan baris COMBAT-18 ke atas menyebut level dan alurnya persis.
 
 | ID | Prakondisi | Langkah | Hasil yang diharapkan | Milestone | Jalankan? | Status |
 |---|---|---|---|---|---|---|
 | COMBAT-01 | State `WaveActive`, `weapon_starter` ter-equip, musuh di depan karakter dalam 17 stud | Klik kiri | Musuh terkena: **bar HP-nya turun**. Tidak ada efek hit dan tidak ada angka damage — itu M7 (`FxController`), dan `EnemyHit` diterima client lalu dibuang (keputusan T4). Bar HP turun adalah satu-satunya umpan balik yang benar sekarang | M1 | solo | - |
 | COMBAT-02 | Musuh HP tinggal sedikit | Serang sampai HP-nya 0 | Musuh hilang dari arena tanpa sisa model; angka "N koin tim" di HUD naik sesuai tipe musuh (`basic` +5, `fast` +7, `tank` +15) | M1 | solo | - |
-| COMBAT-03 | Musuh **di belakang** karakter, atau lebih dari 17 stud di depan | Klik kiri | Tidak ada damage ke musuh itu; tidak ada error di Output server. Kerucut melee ~78 derajat setengah sudut dengan jangkauan `range` 12 + 5 stud toleransi | M1 | solo | - |
-| COMBAT-04 | State `WaveActive`, musuh di depan | Klik secepat mungkin, jauh lebih cepat dari cooldown 0.5 detik | Damage yang masuk mengikuti cooldown senjata (maksimal ~2 kali per detik), bukan kecepatan klik. **Server yang menolak kelebihannya**, dengan toleransi 50 ms untuk jitter jaringan. Serangan berlebih diabaikan tanpa error | M1 | solo | - |
+| COMBAT-03 | `weapon_starter` **level 1 sampai 3** — di bawah titik percabangan, supaya kerucut dan jangkauannya yang dasar. Musuh **di belakang** karakter, atau lebih dari 17 stud di depan | Klik kiri | Tidak ada damage ke musuh itu; tidak ada error di Output server. Kerucut melee ~78 derajat setengah sudut dengan jangkauan `range` 12 + 5 stud toleransi. Kedua angka itu **berhenti berlaku di atas level 3**: alur `a` tingkat 2 melebarkan kerucutnya ke ~96 derajat (COMBAT-19) dan alur `c` tingkat 2 menaikkan `range` ke 18 sehingga jangkauan efektifnya 23 stud. Jadi baris ini dijalankan dengan senjata di bawah titik percabangan, dan musuh yang kena di level 7 bukan regresi dari baris ini | M1 | solo | - |
+| COMBAT-04 | State `WaveActive`, `weapon_starter` **di bawah level 4** (cooldown-nya 0.5 apa adanya; empat alur menggesernya ke 0.7, 0.32, atau 0.25 — [bagian 4.2](#42-angka-patokan)), musuh di depan | Klik secepat mungkin, jauh lebih cepat dari cooldown 0.5 detik | Damage yang masuk mengikuti cooldown senjata (maksimal ~2 kali per detik), bukan kecepatan klik. **Server yang menolak kelebihannya**, dengan toleransi 50 ms untuk jitter jaringan. Serangan berlebih diabaikan tanpa error | M1 | solo | - |
 | COMBAT-05 | Network Simulation **Bad Internet** atau **Terrible**, musuh `fast` sedang bergerak | Serang musuh `fast` yang berjalan 10 kali sambil membidik ke arahnya | Minimal 8 dari 10 kena. Sesekali tidak kena itu normal; **sering** tidak kena berarti toleransinya masih terlalu ketat. Kalau gagal, naikkan `Balance.MELEE_RADIUS_BONUS` — **jangan** mencari bug di `HitTest`, karena penyebabnya memang latensi, bukan geometri | M1 | LAG | - |
 | COMBAT-06 | Network Simulation masih aktif, `weapon_ranged` ter-equip | Tembak musuh `fast` yang bergerak 10 kali | Sebagian besar kena: yang dipakai **silinder radius 5 stud di sekitar garis bidik**, bukan garis setebal nol. (Bagian 3.7 menyebut "spherecast"; yang diimplementasikan silinder, dan itu memenuhi maksudnya) | M5 | LAG | - |
-| COMBAT-07 | `weapon_ranged` dimiliki dan ter-equip, musuh sekitar 40-55 stud jauhnya | Bidik dan serang | Musuh jauh terkena damage tanpa perlu mendekat (`range` 60 stud) | M5 | solo | - |
+| COMBAT-07 | `weapon_ranged` dimiliki dan ter-equip **di bawah level 4**, musuh sekitar 40-55 stud jauhnya | Bidik dan serang | Musuh jauh terkena damage tanpa perlu mendekat (`range` 60 stud). Angka 60 itu range **dasar**, dan dua dari tiga alur Packet Rifle menggesernya di level 7: alur `a` Sniper ke **90** dan alur `b` Semburan ke **40** — jadi musuh pada 50 stud yang kena di baris ini **tidak** kena lagi di Semburan level 7, dan itu bukan regresi (PROG-28) | M5 | solo | - |
 | COMBAT-08 | `weapon_ranged` ter-equip, musuh **jelas** di luar 60 stud — lebih dari 5 stud melewati batas | Bidik dan serang | Tidak ada damage; tidak ada error. Proyeksinya di-clamp di 60 stud, jadi musuh yang cuma beberapa stud melewati batas masih bisa kena silinder radius 5 — itu toleransi yang disengaja, bukan bug | M5 | solo | - |
-| COMBAT-09 | `weapon_boss_a` sudah di-craft dan ter-equip, tiga musuh **sejajar di garis bidik** (bukan sekadar berkerumun) | Bidik melewati ketiganya dan serang sekali | Sampai **3 musuh** kena dalam satu serangan, dipilih yang paling dulu dilewati garis bidik (`projectiles = 3`). Bukan "membelah jadi 3 proyektil" — yang diimplementasikan adalah satu silinder bidik yang mengenai maksimal 3 musuh | M5 | solo | - |
+| COMBAT-09 | `weapon_boss_a` sudah di-craft dan ter-equip, tiga musuh **sejajar di garis bidik** (bukan sekadar berkerumun) | Bidik melewati ketiganya dan serang sekali | Sampai **3 musuh** kena dalam satu serangan, dipilih yang paling dulu dilewati garis bidik (`projectiles = 3`). Bukan "membelah jadi 3 proyektil" — yang diimplementasikan adalah satu silinder bidik yang mengenai maksimal 3 musuh. Angka 3 itu `projectiles` **dasar**, dan ketiga alur Fork Bomb menggesernya: `a` Shotgun ke 5 di level 4 lalu 7 di level 10, dan `b` Ledakan turun ke **1** di level 4 (yang mengenai beberapa musuh di situ splash-nya, bukan proyektilnya — COMBAT-18). Jadi baris ini dijalankan dengan Fork Bomb di bawah level 4 | M5 | solo | - |
 | COMBAT-10 | Karakter player mati / sedang respawn saat `WaveActive` | Coba menyerang | Serangan ditolak server (origin tidak ada kalau Humanoid mati); tidak ada damage; tidak ada error | M1 | solo | - |
 | COMBAT-11 | State `Lobby` atau `Intermission` | Coba menyerang lewat klik, lalu lewat `R.Attack:FireServer(Vector3.new(0, 0, 1))` dari command bar client | Tidak ada damage ke musuh mana pun; server menolak karena state salah; tidak ada error | M2 | solo | - |
-| COMBAT-12 | `weapon_starter` level 1, lalu di-upgrade ke level 5; `basic` di wave 2 di dua kondisi itu. Jalan ke level 5 melewati titik percabangan, jadi satu alur harus dipilih di level 4 — **alur mana pun**, karena tidak satu pun dari ketiganya mengubah damage sekarang (PROG-20, T14) | Hitung serangan untuk membunuh satu musuh | Level 1 (25 damage) = **5** serangan, level 5 (37 damage) = **4** serangan. Kurva damage upgrade terasa di match. Angka 37 itu kurva generik apa adanya: `Balance.weaponStats` memakai `weaponDamage(def, 5)` sebagai dasar dan tingkat alur level 4 tidak menyumbang pengali apa pun, jadi memilih alur lain di level 4 memberi **4** serangan yang sama | M5 | solo | - |
-| COMBAT-13 | `weapon_starter` ter-equip, beberapa musuh berdekatan di depan | Serang sekali | **Hanya satu** musuh yang kena, yang terdekat (`projectiles = 1`). Serangan yang mengenai beberapa musuh sekaligus adalah milik `weapon_boss_a` (COMBAT-09), bukan starter | M1 | solo | - |
+| COMBAT-12 | `weapon_starter` level 1, lalu di-upgrade ke level 5; `basic` di wave 2 di dua kondisi itu. Jalan ke level 5 melewati titik percabangan, jadi satu alur harus dipilih di level 4 — dan **alurnya harus `c` Bertahan**, bukan sembarang alur. Sejak langkah 7 pilihannya menggeser damage: tingkat 1 alur `c` cuma menyetel `effects.damageTakenMult`, jadi dia satu-satunya yang membiarkan kurva damage generik terbaca apa adanya | Hitung serangan untuk membunuh satu musuh | Level 1 (25 damage) = **5** serangan, level 5 alur `c` (37 damage) = **4** serangan. Kurva damage upgrade terasa di match. Yang membuat baris ini butuh alur yang disebut: alur `a` Ayunan Berat di level 5 memberi `37 * 1.5` = **55.5** damage dan **3** serangan, jadi menjalankan baris ini dengan alur `a` memberi angka yang benar tapi bukan angka yang diuji — dan angka 4 yang muncul dengan alur `a` berarti `damageMult` tidak sampai ke `weaponStats`. Alur `b` Ayunan Cepat juga memberi 4 serangan, tapi cooldown-nya 0.32 dan jumlah serangan yang sama itu datang dalam separuh waktu, jadi penghitungan dengan stopwatch jadi tidak bisa dibandingkan | M5 | solo | - |
+| COMBAT-13 | `weapon_starter` ter-equip **di bawah level 10**, beberapa musuh berdekatan di depan | Serang sekali | **Hanya satu** musuh yang kena, yang terdekat (`projectiles = 1`). Serangan yang mengenai beberapa musuh sekaligus adalah milik `weapon_boss_a` (COMBAT-09), bukan starter — **kecuali** Patch Wrench alur `a` Ayunan Berat di **level 10**, yang menyetel `projectiles = 3` dan mengenai sampai 3 musuh dengan damage penuh masing-masing. Jadi tiga musuh yang kena di level 10 alur `a` adalah hal yang benar, dan baris ini dijalankan di bawah level 10 supaya yang diuji tetap perilaku dasarnya | M1 | solo | - |
 | COMBAT-14 | State `Intermission` (panel toko terbuka) dan `Lobby` (panel lobby terbuka) | Klik tombol di panel itu, lalu amati Output server dan HP musuh | Kliknya tidak memicu serangan. Catatan: di v1 ini **tidak bisa benar-benar membuktikan apa pun**, karena di kedua state itu `Attack` sudah ditolak gerbang state, dan selama `WaveActive` tidak ada satu pun tombol UI yang terlihat. Penjaga "input yang sudah dipakai UI tidak diteruskan" memang ada di `InputController`, tapi baru bisa diuji sungguhan setelah M7 menambah tombol UI yang aktif di tengah wave. Dicatat supaya tidak lupa diulang saat itu | M3 | solo | - |
 | COMBAT-15 | State `WaveActive`, musuh di depan | **Tahan** tombol kiri, jangan klik berulang | Serangan terkirim terus selama tombol ditahan (client mengirim 8 kali per detik, server menerapkan cooldown senjata). Tidak perlu mengklik berkali-kali | M1 | solo | - |
 | COMBAT-16 | Wave 2 atau lebih (komposisinya berisi `fast`), karakter HP penuh 100, **jangan menyerang sama sekali** | Berdiri di dekat lane sampai satu `fast` datang mengejar, biarkan dia memukul sampai karakter mati, lalu hitung detik sampai karakter kembali | Bar HP karakter turun **15 tiap 0.8 detik** — pukulan pertama jatuh begitu `fast` masuk 6 stud, tidak menunggu interval — dan karakter **mati setelah 7 pukulan**, sekitar 4.8 detik. Karakter kembali **5 detik** sesudahnya (`Balance.RESPAWN_SECONDS`) di `Arena/PlayerSpawn` dengan HP penuh 100, **tanpa** kehilangan nyawa, koin tim, atau progres apa pun — tidak ada sistem nyawa di v1. Selama mati, klik tidak men-damage musuh mana pun dan Output server tidak mengeluarkan error (COMBAT-10). Musuh yang membunuh kita **melepas targetnya** dan kembali berjalan ke base, tidak menunggu di tempat kita mati. Sementara kita mati, musuh di base **terus memukul Core** — bar Core tetap turun selama 5 detik itu | M1 | solo | - |
 | COMBAT-17 | Satu tipe per percobaan, karakter HP penuh 100, jangan menyerang. `tank` butuh wave 4; dua boss butuh wave 5 dan 10 (atau pindahkan `bossId` sementara) | Berdiri dalam 6 stud dari musuh itu dan hitung pukulan sampai karakter mati | Jumlah pukulannya tetap dan bisa dihitung: `basic` **4** (25 per pukulan tiap 1.2 s), `fast` **7** (15 / 0.8 s), `tank` **2** (60 / 1.5 s), Splitter **2** (80 / 2.0 s), Locker **1** (120 / 2.0 s — satu pukulan dari HP penuh langsung mematikan). Angka ini **tidak** berubah di `hard` dan tidak berubah dengan jumlah player: `attackDamage` tidak dikali pengali difficulty, cuma HP musuh yang dikali. `basic` dan `tank` memukul **dari tempatnya berdiri di lane** tanpa mengejar (WAVE-18) | M1 | solo (atau solo+EDIT untuk boss) | - |
+| COMBAT-18 | Fork Bomb dimiliki dan ter-equip di **level 4 alur `b` Ledakan** (jalan pintas 4 di kotak [bagian 13](#13-progres-permanen-dan-data-player-prog) dengan `{ level = 4, path = "b" }`; kalau Fork Bomb belum dimiliki pakai `Config.DEV_ALL_WEAPONS`). Wave 2 atau lebih, dan **tiga `basic` yang berkerumun** dalam 8 stud satu dari yang lain — paling mudah di cincin base, karena musuh yang sudah menempel di situ tidak bergerak lagi | Bidik satu musuh di tengah kerumunan dan serang **sekali**. Catat HP ketiganya sebelum dan sesudah | Proyektilnya **1**, bukan 3 (tingkat 1 menyetel `projectiles = 1`), jadi cuma **satu** musuh yang kena penuh — tapi ketiganya kehilangan HP. Target utama turun **40.8**, dua tetangganya turun **20.4** masing-masing (`splashMult` 0.5 dari damage penuh, radius 8 stud). Bar HP ketiganya turun dari satu klik, dan **tidak ada apa pun yang terlihat meledak** — tidak ada efek splash, sama seperti zona di T15. **Yang paling penting di baris ini:** target utama turun **40.8 dan bukan 61.2**. Kalau dia turun 61.2 dia kena dua kali — sekali penuh, sekali lagi sebagai korban splash-nya sendiri — dan gejalanya cuma damage senjata yang terlihat lebih besar daripada yang tertulis di panel, yaitu kegagalan termahal di antara seluruh efek alur karena tidak ada yang akan melaporkannya. `CombatService.onAttack` mengecualikannya lewat tabel `struck` yang dioper ke `CombatEffects.withinRadius`. Musuh yang **lebih dari 8 stud** dari titik kena tidak boleh turun sedikit pun. Lalu ulangi di **level 10** (`{ level = 10, path = "b" }`): target utama **62.4**, korban splash **46.8**, radius **12 stud** — jadi kerumunan yang sama sekarang mengenai lebih banyak musuh. Balikkan `Config.DEFAULT_DATA` sebelum commit | M5 | solo+EDIT | - |
+| COMBAT-19 | `weapon_starter` ter-equip di **level 7 alur `a` Ayunan Berat** (`Config.DEFAULT_DATA.weapons.weapon_starter = { level = 7, path = "a" }`). Satu musuh berdiri **di samping** karakter, kira-kira tegak lurus arah pandang, dalam 17 stud | Hadap lurus ke depan sehingga musuh itu ada di sisi kiri atau kanan, lalu klik. Ulangi dengan musuh yang jelas **di belakang** karakter | Musuh di samping **kena**: ambang kerucutnya turun dari `Balance.MELEE_MIN_COS` 0.2 (≈78.5° setengah sudut) ke **-0.1** (≈**95.7°**), jadi ayunannya sekarang mencakup lebih dari separuh lingkaran di sekitar pemain dan musuh yang sudah sedikit di belakang garis samping ikut kena. Musuh yang **jelas di belakang** tetap tidak kena — 95.7° bukan 180°. Bandingkan dengan COMBAT-03 yang dijalankan dengan senjata level 1: musuh di samping yang **tidak** kena di situ dan **kena** di sini adalah seluruh buktinya. Arah angkanya terbalik dari yang intuitif dan itu yang paling mudah salah dikodekan: **cos yang lebih kecil berarti kerucut lebih lebar**, jadi kalau musuh di samping justru berhenti kena sesudah upgrade ini, tandanya `coneMinCos` dipakai dengan perbandingan yang terbalik. Damage-nya juga sekaligus terbaca: **64.5**, bukan 43. Balikkan `Config.DEFAULT_DATA` sebelum commit | M5 | solo+EDIT | - |
+| COMBAT-20 | `weapon_starter` ter-equip di **level 4 alur `c` Bertahan** (`{ level = 4, path = "c" }`), karakter HP penuh 100, **jangan menyerang sama sekali**. Wave 2 atau lebih supaya ada `fast` | Berdiri dalam 6 stud dari satu `basic` dan hitung pukulan sampai karakter mati. Ulangi dengan `fast`. Lalu ulangi keduanya dengan `{ level = 10, path = "c" }` | Damage masuk dikali **0.75** di level 4: `basic` 25 jadi **18.75** per pukulan dan karakter mati setelah **6** pukulan (bukan 4), `fast` 15 jadi **11.25** dan mati setelah **9** (bukan 7). Di level 10 pengalinya **0.55**: `basic` **8** pukulan, `fast` **13**. **Jaraknya tetap `attackInterval` yang sama** — 1.2 detik untuk `basic`, 0.8 untuk `fast` — karena alur ini mengurangi damage, **bukan** membuat musuh berhenti memukul; jadwal pukulan berikutnya tetap disetel. Musuh yang terlihat **berhenti memukul** adalah GAGAL, dan gejalanya terbalik dari yang diharapkan: pemain merasa dilindungi sempurna, bukan merasa dirugikan, jadi tidak ada yang melaporkannya. Baris ini juga sekaligus menguji satu batas yang tidak bisa dicapai lewat UI: pengali di luar rentang (0, 1] **diabaikan** dan `CombatService.getPlayerDamageTakenMult` mengembalikan 1 — jadi `{ level = 4, path = "c" }` dengan `effects.damageTakenMult` diubah sementara ke 0 atau ke 1.5 di `Weapons.luau` harus memberi damage **penuh** 25, bukan nol dan bukan 37.5. Balikkan kedua file sebelum commit | M5 | solo+EDIT | - |
+| COMBAT-21 | Packet Rifle dimiliki dan ter-equip di **level 10 alur `c` Dukungan** (`{ level = 10, path = "c" }` pada `weapon_ranged`). Wave 2 atau lebih dengan **empat atau lebih** `basic` berkerumun di cincin base, dan catat HP semuanya | Tembak **satu** musuh di kerumunan sekali, lalu tembak **musuh lain yang berdekatan dengannya** sekali, lalu baca HP keduanya | Tembakan pertama memberi **29.12** ke target dan menandai **tiga** musuh: targetnya sendiri plus **dua musuh terdekat dari titik kena** (`markSpread` 2). Tembakan kedua ke salah satu musuh yang **tertular** memberi **40.768**, yaitu 29.12 x1.4 — itu buktinya penularannya sampai. Musuh keempat yang lebih jauh tetap menerima **29.12**. Dua hal yang akan terlihat aneh dan dua-duanya benar: tembakan pertama ke target utama **tidak** ikut terkali 1.4 (`EnemyService.damage` dipanggil sebelum `applyMark`), dan **tidak ada tanda visual apa pun** di musuh yang tertular. **Yang GAGAL:** cuma target utama yang terkali di tembakan berikutnya — berarti `markSpread` tidak dibaca; atau tiga musuh yang ditandai ternyata termasuk target utama **dua kali** sehingga cuma dua musuh total yang bertanda, karena `CombatEffects.nearest` menerima tabel `struck` sebagai `exclude` dan target utama seharusnya sudah tidak ikut dipilih. Pilihan "musuh terdekat" itu deterministik lewat pemecah seri id, jadi mengulang percobaan yang sama harus menandai **dua musuh yang sama**, bukan dua yang berbeda tiap kali. Balikkan `Config.DEFAULT_DATA` sebelum commit | M5 | solo+EDIT | - |
+| COMBAT-22 | **Dua client.** Client A memakai Packet Rifle **level 7 alur `c` Dukungan**, client B memakai Patch Wrench **level 1** (jadi damage-nya 25 apa adanya dan mudah dihitung). Keduanya lewat `Config.DEFAULT_DATA.weapons` yang sama, jadi satu edit cukup; `Config.DEV_ALL_WEAPONS` dinyalakan supaya A bisa memakai Packet Rifle tanpa membelinya. Wave 2 atau lebih, satu `basic` di cincin base, catat HP-nya | B menyerang `basic` itu **sekali** dan catat selisih HP. Lalu A menembaknya sekali (yang memasang tanda). Lalu B menyerang **sekali lagi** dan catat selisihnya | Serangan B yang pertama memberi **25**. Serangan B yang **kedua** memberi **35** — 25 x1.4 — walaupun B tidak mengubah apa pun, tidak meng-upgrade apa pun, dan senjatanya tidak punya `effects` sama sekali. Itu seluruh guna alur Dukungan, dan ini satu-satunya baris di dokumen ini yang bisa membuktikannya: tandanya diterapkan di `EnemyService.damage`, jadi dia berlaku untuk **semua** sumber damage, bukan cuma untuk penandanya. Tembakan A sendiri memberi **24.08** (belum terkali, karena `damage` dipanggil sebelum `applyMark`). Tanda habis setelah **4 detik** (`markSeconds`), jadi serangan B yang ketiga lebih dari 4 detik sesudah tembakan A kembali memberi **25** — itu bukan tanda yang rusak. **Yang GAGAL:** serangan B yang kedua tetap 25, yang berarti pengalinya pindah ke `CombatService` dan berlaku cuma untuk penandanya; atau B justru memberi 35 **sebelum** A menembak, yang berarti ada tanda yang lahir tanpa ada yang memasangnya. Balikkan `Config.DEFAULT_DATA` dan `Config.DEV_ALL_WEAPONS` sebelum commit | M5 | 2P | - |
+| COMBAT-23 | `weapon_starter` ter-equip di **level 7 alur `b` Ayunan Cepat** (`{ level = 7, path = "b" }`). Wave 2 atau lebih, satu `fast` sedang **berjalan di lane** (bukan mengejar, supaya kecepatannya yang terukur dan bukan arahnya) | Pukul `fast` itu sekali saat dia lewat, lalu amati geraknya selama dua detik berikutnya. Lalu ulangi dengan `{ level = 10, path = "b" }` | `fast` yang kena **jelas melambat**: speed-nya 16 jadi **10.4** (x0.65) selama **1.5 detik**, lalu kembali normal sendiri. Di level 10 pengalinya **x0.5** jadi **8.0**, dan durasinya masih 1.5 detik — tingkat 3 cuma menulis `slowMult`, dan `slowSeconds` tingkat 2 **dipertahankan** karena `effects` digabung per kunci. Slow ini **menempel ke musuh**, jadi dia ikut ke mana pun musuhnya jalan — bedakan dari zona di COMBAT-24 yang berhenti begitu musuh keluar radius. Satu pukulan berikutnya yang lebih **lemah** tidak boleh membatalkan yang kuat: dengan cooldown 0.32 detik pemain memukul beberapa kali dalam satu durasi slow, dan kalau "terbaru menang" musuhnya akan kadang melambat kadang tidak tanpa pola. Harness sudah membuktikan slow benar-benar sampai ke gerak Part (rasio 0.36 untuk pengali 0.40) dan bahwa pukulan lemah tidak membatalkannya, jadi yang tersisa di sini **cuma** bahwa `stats.effects.slowMult` dari alur ini yang memasangnya lewat `onAttack` — dan bahwa pemain bisa melihatnya. Musuh yang **berhenti total** adalah GAGAL: pengalinya dipakai sebagai pengganti kecepatan, bukan pengali. Balikkan `Config.DEFAULT_DATA` sebelum commit | M5 | solo+EDIT | - |
+| COMBAT-24 | Fork Bomb ter-equip di **level 10 alur `c` Jebakan** (`{ level = 10, path = "c" }`; `Config.DEV_ALL_WEAPONS` kalau belum dimiliki). Wave 2 atau lebih, satu musuh sudah menempel di cincin base sehingga dia **berdiri diam**, dan catat HP-nya | Tembak musuh yang berdiri diam itu **sekali**, lalu jangan sentuh apa pun selama 3 detik dan amati HP-nya. Lalu tembak **ke udara** (tidak mengenai musuh mana pun) dan amati tempat itu. Lalu ulangi dengan `{ level = 4, path = "c" }` | Tembakan itu memberi **62.4** sekaligus meninggalkan zona di titik kena: **radius 12 stud, umur 3 detik, slow x0.45, 6 damage per detik**. Jadi HP musuh terus turun sesudah tembakannya berhenti, total kira-kira **18** selama 3 detik, lalu berhenti sendiri. Musuh lain yang masuk radius itu ikut melambat ke **3.6 stud/detik** untuk `basic` dan keluar dari pengaruhnya begitu dia melewati batas 12 stud — zona menempel ke **TEMPAT**, bukan ke musuh. **Tidak ada Part, efek, atau apa pun yang terlihat di titik itu** (T15); itu kekurangan yang diketahui dan bukan bug. Tembakan **ke udara tidak meninggalkan zona apa pun**: titik kenanya dibaca dari posisi musuh pertama yang kena, jadi serangan tanpa korban melewati seluruh blok itu — zona yang lahir dari tembakan kosong adalah GAGAL, karena pemain bisa melapisi seluruh lane tanpa membidik apa pun. Di level 4 zonanya **radius 8, slow x0.6, dan dps 0**: musuh melambat tapi HP-nya **tidak** turun sedikit pun, dan itu benar — `zoneDps` baru ada di tingkat 3. Balikkan `Config.DEFAULT_DATA` sebelum commit | M5 | solo+EDIT | - |
+| COMBAT-25 | Fork Bomb ter-equip di **level 10 alur `c` Jebakan** (sama dengan COMBAT-24). Satu match dijalankan sampai selesai — menang atau kalah — dengan beberapa zona ditinggalkan di dekat Core **di detik-detik terakhir**, lalu match **kedua** dimulai tanpa restart server | Di match kedua, catat HP musuh pertama wave 1 begitu dia muncul dan amati selama beberapa detik **tanpa menyerangnya sama sekali** | HP musuh pertama **tidak turun sedikit pun** selama tidak ada yang menyerangnya: `EnemyService.clearAll()` membuang seluruh daftar zona bersama musuhnya, jadi tidak ada zona dari match sebelumnya yang masih hidup. Umur zona cuma 3 detik sehingga membiarkannya hampir tidak terlihat — tapi "hampir" itu match baru yang wave 1-nya dimulai dengan zona perlambat dan dps dari match sebelumnya, dan gejalanya musuh pertama yang jalannya aneh dan kehilangan HP tanpa ada yang menembaknya, di detik ketika belum ada apa pun yang bisa dicurigai. Dibuktikan **seluruhnya** oleh harness Studio (`zona.dibuangSaatClearAll` di `path_effects`, yang menaruh zona dps 200 lalu memanggil `clearAll` lalu memeriksa HP musuh baru), dan harapannya tidak punya bagian client sama sekali — jadi baris ini `OK` tanpa perlu dijalankan tangan, sesuai [bagian 3.2](#32-cakupan-harness-studio) | M5 | solo | OK |
 
 ## 11. Toko Match (SHOP)
 
@@ -884,7 +1197,7 @@ match yang sama. Dua perilaku itu dijelaskan sebagai T11 dan T12 di
 | ID | Prakondisi | Langkah | Hasil yang diharapkan | Milestone | Jalankan? | Status |
 |---|---|---|---|---|---|---|
 | SHOP-01 | State `Intermission` | Lihat panel Toko Match di kanan layar | Lima item **dalam urutan ini**: Exploit Patch (200), Overclock (200), Hotfix (150), Firewall Block (100), Scanner Turret (250). Urutannya dari `ShopItems.order` — kalau berubah-ubah tiap kali client dibuka, daftar itu tidak dipakai. Header menampilkan "N koin tim", dan angkanya naik setiap musuh mati selama wave berjalan **dan melompat sekali saat wave selesai** (hadiah per wave, SHOP-17). Hanya **Firewall Block** yang memuat "· sisa N" — empat item lain tak terbatas, jadi barisnya berbunyi "200 koin — ..." tanpa sisa. Baris yang memuat "· sisa N" untuk kelima item berarti jatah yang sudah dihapus masih dipakai | M3 | solo | - |
-| SHOP-02 | State `Intermission`, koin ≥ 200, dan Exploit Patch **belum pernah dibeli** di match ini | Beli **Exploit Patch**, lanjut ke wave berikutnya, hitung serangan untuk membunuh satu `tank` | Koin turun 200 — itu harga pembelian **pertama**; yang kedua 250 dan seterusnya naik x1.25 (SHOP-20). Damage semua pemain naik **+10% linear** (bukan berlipat): satu pembelian 1.1x, lima pembelian 1.5x — bukan 1.61x. Paling mudah diukur di `tank` karena HP-nya besar. Di `basic` wave 2, satu Exploit Patch belum mengubah jumlah serangan (tetap 5); tiga pembelian membuatnya 4 | M3 | solo | - |
+| SHOP-02 | State `Intermission`, koin ≥ 200, Exploit Patch **belum pernah dibeli** di match ini, dan `weapon_starter` **level 1 dengan `path = "none"`** — dua angka serangan di kolom harapan dihitung dari damage 25, dan pengali toko berlaku **di atas** damage yang sudah termasuk alur, jadi senjata ter-upgrade memberi angka lain ([bagian 4.2](#42-angka-patokan)) | Beli **Exploit Patch**, lanjut ke wave berikutnya, hitung serangan untuk membunuh satu `tank` | Koin turun 200 — itu harga pembelian **pertama**; yang kedua 250 dan seterusnya naik x1.25 (SHOP-20). Damage semua pemain naik **+10% linear** (bukan berlipat): satu pembelian 1.1x, lima pembelian 1.5x — bukan 1.61x. Paling mudah diukur di `tank` karena HP-nya besar. Di `basic` wave 2, satu Exploit Patch belum mengubah jumlah serangan (tetap 5); tiga pembelian membuatnya 4 | M3 | solo | - |
 | SHOP-03 | State `Intermission`, koin ≥ 200 | Beli **Overclock**, lanjut ke wave berikutnya | Jeda antar serangan terasa lebih pendek: cooldown turun **-8% linear per pembelian**, dengan lantai 0.4x. Tahan klik kiri dan bandingkan ritme bar HP musuh turun, sebelum dan sesudah beli | M3 | solo | - |
 | SHOP-04 | State `Intermission`, HP Core sudah berkurang | Beli **Hotfix** | Lihat CORE-05: +150 HP langsung, tidak melebihi 1000 | M3 | solo | - |
 | SHOP-05 | State `Intermission`, koin ≥ 100 untuk bagian pertama dan ≥ 281 untuk bagian kedua (pembelian ke-2 dan ke-3 berharga 125 dan 156). Penumpukan durasi dihitung **per jeda**, bukan per match, jadi pembelian dari jeda sebelumnya tidak ikut memperpanjang | Beli **Firewall Block** satu kali, lanjut ke wave berikutnya. Lalu ulangi dengan membeli **dua** kali | Dinding biru tembus pandang muncul di tengah **kedua** lane tepat saat wave berikutnya mulai, dan musuh di lane itu **berhenti bergerak** 6 detik, lalu jalan lagi. Dua pembelian menggandakan **durasi blokirnya** jadi 12 detik, bukan jumlah dindingnya — dan dindingnya hilang **tepat** saat musuh mulai jalan lagi, 12 detik juga. Kalau dinding hilang di detik 6 sementara musuh masih tertahan, temuan T5 kembali | M3 | solo | - |
@@ -948,8 +1261,9 @@ Acuan: DEVELOPMENT_PLAN.md bagian 3.1, 3.5, M5.
 > naik dari level 1 ke level 4 cuma memakan `50 + 67 + 91` = **208** koin, dan
 > seluruh jalan ke level 10 cuma 1982. Jadi untuk PROG-19 sampai PROG-24 tidak ada
 > yang perlu diedit selain koin itu; tiga klik dari data baru sudah mendarat di
-> level 4. Tiga jalan pintas lain ada kalau tiga klik itu pun mengganggu, dan
-> ketiganya `solo+EDIT`:
+> level 4. Empat jalan pintas lain ada kalau tiga klik itu pun mengganggu, atau
+> kalau yang diuji justru tingkat alur di level 7 dan 10, dan keempatnya
+> `solo+EDIT`:
 >
 > 1. `Config.DEFAULT_DATA.weapons.weapon_starter = { level = 3, path = "none" }` —
 >    data baru lahir satu upgrade sebelum titik percabangan. Ini yang paling rapi
@@ -962,8 +1276,25 @@ Acuan: DEVELOPMENT_PLAN.md bagian 3.1, 3.5, M5.
 >    banyak upgrade berturut-turut. Perhatikan bahwa ini **ikut mengubah angka di
 >    PROG-08 dan SEC-05**, jadi jangan dibiarkan menyala saat menjalankan dua baris
 >    itu.
+> 4. **`{ level = 7, path = "a" }` atau `{ level = 10, path = "a" }`** — bentuk
+>    yang sama dengan nomor 2, cuma levelnya langsung di titik tingkat 2 atau
+>    tingkat 3. Ini yang dipakai seluruh baris efek alur, karena lima dari enam
+>    efek baru **tidak ada** sebelum level 7: slow pukulan (`b` tingkat 2), zona
+>    dps (`c` tingkat 3 Fork Bomb), kerucut lebar (`a` tingkat 2 Patch Wrench),
+>    penularan tanda (`c` tingkat 3 Packet Rifle), dan splash yang 12 stud (`b`
+>    tingkat 3 Fork Bomb). Membayar tujuh atau sepuluh upgrade dulu cuma untuk
+>    mencapainya memakan waktu tanpa menguji apa pun yang belum diuji PROG-08.
+>    `path` di sini **harus** diisi alur yang benar untuk baris yang dijalankan
+>    (`"a"`, `"b"`, atau `"c"`) — `"none"` di level 7 berarti senjatanya berjalan
+>    **tanpa alur**, yaitu kurva generik apa adanya, dan setiap angka efek di
+>    baris itu akan nol tanpa satu pesan pun. Untuk senjata selain starter,
+>    kuncinya `weapon_ranged` atau `weapon_boss_a` di tabel yang sama, dan
+>    `Config.DEV_ALL_WEAPONS = true` supaya senjatanya benar-benar bisa dipakai
+>    tanpa dibeli — flag itu memberi level 1 untuk senjata yang tidak ada di
+>    `data.weapons`, jadi entri di `Config.DEFAULT_DATA` tetap perlu untuk
+>    levelnya.
 >
-> Ketiganya menyentuh file yang di-commit. **Balikkan sebelum commit** — dan
+> Keempatnya menyentuh file yang di-commit. **Balikkan sebelum commit** — dan
 > `Config.DEFAULT_DATA` yang terbawa ke DataStore berarti akun yang dipakai
 > mencoba lahir dengan progres yang tidak dia bayar, jadi kalau place-nya sudah
 > di-publish, naikkan `Config.DATASTORE_NAME` dulu atau pakai akun uji sendiri.
@@ -977,7 +1308,7 @@ Acuan: DEVELOPMENT_PLAN.md bagian 3.1, 3.5, M5.
 | PROG-05 | Catat `highestWave`, `matchesPlayed`, `wins` lewat `R.GetProfile:InvokeServer().stats` | Selesaikan satu match menang di wave tinggi, lalu satu match yang berakhir di wave lebih rendah | `matchesPlayed` +1 tiap match, `wins` +1 hanya saat menang, `highestWave` naik saat rekor baru dan **tidak turun** saat wave lebih rendah | M5 | solo | - |
 | PROG-06 | Player belum pernah menang di `normal`; `clears` kosong; tombol **Hard (terkunci)** mati di panel lobby | Menangkan satu match di `normal` (wave 10 bersih), kembali ke lobby | Tombol **Hard** jadi aktif dan bisa dipilih. Print `[RewardService]` memuat ", membuka hard". Menangkan lagi di `normal`: print **TIDAK** lagi memuat "membuka hard" — kalau masih, daftar yang baru terbuka dibandingkan salah dan pemain akan melihat pesan itu setiap match selamanya | M5 | solo | - |
 | PROG-07 | `hard` sudah terbuka | Pilih **Hard**, Ready, selesaikan satu match; bandingkan dengan match `normal` di wave yang sama | Musuh butuh lebih banyak serangan (hpMult 1.8 — lihat WAVE-09). Koin lebih besar: wave 10 menang di hard = **240 koin** vs 150 di normal (rewardMult 1.6). **XP sama, 300** — kesulitan menaikkan koin, bukan level | M5 | solo | - |
-| PROG-08 | `weapon_starter` level 1, koin permanen ≥ 2000 | Tekan tombol upgrade berulang kali sampai level 10, catat harga tiap kali. **Upgrade yang keempat (level 3 → 4) tidak akan langsung jadi** — di situ panel pemilihan alur muncul; pilih satu alur, lanjutkan, dan teruskan sampai level 10 | Level naik 1 tiap tekan; damage di baris detail naik (25 → 28 → 31 → ...); harga naik **50, 67, 91, 123, 166, 224, 302, 408, 551**; koin di header turun sesuai harga; baris petunjuk menampilkan "Berhasil." sebentar. Kurva damage **tidak** terganggu titik percabangan: level 4 tetap 34 dan level 10 tetap 52 apa pun alur yang dipilih, karena belum ada tingkat alur yang mengubah stat (T14). Pilihan alurnya mencetak satu baris sendiri di Output server: `[ProgressionService] <nama> mengunci alur <nama alur> untuk weapon_starter -- permanen`, **terpisah** dari baris `upgrade ... ke level 4`. Di level 10 tombolnya jadi **"Level maks"** dan mati, dan `R.UpgradeWeapon:FireServer("weapon_starter")` ditolak dengan "Patch Wrench sudah level maksimum (10)." — bukan dengan pesan soal alur, karena level maksimum diperiksa lebih dulu | M5 | solo | - |
+| PROG-08 | `weapon_starter` level 1, koin permanen ≥ 2000 | Tekan tombol upgrade berulang kali sampai level 10, catat harga tiap kali. **Upgrade yang keempat (level 3 → 4) tidak akan langsung jadi** — di situ panel pemilihan alur muncul; pilih satu alur, lanjutkan, dan teruskan sampai level 10 | Level naik 1 tiap tekan; damage di baris detail naik (25 → 28 → 31 → ...); harga naik **50, 67, 91, 123, 166, 224, 302, 408, 551**; koin di header turun sesuai harga; baris petunjuk menampilkan "Berhasil." sebentar. Angka damage di baris detail itu **berhenti mengikuti kurva generik begitu alur terpilih**, dan itu yang berubah sejak langkah 7: dengan alur `c` Bertahan dia tetap 34 di level 4 lalu melompat ke **51.6** di level 7 (`damageMult` 1.2 di tingkat 2), dengan alur `a` Ayunan Berat dia sudah **51** di level 4, dan dengan alur `b` Ayunan Cepat dia 34 di level 4 tapi cooldown-nya yang berubah. Jadi baris ini harus mencatat **alur mana** yang dipilih, kalau tidak kolom damage-nya tidak bisa dinilai benar atau salah; tabel sembilan alur x tiga tingkat ada di [bagian 4.2](#42-angka-patokan). Yang **tidak** terganggu titik percabangan adalah **harga**: kesembilan angka di atas berlaku apa pun alur yang dipilih. Pilihan alurnya mencetak satu baris sendiri di Output server: `[ProgressionService] <nama> mengunci alur <nama alur> untuk weapon_starter -- permanen`, **terpisah** dari baris `upgrade ... ke level 4`. Di level 10 tombolnya jadi **"Level maks"** dan mati, dan `R.UpgradeWeapon:FireServer("weapon_starter")` ditolak dengan "Patch Wrench sudah level maksimum (10)." — bukan dengan pesan soal alur, karena level maksimum diperiksa lebih dulu | M5 | solo | - |
 | PROG-09 | Koin permanen **kurang** dari harga upgrade, dan senjatanya di level yang **tidak** menagih pilihan alur — level 1 atau 2, bukan level 3 | Coba klik tombol upgrade, lalu ulangi lewat remote | Tombolnya mati dan kliknya tidak mengirim apa pun. Lewat remote: ditolak dengan "Koin kurang: butuh N, ada M." di baris petunjuk panel lobby. Level senjata tidak berubah; koin tidak jadi negatif. Prakondisi level itu bukan kehati-hatian berlebih: alur diperiksa **sebelum** koin, jadi senjata level 3 tanpa alur dengan koin kurang dibalas pesan soal **pilihan alur**, bukan soal koin (PROG-19) — dan baris ini akan terbaca GAGAL padahal yang terjadi benar | M5 | solo | - |
 | PROG-10 | `weapon_ranged` belum dimiliki, koin ≥ 1500 | Tekan **Beli 1500** di baris Packet Rifle, lalu **Pakai**, lalu Ready dan masuk wave | Koin turun 1500. Baris jadi "Level 1/10 · damage 14 · jarak jauh", tombolnya berubah jadi "Upgrade 50", tombol "Pakai" jadi aktif. Judulnya bertanda **(dipakai)** setelah di-equip. Di wave, serangan mengenai musuh sampai 60 stud | M5 | solo | - |
 | PROG-11 | `weapon_ranged` sudah dimiliki | `R.BuyWeapon:FireServer("weapon_ranged")` dari command bar client | Ditolak dengan "Packet Rifle sudah kamu miliki."; koin tidak berkurang lagi; level senjata tidak ter-reset | M5 | solo | - |
@@ -989,13 +1320,15 @@ Acuan: DEVELOPMENT_PLAN.md bagian 3.1, 3.5, M5.
 | PROG-17 | Match sedang berjalan (state apa pun selain `Lobby`), dan **satu percobaan khusus saat `Loadout`** — tekan Ready dan jangan tunggu 20 detiknya habis | `R.UpgradeWeapon:FireServer("weapon_starter")`, lalu `R.BuyWeapon:FireServer("weapon_ranged")`, lalu `R.CraftWeapon:FireServer("weapon_boss_a")` | Ketiganya ditolak: "Upgrade cuma bisa di lobby.", "Beli senjata cuma bisa di lobby.", "Craft cuma bisa di lobby." Koin dan material tidak berubah sama sekali. `Loadout` percobaan yang paling penting di antaranya, karena di situ panelnya masih terlihat dan `SelectLoadout` justru **diterima**: tiga remote ini memakai `ProgressionRules.ALLOWED_STATE` yang tetap **`Lobby` saja**, bukan daftar `MatchRules.LOADOUT_STATES` yang dipakai loadout. Dua daftar yang berbeda di dua modul yang berbeda, dan itu disengaja — penolakan yang sama dengan tombol yang mati di MATCH-17 | M5 | solo | - |
 | PROG-18 | State `Lobby`, koin dan material cukup | `R.BuyWeapon:FireServer("weapon_boss_a")`, lalu `R.CraftWeapon:FireServer("weapon_ranged")` | Ditolak: "Fork Bomb tidak dijual dengan koin." dan "Packet Rifle tidak dibuat dengan material." Senjata craft tidak bisa dibeli dengan koin, dan senjata beli tidak bisa di-craft | M5 | solo | - |
 | PROG-19 | `weapon_starter` **level 3** dengan `path` masih `"none"` (jalan pintas 1 di kotak di atas, atau tiga klik upgrade dari data baru). Koin cukup | Tekan tombol upgrade sekali. Lalu, tanpa menyentuh panelnya, jalankan `R.UpgradeWeapon:FireServer("weapon_starter")` dari command bar client | Upgrade **tidak jadi**: level tetap 3, koin tidak terpotong. Panel pemilihan alur muncul, dan dia menampilkan **ketiga alur sekaligus** — bukan satu per satu, bukan dropdown — masing-masing dengan nama, tema, dan ketiga baris `summary` beserta levelnya (4, 7, 10), persis seperti di [bagian 4.2](#42-angka-patokan). Panel juga menyatakan pilihannya permanen dan menyebut harga upgrade-nya (91). Lewat remote tanpa `pathId`, server membalas `ActionResult` `ok = false` dengan **"Level 4 Patch Wrench mengunci satu dari 3 alur upgrade selamanya. Pilih dulu."** Panel yang **tidak** muncul adalah GAGAL walaupun remote-nya menolak dengan benar: pilihan permanen yang ditagih tanpa tempat membaca isinya adalah jebakan, dan rancangan bagian 3 menyebutnya syarat yang bukan opsional | M5 | solo+EDIT | - |
-| PROG-20 | Panel pemilihan alur dari PROG-19 sedang terbuka | Tekan tombol konfirmasi pada alur **kedua** (`b`, Ayunan Cepat) — bukan yang pertama, supaya "jatuh ke alur pertama" tidak bisa lolos sebagai lulus. Lalu baca Output server, lalu `R.GetProfile:InvokeServer().weapons["weapon_starter"]` | Upgrade diterima: level jadi 4, koin turun 91, panel **tertutup sendiri** karena `ActionResult` datang `ok = true`. Output server memuat **dua** baris, dan yang pertama ini yang membuktikan servernya menerima alur yang benar: `[ProgressionService] <nama> mengunci alur Ayunan Cepat untuk weapon_starter -- permanen`, lalu `[ProgressionService] <nama> upgrade weapon_starter ke level 4 (91 koin)`. `GetProfile` mengembalikan `{ level = 4, path = "b" }` — `path` **tidak** `"none"` dan **tidak** `nil`. Damage di baris detail jadi 34, yaitu kurva generik apa adanya; tidak ada tambahan dari alurnya, dan itu T14 | M5 | solo+EDIT | - |
+| PROG-20 | Panel pemilihan alur dari PROG-19 sedang terbuka | Tekan tombol konfirmasi pada alur **kedua** (`b`, Ayunan Cepat) — bukan yang pertama, supaya "jatuh ke alur pertama" tidak bisa lolos sebagai lulus. Lalu baca Output server, lalu `R.GetProfile:InvokeServer().weapons["weapon_starter"]` | Upgrade diterima: level jadi 4, koin turun 91, panel **tertutup sendiri** karena `ActionResult` datang `ok = true`. Output server memuat **dua** baris, dan yang pertama ini yang membuktikan servernya menerima alur yang benar: `[ProgressionService] <nama> mengunci alur Ayunan Cepat untuk weapon_starter -- permanen`, lalu `[ProgressionService] <nama> upgrade weapon_starter ke level 4 (91 koin)`. `GetProfile` mengembalikan `{ level = 4, path = "b" }` — `path` **tidak** `"none"` dan **tidak** `nil`. Damage di baris detail jadi **34**, yaitu kurva generik apa adanya — dan itu benar **khusus untuk alur `b`**, karena tingkat 1 Ayunan Cepat menyetel `cooldown` 0.32 dan tidak menyentuh damage sama sekali. Yang berubah dan harus ikut terbaca di panel adalah **jeda antar serangan: 0.5 jadi 0.32 detik**. Kalau alur `a` yang dipilih, damage-nya jadi **51** dan cooldown **0.7**; 34 di situ berarti `damageMult` tidak sampai ke `weaponStats` (T14) | M5 | solo+EDIT | - |
 | PROG-21 | `weapon_starter` level 4 atau 5 dengan `path = "b"` (hasil PROG-20, atau jalan pintas 2 di kotak di atas dengan `path = "b"`). Koin cukup | `R.UpgradeWeapon:FireServer("weapon_starter", "a")` dari command bar client, lalu `FireServer("weapon_starter", "c")` | **Dua-duanya ditolak**, level dan koin tidak berubah, dan `path` tetap `"b"`. Pesannya menyebut alur yang **sudah dipunyai** dengan namanya: **"Patch Wrench sudah di alur Ayunan Cepat, dan itu tidak bisa diganti."** Nama, bukan id `"b"`, dan bukan kalimat umum seperti "alur tidak bisa diganti" — pemain yang mengirim ini sedang menguji apakah "permanen" benar-benar permanen, dan jawabannya harus menyebut apa yang dia punya sekarang. Ini satu-satunya tempat di seluruh kode yang menegakkan "tidak bisa balik", jadi penerimaan di sini berarti seluruh pohon alur tidak punya arti | M5 | solo+EDIT | - |
 | PROG-22 | `weapon_starter` **level 3** dengan `path` masih `"none"`, koin cukup | `R.UpgradeWeapon:FireServer("weapon_starter", "alur_karangan")`, lalu `FireServer("weapon_starter", "d")`, lalu `FireServer("weapon_starter", "Ayunan Cepat")`, lalu `FireServer("weapon_starter", "A")`, lalu `FireServer("weapon_starter", 4)` | Kelimanya **tidak** menaikkan level dan tidak memotong koin, dan `path` tetap `"none"` sesudah semuanya. Empat yang pertama dibalas **"Patch Wrench tidak punya alur itu."**: `"d"` ditolak walau bentuknya mirip id yang sah; `"Ayunan Cepat"` ditolak karena yang divalidasi adalah **id** alur, bukan namanya — nama itu yang dibaca pemain di panel, id-nya yang tersimpan; dan `"A"` ditolak karena pembandingannya `path.id == pathId` apa adanya, jadi huruf besar bukan id yang sama. Yang terakhir beda: `4` bukan string, jadi dia **dibuang jadi nil** di `onUpgrade` sebelum sampai ke validasi alur, dan yang dibalas adalah penolakan "Pilih dulu" dari PROG-19 — bukan "tidak punya alur itu". Satu hal yang perlu diketahui sebelum menilai baris ini: id alur ketiga senjata sama-sama `a`, `b`, `c` ([bagian 4.2](#42-angka-patokan)), jadi **tidak ada** id milik satu senjata yang bisa dikirim ke senjata lain untuk memicu penolakan ini — satu-satunya cara mencapainya adalah id yang tidak ada di `def.paths` sama sekali. Itu sebabnya daftar di atas memakai karangan dan variasi ejaan, bukan "alur milik Packet Rifle" | M5 | solo+EDIT | - |
 | PROG-23 | **Data baru**, `weapon_starter` level 1 dengan `path = "none"` (jangan pakai jalan pintas 1 atau 2 — baris ini butuh level 1 yang asli). Koin cukup | `R.UpgradeWeapon:FireServer("weapon_starter", "a")` dari command bar client. Lalu baca `R.GetProfile:InvokeServer().weapons["weapon_starter"]`. Lalu upgrade **sekali lagi** supaya levelnya jadi 3, lalu tekan tombol upgrade sekali lagi | Upgrade pertama **diterima** — `pathId` di level 1 diabaikan, **tidak ditolak**, karena client yang mengirimnya terus-menerus bukan client yang menyerang, cuma client yang tidak melacak level. Tapi `GetProfile` mengembalikan `{ level = 2, path = "none" }`: alurnya **tidak tersimpan**. Output server **tidak** memuat baris `mengunci alur` sama sekali. Dan buktinya yang paling tegas ada di langkah terakhir: saat naik ke level 4, panel pemilihan alur **masih menagih** pilihan seperti di PROG-19. Kalau `path` sudah `"a"` sesudah upgrade pertama — atau kalau panelnya tidak muncul lagi di level 4 — masa percobaan level 1-3 hilang tanpa jejak, dan client bisa mengunci alur pemain di upgrade pertamanya. Ini kasus regresi untuk `ProgressionRules.pathToApply`, dan dia gagal **diam-diam**: tidak ada error, tidak ada pesan, cuma pemain yang terkunci di alur yang tidak pernah dia baca | M5 | solo+EDIT | - |
-| PROG-24 | `weapon_starter` level 5 dengan `path = "b"` (jalan pintas 2 di kotak di atas), koin cukup | `R.UpgradeWeapon:FireServer("weapon_starter")` — **tanpa** argumen kedua. Lalu `FireServer("weapon_starter", "b")` — dengan alur yang sama dengan yang sudah terpilih | **Dua-duanya diterima**, jadi level 5 → 6 → 7. Yang pertama membuktikan client lama yang cuma mengirim `weaponId` tetap bisa upgrade di level yang tidak butuh pilihan; yang kedua membuktikan mengirim alur yang **sama** bukan percobaan ganti alur dan tidak ditolak. Panel pemilihan alur **tidak** muncul untuk keduanya, dan Output server tidak memuat baris `mengunci alur` — alurnya tidak disentuh, cuma levelnya yang naik. Perhatikan level 7 yang didarati upgrade kedua: itu titik tingkat 2 alur, dan dia **tidak** menagih apa pun karena pilihannya sudah diambil di level 4. Damage mendarat di **43** lewat kurva generik apa adanya ([bagian 4.2](#42-angka-patokan)), tanpa tambahan dari tingkat 2 alurnya | M5 | solo+EDIT | - |
+| PROG-24 | `weapon_starter` level 5 dengan `path = "b"` (jalan pintas 2 di kotak di atas), koin cukup | `R.UpgradeWeapon:FireServer("weapon_starter")` — **tanpa** argumen kedua. Lalu `FireServer("weapon_starter", "b")` — dengan alur yang sama dengan yang sudah terpilih | **Dua-duanya diterima**, jadi level 5 → 6 → 7. Yang pertama membuktikan client lama yang cuma mengirim `weaponId` tetap bisa upgrade di level yang tidak butuh pilihan; yang kedua membuktikan mengirim alur yang **sama** bukan percobaan ganti alur dan tidak ditolak. Panel pemilihan alur **tidak** muncul untuk keduanya, dan Output server tidak memuat baris `mengunci alur` — alurnya tidak disentuh, cuma levelnya yang naik. Perhatikan level 7 yang didarati upgrade kedua: itu titik tingkat 2 alur, dan dia **tidak** menagih apa pun karena pilihannya sudah diambil di level 4 — tapi tingkat 2-nya **terbuka tanpa diminta**, dan itu yang harus ikut terbaca. Damage mendarat di **43**, yaitu kurva generik apa adanya, karena tingkat 2 Ayunan Cepat cuma menyetel `effects.slowMult` 0.65 dan `slowSeconds` 1.5 — bukan damage ([bagian 4.2](#42-angka-patokan)). Jadi yang berubah di level 7 ini tidak kelihatan di panel sama sekali, cuma di arena: musuh yang kena pukulan sekarang melambat 35% selama 1.5 detik (COMBAT-23). Dengan alur `a` atau `c` angka damage-nya **bukan** 43 — 64.5 dan 51.6 — jadi baris ini cuma berlaku untuk `path = "b"` seperti yang ditulis di prakondisi | M5 | solo+EDIT | - |
 | PROG-25 | Minimal dua senjata dengan alur yang **berbeda** sudah terpilih — misal `weapon_starter` level 7 alur `b` dan `weapon_ranged` level 4 alur `c`. Catat keduanya lewat `R.GetProfile:InvokeServer().weapons` | Keluar dari server, tunggu semenit, join lagi, baca `weapons` lagi | `path` tiap senjata sama persis seperti sebelum keluar — `"b"` dan `"c"`, bukan `"none"`, bukan `nil`, dan **tidak tertukar** antar senjata. Levelnya juga. Ini yang membuktikan keputusan permanen itu benar-benar permanen melewati satu siklus save/load, dan dia tidak bisa dites di Studio tanpa DataStore: di sana `weapons` cuma hidup di memori, jadi `path` yang "bertahan" di situ cuma berarti tabelnya tidak disentuh. Kalau `path` pulang sebagai `"none"`, pemain kehilangan keputusan yang tidak bisa dia ambil lagi; kalau pulang sebagai `nil`, lihat DATA-12 | M5 | PUB | - |
 | PROG-26 | `weapon_starter` **level 3** dengan `path` masih `"none"`. Dijalankan dua kali: sekali dengan koin **cukup** (≥ 91), sekali dengan koin **kurang** (misal 50) | (a) Buka panelnya lalu tekan tombol batal. (b) Buka lagi lalu konfirmasi satu alur saat koin kurang. (c) Buka lagi lalu tekan Ready dan biarkan state pindah ke `Loadout`. (d) Dengan koin kurang, buka panelnya dan baca ketiga alurnya | (a) Panel tertutup dan **tidak ada apa pun yang terkirim**: level, koin, dan `path` tidak berubah, dan Output server tidak memuat satu baris pun dari `ProgressionService`. (b) `ActionResult` datang `ok = false` dengan "Koin kurang: butuh 91, ada 50." dan panel **tetap terbuka** — alasannya harus bisa dibaca, dan panel yang menutup sendiri atas penolakan menyembunyikannya. Bandingkan dengan PROG-20, tempat `ok = true` justru menutup panelnya: dua arah yang berbeda dari satu payload yang sama. (c) Panel tertutup sendiri begitu state keluar dari `Lobby` — upgrade cuma bisa di `Lobby` (PROG-17), jadi panel yang masih terbuka di `Loadout` cuma bisa mengirim sesuatu yang pasti ditolak. (d) Tombol konfirmasi ketiga alur **mati**, tapi nama, tema, dan ketiga baris `summary` ketiganya tetap **terbaca** — membaca tidak boleh butuh koin, karena pemain yang sedang menabung untuk level 4 justru dia yang paling butuh tahu apa yang akan dia putuskan. Panel yang kosong atau tidak bisa dibuka saat koin kurang adalah GAGAL | M5 | solo+EDIT | - |
+| PROG-27 | **Tiga percobaan, satu baris**, dan ketiganya dari data baru lewat jalan pintas 4: `Config.DEFAULT_DATA.weapons.weapon_starter` berturut-turut `{ level = 4, path = "a" }`, `{ level = 4, path = "b" }`, dan `{ level = 4, path = "c" }`. Satu `basic` di wave 1 (100 HP) untuk tiap percobaan | Baca angka damage dan jeda di baris detail panel lobby, lalu masuk match dan hitung serangan untuk membunuh satu `basic` | **Ketiganya berbeda, dan di sinilah pohon alur pertama kali berarti sesuatu.** Alur `a`: damage **51**, jeda **0.7 detik**, `basic` mati dalam **2** serangan. Alur `b`: damage **34**, jeda **0.32 detik**, **3** serangan. Alur `c`: damage **34**, jeda **0.5 detik**, **3** serangan. Jadi `a` dibedakan dari dua yang lain oleh **jumlah serangan**, sementara `b` dibedakan dari `c` oleh **kecepatannya** — tiga serangan `b` datang dalam 0.64 detik, tiga serangan `c` dalam 1.0 detik. Ini kebalikan dari T14 yang lama: dulu ketiga alur memberi angka yang **sama persis**, dan baris ini ada justru untuk menangkap kalau keadaan lama itu kembali. **Yang GAGAL:** ketiga percobaan memberi 3 serangan dengan jeda 0.5 — itu `weaponStats` yang tidak menerapkan tingkat alur sama sekali; atau alur `a` memberi 2 serangan dengan jeda **0.5**, yang berarti `damageMult` sampai tapi `cooldownMult` tidak, yaitu persis selisih yang tidak terlihat sampai ada yang mengukurnya dengan stopwatch dan sebabnya `weaponStats` jadi satu fungsi ([bagian 20.6](#206-keputusan-rancangan-ulang-arena)). Balikkan `Config.DEFAULT_DATA` sebelum commit | M5 | solo+EDIT | - |
+| PROG-28 | **Dua percobaan**, keduanya lewat jalan pintas 4 pada `weapon_ranged` dengan `Config.DEV_ALL_WEAPONS = true`: `{ level = 7, path = "b" }` lalu `{ level = 10, path = "b" }`. Packet Rifle di-equip di fase `Loadout` | Baca damage, jeda, dan jangkauan di baris detail. Lalu di match, tembak satu musuh pada **50 stud** dan satu musuh pada **35 stud** | Level 7: damage **21.1904**, jeda **0.15 detik**, jangkauan **40 stud**. Level 10: damage **25.6256**, jeda **0.12 detik**, jangkauan **40 stud**, dan satu tembakan menembus **2** musuh. Musuh pada 50 stud **tidak kena** di kedua level — Semburan memendekkan jangkauannya sendiri dari 60 jadi 40, jadi musuh yang kena di COMBAT-07 sekarang di luar jangkauan, dan itu bukan bug. Musuh pada 35 stud kena. **Dua aturan penggabungan yang cuma baris ini yang membuktikannya:** damage 21.1904 itu `24.08 x 0.8 x 1.1`, yaitu `damageMult` tingkat 2 yang **menumpuk** di atas tingkat 1 — kalau dia 26.488 (`24.08 x 1.1`) pengalinya **menggantikan** alih-alih menumpuk, dan kalau dia 19.264 (`24.08 x 0.8`) tingkat 2 tidak terbaca. Dan jeda 0.12 di level 10 itu nilai **absolut** yang **menimpa** 0.15 tingkat 1 — kalau dia 0.018 (`0.15 x 0.12`) nilai absolutnya diperlakukan sebagai pengali. Dan 0.018 itu tidak akan pernah terbaca di panel: lantai `cooldown` **0.05** di `weaponStats` menahannya, jadi yang terlihat 0.05 dan gejalanya "senjata ini terlalu cepat" — bukan error, dan bukan angka yang menunjuk ke penyebabnya. Pada 0.05 detik gerbang cooldown server tidak lagi yang membatasi, tapi rate limit `Attack` 20/detik ([bagian 4.1](#41-remote-yang-benar-benar-terdaftar)), jadi serangan yang ditolak karena throttle akan terlihat seperti serangan yang tidak kena. Balikkan `Config.DEFAULT_DATA` dan `Config.DEV_ALL_WEAPONS` sebelum commit | M5 | solo+EDIT | - |
 
 ## 14. Multiplayer dan rejoin (MP)
 
@@ -1142,7 +1475,8 @@ bisa dicentang — tapi dia juga tidak sedang gagal.
 | M4 | Material tercatat di data player setelah match | BOSS-04, BOSS-09, BOSS-10 | BOSS-04 butuh `2P`; BOSS-13 (`LIVE`) menutup kasus peserta yang disconnect; persistensi sesungguhnya butuh `PUB` |
 | M5 | Player baru bisa main | PROG-16, HUD-05, HUD-06, BOOT-04, BOOT-05 | — |
 | M5 | Dapat reward | PROG-01, PROG-02, PROG-03, PROG-04, PROG-05, HUD-03 | — |
-| M5 | Upgrade senjata | PROG-08, PROG-09, PROG-17, PROG-19, PROG-20, PROG-21, PROG-22, PROG-23, PROG-24, PROG-26, COMBAT-12, HUD-07, SEC-05 | PROG-19 sampai PROG-24 dan PROG-26 menutup pohon tiga alur upgrade, yang **tidak** punya kriteria "Selesai kalau" sendiri — dia datang dari `ARENA_REDESIGN.md` bagian 3 dan dipetakan ke sini karena pilihan alurnya dibawa oleh remote `UpgradeWeapon` dan tersimpan di `data.weapons[id].path`, jadi dia bagian dari "upgrade senjata" apa pun yang DEVELOPMENT_PLAN tulis. Seluruhnya `solo+EDIT` dan **harus dibalikkan sebelum commit**. PROG-23 kasus regresi untuk `pathToApply`, bukan fitur baru. Yang **tidak** ada di kolom ini dengan sengaja: tidak satu baris pun menguji bahwa alur mengubah stat, karena sekarang memang tidak (T14) — itu datang di langkah 7 beserta barisnya sendiri |
+| M5 | Upgrade senjata | PROG-08, PROG-09, PROG-17, PROG-19, PROG-20, PROG-21, PROG-22, PROG-23, PROG-24, PROG-26, PROG-27, PROG-28, COMBAT-12, HUD-07, SEC-05 | PROG-19 sampai PROG-24 dan PROG-26 menutup **aturan** pohon tiga alur upgrade; PROG-27, PROG-28, dan COMBAT-12 menutup **isi**-nya, yaitu bahwa tingkat alur yang terpilih benar-benar menggeser stat. Keduanya **tidak** punya kriteria "Selesai kalau" sendiri — aturannya datang dari `ARENA_REDESIGN.md` bagian 3 dan isinya dari lampiran A — dan dipetakan ke sini karena pilihan alurnya dibawa remote `UpgradeWeapon`, tersimpan di `data.weapons[id].path`, dan dibaca `Balance.weaponStats` di jalur damage yang sama dengan level: jadi dia bagian dari "upgrade senjata" apa pun yang DEVELOPMENT_PLAN tulis. Pola yang sama dengan hadiah koin per wave di baris M3 dan fase `Loadout` di baris M2. Seluruhnya `solo+EDIT` kecuali PROG-08, PROG-09, PROG-17, COMBAT-12, HUD-07, dan SEC-05, dan **harus dibalikkan sebelum commit**. PROG-23 kasus regresi untuk `pathToApply`, bukan fitur baru; PROG-27 kasus regresi untuk keadaan sebelum langkah 7, waktu ketiga alur memberi angka yang sama persis |
+| M5 | Enam efek alur upgrade jalan di arena (slow, zona, tanda, splash, kerucut lebar, pengurangan damage masuk) | COMBAT-18, COMBAT-19, COMBAT-20, COMBAT-21, COMBAT-22, COMBAT-23, COMBAT-24, COMBAT-25 | Isi efek per alur datang dari `ARENA_REDESIGN.md` **lampiran A** — yang sampai langkah 7 mendarat memang berjudul "belum diputuskan", jadi DEVELOPMENT_PLAN tidak pernah menuliskan kriteria untuknya. Kelompok ini **tidak punya kriteria "Selesai kalau" sendiri** sama sekali, dan dipetakan ke M5 karena keenam efeknya cuma bisa dicapai lewat upgrade senjata ke level 4, 7, atau 10 di alur tertentu. Pola yang sama dengan hadiah koin per wave (M3) dan pohon alur (baris di atas). COMBAT-25 sudah **`OK`** lewat harness Studio. COMBAT-22 butuh `2P` dan itu memang intinya: tanda yang menaikkan damage pemain **lain** tidak bisa dibuktikan solo. Enam sisanya `solo+EDIT` lewat jalan pintas 4 di kotak [bagian 13](#13-progres-permanen-dan-data-player-prog) dan **harus dibalikkan sebelum commit**. Yang **tidak** bisa dipendekkan oleh harness: splash, kerucut lebar, penularan tanda, dan pengurangan damage masuk — tiga yang pertama masuk lewat `CombatService.onAttack` yang menuntut Player, yang terakhir butuh Humanoid untuk diukur. Itu lima SKIP `path_effects` di [bagian 3.2](#32-cakupan-harness-studio). Slow, zona, dan tanda sudah **sebagian** dibuktikan harness, dan bagian mana persisnya ada di tabel di bagian itu |
 | M5 | Craft senjata boss | PROG-12, PROG-13, PROG-18, COMBAT-09 | — |
 | M5 | Membuka Hard | PROG-06, PROG-07, WAVE-09, MATCH-19 | MATCH-19 memakai `hard` sebagai alat ukur, bukan sebagai yang diuji: dia kasus regresi untuk `lockDifficulty()` yang dipindah ke akhir fase `Loadout` |
 | M5 | Keluar, join lagi, dan semua progres masih ada | PROG-14, PROG-15, PROG-25, DATA-03, DATA-06a, DATA-12, DATA-13 | **Seluruhnya `PUB`** kecuali DATA-12 — kriteria ini tidak bisa dites sama sekali sampai place-nya di-publish sekali. PROG-25 dan DATA-13 menambahkan `data.weapons[id].path` ke daftar yang harus bertahan; DATA-12 bisa dijalankan sekarang karena `DataSchema.migrate` ikut jalan di jalur tanpa DataStore, tapi yang dia buktikan cuma migrasinya, bukan persistensinya |
@@ -1228,21 +1562,29 @@ atas langsung mengacu ke sini saat hasilnya terasa aneh tapi sebenarnya benar.
 
 ### 20.6 Keputusan rancangan ulang arena
 
-Baris di bawah datang dari `docs/ARENA_REDESIGN.md` bagian 2, 3, 4, 5, dan 6,
-bukan dari DEVELOPMENT_PLAN.md — jadi tidak ada kriteria "Selesai kalau" yang
-memaksanya, dan semuanya pilihan. Empat akar perubahannya terpisah. Yang pertama
-dan paling mengubah rasa main: musuh yang lolos **tidak hilang lagi**, dan dari
-situ lahir sembilan baris pertama tabel ini. Yang kedua menyangkut uang:
-**tiap wave yang selesai memberi hadiah koin tim**, dan hadiah sebesar itu
-memaksa batas jumlah pembelian di Toko Match diganti harga yang naik —
-empat baris berikutnya. Yang ketiga menyangkut pilihan sebelum match:
+Baris di bawah datang dari `docs/ARENA_REDESIGN.md` bagian 2, 3, 4, 5, dan 6
+beserta lampiran A, bukan dari DEVELOPMENT_PLAN.md — jadi tidak ada kriteria
+"Selesai kalau" yang memaksanya, dan semuanya pilihan. Empat akar perubahannya
+terpisah. Yang pertama dan paling mengubah rasa main: musuh yang lolos **tidak
+hilang lagi**, dan dari situ lahir sembilan baris pertama tabel ini. Yang kedua
+menyangkut uang: **tiap wave yang selesai memberi hadiah koin tim**, dan hadiah
+sebesar itu memaksa batas jumlah pembelian di Toko Match diganti harga yang
+naik — empat baris berikutnya. Yang ketiga menyangkut pilihan sebelum match:
 **senjata dipilih di fase sendiri lalu terkunci**, dan senjata yang belum
 dibeli dibuka lewat flag dev alih-alih ditulis ke data tersimpan — lima baris
 sesudahnya. Yang keempat menyangkut progres permanen: **upgrade senjata
 bercabang tiga di level 4, sekali dan selamanya**, dan karena pilihannya masuk
-DataStore, hampir setiap keputusan di tujuh baris terakhir dipilih dengan
+DataStore, hampir setiap keputusan di tujuh baris sesudah itu dipilih dengan
 pertanyaan yang sama — apa yang terjadi pada data yang sudah tersimpan kalau ini
 salah.
+
+Lalu langkah 7 mengisi efek tiap tingkat, dan pertanyaannya berganti. Yang masuk
+arena bukan lagi angka yang dihitung sekali per serangan tapi **efek yang punya
+umur dan bisa bertumpuk**: slow, zona, tanda, dan pengurangan damage masuk.
+Pertanyaan yang membentuk **tujuh baris terakhir** jadi "apa yang dilihat pemain
+kalau dua efek bertemu" — dan hampir setiap jawabannya dipilih karena alternatif
+yang lebih sederhana menghasilkan sesuatu yang pemain akan laporkan sebagai bug
+tanpa pernah bisa menunjuk penyebabnya.
 
 | Keputusan | Yang dipilih | Alasan |
 |---|---|---|
@@ -1268,6 +1610,13 @@ salah.
 | `path` yang belum dipilih: `nil` atau string | **String `"none"`** (`DataSchema.NO_PATH`), eksplisit di `Config.DEFAULT_DATA` juga | Field bernilai `nil` **hilang total** saat tabelnya disimpan sebagai JSON ke DataStore. Jadi dengan `nil`, sesudah satu kali save "belum memilih" dan "save dari sebelum fitur ini ada" jadi tabel yang sama persis, dan tidak ada kode yang bisa membedakannya lagi — selamanya, untuk akun itu. Dengan `"none"`, yang pertama punya field bernilai `"none"` dan yang kedua tidak punya field sama sekali, jadi migrasi punya sesuatu untuk dikenali. Ini keputusan yang biayanya nol di hari ini dan tidak bisa dibatalkan besok, jadi diambil sekarang. Dites DATA-12, DATA-13, dan PROG-25. |
 | `pathChoiceRequired`: level sesudah upgrade `== 4` atau `>= 4` | **`>=`** | Dengan `==`, aturannya cuma pernah benar tepat saat naik dari 3 ke 4 — dan itu cukup untuk data yang lahir sesudah fitur ini ada, karena level naik satu-satu dan pilihannya tersimpan begitu diterima. Yang tidak tertangani adalah save yang **sudah** lewat level 4 dengan `path` masih `"none"`: senjata yang dibeli atau di-craft sebelum fitur ini ada, atau data yang diedit tangan. Pemain seperti itu tidak akan pernah ditagih memilih, jadi senjatanya berjalan tanpa alur sampai level 10 dan tidak ada satu pun pesan yang memberitahunya — dia membayar sembilan upgrade untuk pohon yang tidak pernah dia masuki. `>=` menagihnya pada upgrade berikutnya apa pun levelnya. Dites DATA-12. |
 | Urutan pemeriksaan di `canUpgrade` | **Level maksimum, lalu alur, lalu koin** — jadi alur sebelum koin tapi sesudah level maksimum | Dua urutan yang dipilih, dua alasan. **Alur sebelum koin:** pemain yang belum memilih sekaligus kekurangan koin punya dua hal yang kurang, dan yang harus dia tahu dulu adalah yang menuntut keputusan, bukan yang menuntut waktu. Dibalik, dia menabung sampai cukup lalu baru menemukan ada pilihan permanen yang menunggu di detik dia menekan tombol — persis keadaan terburu-buru yang seluruh bagian 3 rancangan dibuat untuk menghindari. **Level maksimum tetap paling dulu:** senjata level 10 tanpa alur (data lama; lihat baris `>=` di atas) tidak punya upgrade berikutnya untuk membawa pilihan itu, jadi menagih alur di situ memberi pemain pesan yang tidak punya jalan keluar. Dites PROG-09 dan PROG-08. |
-| Satu `weaponStats` atau beberapa fungsi stat | **Satu fungsi** `Balance.weaponStats(def, save)` yang mengembalikan `{ damage, cooldown, range, projectiles, effects }`. `damageMult`/`cooldownMult` **menumpuk**, `range`/`projectiles` nilai **absolut** yang ditimpa tingkat lebih tinggi | `CombatService` butuh keempat angka itu dalam satu tarikan napas tiap serangan, dan alur upgrade bisa mengubah keempatnya. Dengan fungsi terpisah per stat, satu pemanggil yang lupa menerapkan alur pada **salah satu** stat menghasilkan senjata yang damage-nya ikut alur tapi cooldown-nya tidak — dan selisih seperti itu tidak terlihat sampai ada yang mengukurnya dengan stopwatch, jadi dia bisa hidup sampai alpha. Satu fungsi juga jadi satu-satunya tempat efek alur dipasang, jadi langkah 7 tidak perlu mencari-cari. Pengali yang menumpuk vs nilai absolut bukan selera: alur seperti "cooldown turun di tingkat 1, turun lagi di tingkat 3" cuma bisa ditulis apa adanya kalau pengalinya menumpuk, sementara "jangkauan jadi 90" yang ditulis dua kali di dua tingkat tidak boleh jadi 180. `cooldown` punya lantai 0.05 dan `projectiles` minimum 1 di satu tempat, bukan di pemanggil: cooldown nol dari data alur yang rusak berarti serangan tanpa batas, dan gerbang cooldown `CombatService` tidak akan menolaknya karena `now - last < 0` selalu false. `Balance.weaponDamage` ditinggalkan sebagai dasar kurva level supaya kurvanya bisa dites terpisah dari penggabungan alur. Dipatok unit test `Balance`. |
+| Satu `weaponStats` atau beberapa fungsi stat | **Satu fungsi** `Balance.weaponStats(def, save)` yang mengembalikan `{ damage, cooldown, range, projectiles, effects }`. `damageMult`/`cooldownMult` **menumpuk**, `range`/`projectiles` nilai **absolut** yang ditimpa tingkat lebih tinggi | `CombatService` butuh keempat angka itu dalam satu tarikan napas tiap serangan, dan alur upgrade bisa mengubah keempatnya. Dengan fungsi terpisah per stat, satu pemanggil yang lupa menerapkan alur pada **salah satu** stat menghasilkan senjata yang damage-nya ikut alur tapi cooldown-nya tidak — dan selisih seperti itu tidak terlihat sampai ada yang mengukurnya dengan stopwatch, jadi dia bisa hidup sampai alpha. Satu fungsi juga jadi satu-satunya tempat efek alur dipasang, dan itu terbayar di langkah 7: mengisi kesembilan alur tidak menyentuh satu baris pun di luar `Weapons.luau` dan tempat yang **membaca** `stats.effects`. Pengali yang menumpuk vs nilai absolut bukan selera: alur seperti "cooldown turun di tingkat 1, turun lagi di tingkat 3" cuma bisa ditulis apa adanya kalau pengalinya menumpuk, sementara "jangkauan jadi 90" yang ditulis dua kali di dua tingkat tidak boleh jadi 180. `cooldown` punya lantai 0.05 dan `projectiles` minimum 1 di satu tempat, bukan di pemanggil: cooldown nol dari data alur yang rusak berarti serangan tanpa batas, dan gerbang cooldown `CombatService` tidak akan menolaknya karena `now - last < 0` selalu false. `Balance.weaponDamage` ditinggalkan sebagai dasar kurva level supaya kurvanya bisa dites terpisah dari penggabungan alur. Dipatok unit test `Balance`. |
 | Alur dengan id yang tidak dikenal di `save.path` | **Diperlakukan seperti belum memilih** — bukan jatuh ke alur pertama | Bisa terjadi dari data yang diedit tangan, atau dari id alur yang diubah sesudah ada pemain yang memilihnya. Jatuh ke alur pertama berarti pemain melihat stat dari alur yang **tidak** dia pilih dan tidak ada satu pun pesan soal itu — memberi alur yang salah secara diam-diam lebih buruk daripada tidak memberi apa pun, karena yang pertama tidak bisa dilaporkan ("senjataku terasa aneh") sementara yang kedua bisa dilihat di panel. Keputusan ini juga sebabnya tema dan id alur **tidak boleh diubah sembarangan** sesudah ada pemain yang memilih: `save.path` menyimpan id-nya, jadi mengganti arti alur `"a"` berarti semua pemilih `"a"` mendapat alur berbeda tanpa pernah menyetujuinya. Dipatok unit test `Balance.weaponStats`. |
 | `migrate` sebagai pintu terpisah dari `reconcile` | **`DataSchema.migrate(data, defaults)` = `reconcile` lalu `fillWeaponPaths`**, dan `PlayerDataService` memanggil `migrate` di **kedua** jalur load | `reconcile` mengisi field yang hilang dari `Config.DEFAULT_DATA`, dan satu-satunya senjata di sana `weapon_starter`. Jadi senjata yang **dibeli atau di-craft** sebelum alur upgrade ada punya `{ level = n }` tanpa `path`, dan `reconcile` tidak punya default untuk kunci yang tidak dia kenal — dia bukan rusak, dia memang fungsi umum yang tidak tahu apa pun soal senjata, dan menambahkan pengetahuan itu ke dalamnya berarti satu fungsi umum yang pelan-pelan jadi daftar migrasi. Kalau langkah keduanya dilewatkan, hasilnya **bukan error**: `save.path` nil berarti `weaponStats` tidak menemukan alur apa pun, jadi senjata level 10 milik pemain lama berjalan tanpa alur, lebih lemah daripada yang dia bayar, tanpa satu pesan pun. Disatukan jadi satu fungsi supaya dua tempat yang memuat data pemain tidak bisa menjalankan satu langkah tanpa yang lain, dan migrasi skema berikutnya menempel di situ juga. Dites DATA-12 dan DATA-13. |
+| Slow: satu pasang kunci atau dua | **Dua pasang.** `slowMult` / `slowSeconds` menempel ke **MUSUH** dan ikut dia ke mana pun; `zoneSlowMult` / `zoneSeconds` menempel ke **TEMPAT** dan berhenti begitu musuh keluar radius | Dua umur yang benar-benar berbeda, dan satu nama untuk keduanya memaksa pembaca menebak yang mana. Yang menempel ke musuh disimpan di `Enemy.slow` dan dibaca `CombatEffects.multOf`; yang menempel ke tempat disimpan di daftar `zones` milik `EnemyService` dan dibaca `CombatEffects.zoneSlowAt` **dengan posisi musuh sebagai argumen tiap frame**. Itu bukan detail implementasi: zona harus ikut mengenai musuh yang **baru spawn** sesudah zonanya dibuat, dan harus berhenti mengenai musuh yang berjalan keluar — dua hal yang tidak mungkin kalau pengalinya disimpan di musuhnya. Satu nama juga akan membuat "slow 55% selama 3 detik" ambigu antara "musuh ini lambat 3 detik" dan "siapa pun yang di sini lambat selama 3 detik ke depan". Keduanya **dikalikan** di loop `step`, bukan diambil yang terkuat, karena keduanya datang dari alur yang berbeda dan masing-masing sumbernya sendiri sudah dibatasi. Dites COMBAT-23 dan COMBAT-24, dijelaskan di T15. |
+| Dua slow (atau dua tanda) yang bertumpuk: siapa yang menang | **Yang terkuat menang, dan yang terlama menang** (`CombatEffects.merge`), bukan yang terbaru | "Terbaru menang" lebih sederhana dan salah dengan cara yang tidak bisa didiagnosis. Ayunan Cepat tingkat 3 memukul tiap **0.25 detik** dengan slow x0.5 selama 1.5 detik, jadi dalam satu durasi slow ada enam pukulan; satu pukulan lemah dari sumber lain di antaranya akan **membatalkan** slow kuat yang masih aktif, dan pemain melihat musuh yang kadang melambat kadang tidak **tanpa pola** — lalu melaporkannya sebagai slow yang rusak, yang tidak bisa direproduksi karena yang memicunya urutan kedatangan pukulan. Dengan terkuat-menang efeknya monoton dan bisa diprediksi. "Terlama menang" menempel di situ karena efek baru yang lebih kuat tapi lebih **pendek** tidak boleh memotong sisa umur yang sudah dijanjikan; dan karena yang lemah tidak pernah diterapkan, dia juga tidak bisa memperpanjang umur yang kuat lewat pintu belakang. Arah "lebih kuat"-nya dioper sebagai argumen `strongerIsSmaller`, bukan dua fungsi: untuk slow pengali lebih **kecil** yang kuat, untuk tanda lebih **besar**, dan dua fungsi yang isinya sama kecuali satu tanda perbandingan adalah dua tempat yang bisa menyimpang. Dipatok unit test `CombatEffects.merge`, dan di engine oleh `slow.pukulanLemahTidakMembatalkan` serta `tanda.tandaLemahTidakMenurunkan`. |
+| Zona yang bertumpuk: slow dan dps digabung bagaimana | **Slow diambil yang terkuat, dps dijumlahkan** (`CombatEffects.zoneSlowAt` dan `zoneDamageAt`) | Dua aturan yang berbeda di satu fungsi yang berdampingan, dan itu sengaja. Kalau slow dikalikan, tiga zona x0.45 jadi **x0.091** — musuh yang praktis berhenti dari tiga tembakan biasa, dan itu bukan yang dijanjikan satu pun tingkat alur; pemain yang menembak tiga kali ke titik yang sama mendapat kemampuan yang tidak dia beli. Damage satu-satunya efek di daftar ini yang **penjumlahannya tidak menghasilkan keadaan ekstrem**: dua jebakan yang bertumpuk memang dua jebakan, 12 dps bukan nilai yang mengubah sifat permainan, dan "zona kedua tidak melakukan apa pun" justru yang akan terlihat seperti bug. Pemisahannya juga yang membuat tingkat 1 dan 2 memberi **nol** damage apa pun banyaknya zona yang bertumpuk, karena `zoneDps` baru ada di tingkat 3 — jadi "zona tidak men-damage" bukan gejala, itu levelnya. Dipatok unit test `CombatEffects`, dan di engine oleh `zona.damageSebandingWaktuBukanSekaliHabis`. |
+| Di mana pengali tanda diterapkan | **Di `EnemyService.damage`**, bukan di `CombatService.onAttack` | Ini seluruh bedanya antara "tanda menaikkan damage penandanya" dan "tanda menaikkan damage **siapa pun**". Turret Toko Match, splash dari pemain lain, dan damage per detik zona semuanya lewat `EnemyService.damage`, jadi di situ semuanya ikut terkali dengan satu baris, sementara di `CombatService` yang terkali cuma serangan pemain — dan alur Dukungan yang cuma menaikkan damage pemiliknya adalah alur damage biasa dengan nama yang menyesatkan. Harganya nyata dan diterima: alur ini **paling kuat di tim berempat dan paling lemah solo**, karena nilainya berbanding lurus dengan jumlah sumber damage yang menembaki musuh bertanda. Itu disengaja — dia memberi alasan **mekanis** untuk main bareng alih-alih cuma pengali reward, dan itu satu-satunya mekanik co-op di seluruh v1. Satu akibat yang akan terlihat setengah bekerja: `damage` dipanggil **sebelum** `applyMark` di `onAttack`, jadi tembakan yang memasang tanda tidak ikut terkali; membaliknya berarti satu tembakan memberi damage yang dikali tanda yang belum ada saat tembakan itu dilepas. Dites COMBAT-21 dan COMBAT-22, dijelaskan di T16. |
+| Splash: target utama ikut jadi korbannya sendiri? | **Tidak.** Semua yang sudah menerima damage penuh dikecualikan lewat tabel `struck` yang dioper sebagai `exclude` ke `CombatEffects.withinRadius` | Tanpa pengecualian itu target utama kena **dua kali** — sekali penuh, sekali lagi dikali `splashMult` — jadi Fork Bomb Ledakan tingkat 1 memberi `40.8 + 20.4` = 61.2 ke target yang panelnya menulis 40.8. Itu kegagalan **termahal** di antara seluruh efek alur, dan bukan karena besarnya: gejalanya cuma damage yang lebih besar daripada yang tertulis, dan **tidak ada satu pun pemain yang melaporkan senjatanya terlalu kuat**. Jadi dia akan hidup sampai alpha, lalu sampai rilis, lalu ditemukan saat ada yang membandingkan panel dengan bar HP. Dikecualikan **semua** yang kena, bukan cuma yang pertama, karena alur lain bisa mengenai beberapa target sekaligus (`projectiles` 3, 5, 7) dan target kedua punya masalah yang sama persis. Dipatok unit test `CombatEffects.withinRadius`; di harness dia SKIP karena butuh Player, jadi COMBAT-18 yang membuktikannya. |
+| Dari mana zona dan splash berangkat | **Dari posisi musuh PERTAMA yang kena**, dibaca lewat `EnemyService.getPosition` **sebelum** musuh itu di-damage. Serangan yang tidak mengenai apa pun tidak meninggalkan apa pun | Tiga alternatif, dan ketiganya lebih buruk. **Dari posisi pemain:** ledakan muncul di kaki pemain alih-alih di tempat dia menembak. **Dari ujung garis bidik:** zona lahir dari setiap tembakan ke udara, jadi pemain bisa **melapisi seluruh lane** dengan zona slow tanpa membidik apa pun — Fork Bomb Jebakan jadi senjata penghalang area dengan cooldown 0.6 detik, bukan alur jebakan. **Dari posisi musuh sesudah di-damage:** musuh yang mati di pukulan itu sudah lepas dari `active` dan Part-nya di-Destroy, jadi posisinya nil dan zona terbesar — yang ditinggalkan pukulan yang membunuh — justru yang paling sering hilang. Dan kalau target pertama hilang di antara `collectTargets` dan pembacaan itu (mati karena turret atau zona di frame yang sama), splash dan zona **dilewati** alih-alih ditebak dari posisi pemain: ledakan di tempat yang pemainnya tidak menembak lebih sulit dipercaya daripada ledakan yang tidak terjadi. Dites COMBAT-18 dan COMBAT-24. |
+| Zona digambar atau tidak | **Tidak digambar sama sekali** — tabel Lua di `EnemyService`, tanpa satu Part pun | Kekurangan yang **diketahui dan diterima**, bukan kelupaan, dan dicatat di sini supaya tidak ada yang melaporkannya sebagai bug. Yang dibutuhkan langkah 7 adalah efeknya **bekerja**; menggambarnya butuh Part, ukuran, warna, dan transparansi yang masuk ke daftar entri graybox seperti `VISUALS` milik musuh, dan seluruh prioritas rancangan ini logika sebelum efek ([ARENA_REDESIGN.md](ARENA_REDESIGN.md) bagian 0). Harganya langsung terasa dan harus ditulis di dokumen ini dua kali: musuh yang melambat dan kehilangan HP di tempat yang **terlihat kosong** (T15), dan satu alur yang tidak bisa dinilai "terasa enak atau tidak" di playtest karena pemainnya tidak tahu di mana zonanya. Satu hal yang **tidak** ikut ditunda walau Part-nya belum ada: zona dibuang `clearAll()` bersama musuhnya, karena zona sisa match sebelumnya yang tidak kelihatan adalah bug yang mustahil didiagnosis dari dalam game. Dites COMBAT-24 dan COMBAT-25. |

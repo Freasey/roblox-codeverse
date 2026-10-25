@@ -39,6 +39,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Modules.Balance)
 local Bosses = require(Shared.Modules.Bosses)
+local CombatEffects = require(Shared.Modules.CombatEffects)
 local Enemies = require(Shared.Modules.Enemies)
 local EnemyAI = require(Shared.Modules.EnemyAI)
 local Remotes = require(Shared.Remotes)
@@ -85,6 +86,21 @@ export type Enemy = {
 	targetUserId: number?,
 	-- Slot cincin di sekitar base, di-set sekali saat masuk attacking_base.
 	ringSlot: number?,
+	-- Efek alur upgrade yang MENEMPEL ke musuh ini dan ikut dia ke mana pun
+	-- dia jalan (alur "Ayunan Cepat" dan "Dukungan"). Nil berarti belum pernah
+	-- kena; yang sudah kedaluwarsa dibiarkan apa adanya dan dibaca lewat
+	-- `CombatEffects.multOf`, yang mengembalikan 1 untuk keduanya.
+	--
+	-- Tidak dibersihkan tiap frame dengan sengaja: menghapus field yang sudah
+	-- habis cuma memindahkan pekerjaan yang sama ke tempat yang lebih mudah
+	-- dilupakan, dan satu tabel kecil per musuh tidak berarti apa-apa
+	-- dibanding Part dan Model yang sudah dia bawa.
+	slow: CombatEffects.Timed?,
+	mark: CombatEffects.Timed?,
+	-- Damage zona yang sudah terkumpul tapi belum diterapkan, dan waktu
+	-- penerapan berikutnya. Lihat `ZONE_FLUSH_INTERVAL`.
+	zoneDamageAcc: number,
+	zoneFlushAt: number,
 	model: Model,
 	primary: BasePart,
 	healthFill: Frame?,
@@ -196,6 +212,45 @@ local context: Context = {
 -- Lane yang sedang diblokir penghalang Toko Match (M3): musuh di lane itu
 -- berhenti sampai `os.clock()` melewati nilainya.
 local laneBlockedUntil: { [number]: number } = {}
+
+-- Zona jebakan (alur Fork Bomb "Jebakan"). Menempel ke TEMPAT, bukan ke musuh,
+-- jadi tidak bisa disimpan di `Enemy` -- musuh yang keluar dari zona harus
+-- langsung berhenti terpengaruh, dan musuh yang baru spawn dan melewatinya
+-- harus ikut terkena walaupun zonanya dibuat sebelum dia ada.
+--
+-- Tanpa Instance apa pun: zona ini tidak kelihatan di layar. Itu kekurangan
+-- yang diketahui dan ditulis di TEST_CASES, bukan kelupaan -- menggambarnya
+-- butuh Part dan aset, dan yang dibutuhkan langkah 7 adalah efeknya bekerja.
+local zones: { CombatEffects.Zone } = {}
+
+-- Damage zona diterapkan paling cepat tiap interval ini, bukan tiap frame.
+--
+-- Bukan optimasi spekulatif. `EnemyService.damage` menyiarkan `EnemyHit` ke
+-- SEMUA client tiap kali dipanggil, dan zona memanggilnya untuk tiap musuh di
+-- dalamnya. Tiap frame berarti 60 siaran per detik per musuh: satu zona radius
+-- 12 di tengah kerumunan 20 musuh menghasilkan 1.200 event per detik, untuk
+-- damage yang totalnya 6 per detik.
+--
+-- Damage-nya tidak hilang, cuma ditunda: yang terkumpul di antara dua
+-- penerapan disimpan di `enemy.zoneDamageAcc` dan dibayar sekaligus. Jadi
+-- totalnya persis sama, dan yang berubah cuma jumlah siaran -- dari 60 per
+-- detik jadi 4.
+local ZONE_FLUSH_INTERVAL = 0.25
+
+-- Pengali damage yang masuk ke seorang pemain (alur Patch Wrench "Bertahan").
+--
+-- Disuntik dari luar, bukan dihitung di sini, dengan alasan yang sama seperti
+-- `gate` dan `modifiers` di CombatService: angkanya datang dari senjata yang
+-- dipakai pemain, yang berarti `PlayerDataService` dan `Weapons` -- dan
+-- EnemyService me-require CoreService dan MapService, jadi menambah dua lagi
+-- ke arah itu membuat urutan require-nya tidak lagi satu arah.
+local playerDamageTakenMult: (number) -> number = function(_userId: number)
+	return 1
+end
+
+function EnemyService.setPlayerDamageTakenMult(fn: (number) -> number)
+	playerDamageTakenMult = fn
+end
 
 local function getFolder(): Folder
 	local existing = folder
@@ -392,6 +447,8 @@ local function spawnFromEntry(entry: QueueEntry): Enemy?
 		nextStrikeAt = 0,
 		targetUserId = nil,
 		ringSlot = nil,
+		zoneDamageAcc = 0,
+		zoneFlushAt = 0,
 		model = model,
 		primary = primary,
 		healthFill = fill,
@@ -519,6 +576,12 @@ local function step(deltaTime: number)
 		return
 	end
 
+	-- Zona yang habis dibuang sekali per frame, di sini, SEBELUM musuh dibaca.
+	-- Membuangnya di dalam loop musuh berarti satu musuh bisa membaca zona yang
+	-- sudah dibuang musuh sebelumnya di frame yang sama, dan dua musuh di titik
+	-- yang sama lalu bergerak dengan kecepatan berbeda.
+	zones = CombatEffects.pruneZones(os.clock(), zones)
+
 	-- Spawn: satu entri per SPAWN_INTERVAL, dan cuma kalau masih di bawah batas
 	-- musuh aktif. Dua syarat terpisah — batas aktif tidak boleh dilewati
 	-- walaupun timernya sudah jatuh tempo.
@@ -559,6 +622,45 @@ local function step(deltaTime: number)
 
 		local enemyVec = toVec(enemy.position)
 		local profile = enemy.targeting
+
+		-- Kecepatan efektif: slow yang menempel ke musuh DIKALI slow zona di
+		-- tempat dia berdiri sekarang. Dua sumber yang dikalikan, bukan diambil
+		-- yang terkuat, karena keduanya datang dari alur yang BERBEDA -- pemain
+		-- yang satu memakai Ayunan Cepat dan yang satu Jebakan memang sedang
+		-- menumpuk dua efek yang masing-masing dia bayar, dan masing-masing
+		-- sumbernya sendiri sudah dibatasi (merge mengambil yang terkuat,
+		-- zoneSlowAt juga).
+		local speedMult = CombatEffects.multOf(now, enemy.slow)
+			* CombatEffects.zoneSlowAt(now, enemyVec, zones)
+		local effectiveSpeed = enemy.speed * speedMult
+
+		-- Damage zona dikumpulkan tiap frame tapi DIBAYAR tiap
+		-- `ZONE_FLUSH_INTERVAL`. Alasannya di konstanta itu.
+		--
+		-- Dibayar lewat `EnemyService.damage`, bukan dengan menyentuh
+		-- `enemy.hp` langsung: lewat sana dia ikut terkali tanda, ikut
+		-- menembakkan `EnemyHit`, dan ikut memberi koin match saat dia yang
+		-- membunuh. Pembunuhnya `nil` karena zona tidak punya pemilik -- pemain
+		-- yang meninggalkannya bisa sudah mati atau keluar.
+		enemy.zoneDamageAcc += CombatEffects.zoneDamageAt(now, enemyVec, zones, deltaTime)
+		if enemy.zoneDamageAcc > 0 and now >= enemy.zoneFlushAt then
+			local owed = enemy.zoneDamageAcc
+			-- Dinolkan SEBELUM `damage`, bukan sesudah: `damage` bisa
+			-- membunuhnya, dan apa pun yang berjalan dari sana bisa membaca
+			-- musuh ini lagi. Menolkannya sesudah berarti ada jendela di mana
+			-- utang yang sudah dibayar masih tercatat.
+			enemy.zoneDamageAcc = 0
+			enemy.zoneFlushAt = now + ZONE_FLUSH_INTERVAL
+			EnemyService.damage(enemy.id, owed, nil)
+			-- `damage` bisa membunuhnya, dan yang membunuh memanggil
+			-- `removeEnemy` lalu `onDied` -- yang pendengarnya bisa memanggil
+			-- `clearAll()` sekarang, di tengah loop ini. Jadi pengecekan ini
+			-- bukan kehati-hatian kosong; pola yang sama dengan pengecekan
+			-- sesudah `CoreService.damage` di bawah.
+			if enemy.dead then
+				continue
+			end
+		end
 
 		-- Target: pertahankan yang lama selama belum lepas leash, baru cari yang
 		-- baru. Musuh yang sudah menempel di base tidak mencari apa pun —
@@ -621,7 +723,7 @@ local function step(deltaTime: number)
 		local lookAt: Vector3? = nil
 
 		if state == "walking" then
-			local budget = enemy.speed * deltaTime
+			local budget = effectiveSpeed * deltaTime
 			-- Loop: satu frame bisa melewati lebih dari satu waypoint kalau
 			-- waypoint-nya rapat atau frame-nya panjang (server hiccup). Tanpa
 			-- loop, musuh akan tersendat satu waypoint per frame.
@@ -663,7 +765,7 @@ local function step(deltaTime: number)
 			local goal = Vector3.new(target.position.x, enemy.position.Y, target.position.z)
 			local offset = goal - enemy.position
 			local distance = offset.Magnitude
-			local budget = enemy.speed * deltaTime
+			local budget = effectiveSpeed * deltaTime
 			if distance > budget then
 				enemy.position += offset.Unit * budget
 			elseif distance > 1e-3 then
@@ -677,9 +779,15 @@ local function step(deltaTime: number)
 			if EnemyAI.readyToStrike(now, enemy.nextStrikeAt) then
 				local humanoid: Humanoid? = frame.humanoids[target.userId]
 				if humanoid ~= nil then
-					humanoid:TakeDamage(
-						EnemyAI.playerDamage(enemy.attackDamage, Balance.PLAYER_DAMAGE_MULT)
-					)
+					-- Pengali alur "Bertahan" dikalikan di SINI, di satu tempat
+					-- yang semua damage musuh ke pemain lewat. Jadwal pukulan
+					-- berikutnya tetap disetel walau pengalinya mengecilkan
+					-- damage sampai hampir nol: alur itu mengurangi damage,
+					-- bukan membuat musuh berhenti memukul, dan musuh yang
+					-- berhenti memukul pemain berarti dia juga tidak pernah
+					-- terlihat menyerang.
+					local raw = EnemyAI.playerDamage(enemy.attackDamage, Balance.PLAYER_DAMAGE_MULT)
+					humanoid:TakeDamage(raw * playerDamageTakenMult(target.userId))
 					enemy.nextStrikeAt = EnemyAI.scheduleNextStrike(now, enemy.attackInterval)
 				end
 			end
@@ -824,8 +932,16 @@ function EnemyService.damage(id: number, amount: number, by: Player?): number
 		return 0
 	end
 
+	-- Tanda diterapkan DI SINI, bukan di CombatService, dan itu bedanya antara
+	-- "tanda menaikkan damage penandanya" dan "tanda menaikkan damage siapa
+	-- pun". Turret Toko Match, splash dari pemain lain, dan damage per detik
+	-- zona semuanya lewat fungsi ini, jadi semuanya ikut terkali -- yang
+	-- memang yang dijanjikan alur "Dukungan" dan yang membuatnya paling kuat
+	-- di tim berempat.
+	local amplified = amount * CombatEffects.multOf(os.clock(), enemy.mark)
+
 	local before = enemy.hp
-	enemy.hp = math.max(0, enemy.hp - amount)
+	enemy.hp = math.max(0, enemy.hp - amplified)
 	local dealt = before - enemy.hp
 	updateHealthBar(enemy)
 
@@ -864,6 +980,97 @@ function EnemyService.clearAll()
 	announcedClear = true
 	ringSlotNext = 0
 	table.clear(laneBlockedUntil)
+	-- Zona ikut dibuang. Umurnya cuma 3 detik, jadi membiarkannya hampir tidak
+	-- terlihat -- tapi "hampir" itu match baru yang wave 1-nya dimulai dengan
+	-- zona perlambat dari match sebelumnya, dan gejalanya musuh pertama yang
+	-- jalannya aneh tanpa ada yang menembaknya.
+	zones = {}
+end
+
+-- --------------------------------------------------------------------------
+-- Efek alur upgrade (ARENA_REDESIGN.md bagian 3 dan lampiran A)
+-- --------------------------------------------------------------------------
+--
+-- Ketiganya dipanggil CombatService saat serangan pemain kena. Keputusan
+-- "siapa yang kena" dan "yang mana yang lebih kuat" ada di CombatEffects,
+-- yang murni dan dites di CI; yang di sini cuma menyimpan hasilnya.
+
+-- Perlambat satu musuh. Yang lebih kuat menang atas yang lebih lemah selama
+-- masih aktif -- alasannya di `CombatEffects.merge`.
+function EnemyService.applySlow(id: number, mult: number?, seconds: number?)
+	local enemy = active[id]
+	if enemy == nil or enemy.dead then
+		return
+	end
+	enemy.slow = CombatEffects.merge(os.clock(), enemy.slow, mult, seconds, true)
+end
+
+-- Tandai satu musuh: damage dari SIAPA PUN ke musuh ini dikali, bukan cuma
+-- dari pemain yang menandainya. Itu seluruh guna alur "Dukungan", dan itu juga
+-- yang membuatnya paling kuat di tim berempat.
+function EnemyService.applyMark(id: number, mult: number?, seconds: number?)
+	local enemy = active[id]
+	if enemy == nil or enemy.dead then
+		return
+	end
+	enemy.mark = CombatEffects.merge(os.clock(), enemy.mark, mult, seconds, false)
+end
+
+-- Tinggalkan zona di satu titik.
+function EnemyService.addZone(
+	position: Vector3,
+	radius: number?,
+	slowMult: number?,
+	dps: number?,
+	seconds: number?
+)
+	if radius == nil or radius ~= radius or radius <= 0 or radius == math.huge then
+		return
+	end
+	local expiresAt = CombatEffects.expiresAt(os.clock(), seconds)
+	if expiresAt <= os.clock() then
+		-- Durasi yang tidak wajar: tidak ada gunanya menyimpan zona yang sudah
+		-- habis, dan `step` akan membuangnya di frame berikutnya juga.
+		return
+	end
+	table.insert(zones, {
+		position = toVec(position),
+		radius = radius,
+		slowMult = if slowMult ~= nil and slowMult > 0 and slowMult < 1 then slowMult else 1,
+		dps = if dps ~= nil and dps > 0 and dps ~= math.huge then dps else 0,
+		expiresAt = expiresAt,
+	})
+end
+
+-- Musuh hidup sebagai target untuk CombatEffects: id dan posisi saja.
+--
+-- Dibangun di sini, bukan dibiarkan CombatService mengiterasi `getAll()`
+-- sendiri, supaya "musuh yang sudah mati tidak boleh ikut dipilih" diputuskan
+-- satu kali -- splash yang mengenai musuh yang Part-nya sudah di-Destroy tidak
+-- error, tapi dia memboroskan damage yang pemainnya tidak pernah lihat ke mana.
+-- Posisi satu musuh yang masih hidup, atau nil.
+--
+-- Ada supaya pemanggil tidak perlu memegang `Enemy` di antara dua pemanggilan:
+-- CombatService membaca titik kena dari id, dan di antara `collectTargets` dan
+-- pembacaan itu musuhnya bisa sudah mati karena turret atau zona di frame yang
+-- sama. Memegang referensi `Enemy` yang sudah lepas dari `active` tidak error,
+-- tapi memberi posisi musuh yang Part-nya sudah di-Destroy.
+function EnemyService.getPosition(id: number): Vector3?
+	local enemy = active[id]
+	if enemy == nil or enemy.dead then
+		return nil
+	end
+	return enemy.position
+end
+
+function EnemyService.liveTargets(): { CombatEffects.Target }
+	local targets: { CombatEffects.Target } = {}
+	for id, enemy in active do
+		if not enemy.dead then
+			table.insert(targets, { id = id, position = toVec(enemy.position) })
+		end
+	end
+	return targets
 end
 
 -- Blokir satu lane selama `duration` detik (penghalang Toko Match, M3).

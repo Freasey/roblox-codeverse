@@ -6,20 +6,28 @@
 >
 > Dibuat 2026-10-24, pada commit `0729cda`.
 
-> **Status: langkah 1 sampai 6 dari [bagian 8](#8-urutan-kerja-yang-diusulkan)
-> sudah mendarat di `main`.** Musuh sudah menyerang base dan player, respawn
-> sudah ada, hadiah koin per wave dan harga toko yang naik sudah jalan, fase
-> `Loadout` 20 detik beserta flag dev semua senjata terbuka sudah ada, kerangka
-> tiga alur upgrade sudah ada, dan harness serta `docs/TEST_CASES.md` sudah
-> diselaraskan.
+> **Status: SELURUH tujuh langkah di [bagian 8](#8-urutan-kerja-yang-diusulkan)
+> sudah mendarat di `main`.** Musuh menyerang base dan player, respawn ada,
+> hadiah koin per wave dan harga toko yang naik jalan, fase `Loadout` 20 detik
+> beserta flag dev semua senjata terbuka ada, tiga alur upgrade permanen per
+> senjata ada, dan isi efeknya sudah terpasang.
 >
-> **Langkah 7 belum**, dan itu berarti lampiran A di bawah masih belum jadi
-> keputusan: `Weapons.luau` sekarang memuat sembilan alur dengan nama, tema, dan
-> tiga baris `summary` per alur, tapi tidak satu pun tingkat yang mengubah
-> damage, cooldown, range, atau jumlah proyektil. Jadi memilih alur sudah
-> mengunci keputusan permanen tanpa memberi apa pun. Yang perlu diisi langkah 7:
-> `damageMult`, `cooldownMult`, `range`, `projectiles`, dan `effects` di tiap
-> `WeaponPathTier`, sampai setiap baris `summary` yang dibaca pemain benar.
+> **Lampiran A sudah bukan lagi "belum diputuskan".** Angka di tabel-tabelnya
+> dikode apa adanya di `Weapons.luau`, dan empat mekanik yang disebutnya "baru"
+> -- slow, pengurangan damage yang masuk, splash, dan tanda -- sudah ada, plus
+> zona jebakan yang menempel ke tempat. Matematikanya di modul murni
+> `CombatEffects.luau` dengan unit test sendiri, dan tiga dari enam efeknya
+> dipatok harness Studio (`tests/studio/cases/path_effects.luau`). Tiga sisanya
+> -- splash, kerucut melee yang melebar, dan pengurangan damage ke pemain --
+> masuk lewat `CombatService.onAttack`, yang menuntut Player, jadi mereka
+> menunggu playtest; harness melaporkannya sebagai SKIP dengan alasannya, bukan
+> melewatkannya diam-diam.
+>
+> Yang BELUM, dan ini satu-satunya kekurangan yang diketahui dari langkah 7:
+> **zona jebakan tidak kelihatan di layar.** Efeknya bekerja, tapi tidak ada
+> Part apa pun yang menandai tempatnya, jadi pemain melihat musuh yang melambat
+> dan kehilangan HP tanpa sebab yang terlihat. Menggambarnya butuh aset dan itu
+> pekerjaan M7, bukan langkah ini.
 >
 > Yang perlu diperhatikan saat membaca sisa dokumen ini: **seluruh kalimat
 > berbentuk "sekarang begini" dan "sebaiknya begitu" menggambarkan keadaan
@@ -449,11 +457,24 @@ atasnya:
    `Balance.weaponStats`, dengan `effects` masih kosong.
 7. **Isi efek per alur** (lampiran A), setelah (1)-(6) terbukti jalan.
 
-## Lampiran A: contoh isi 9 alur (belum diputuskan)
+## Lampiran A: isi 9 alur
 
-**Ini belum keputusan.** Ditulis supaya kerangka di bagian 3 bisa diuji terhadap
-sesuatu yang konkret, dan supaya kelihatan bahwa 9 alur **tidak** berarti 9
-mekanik baru.
+> **Sudah jadi keputusan, dan sudah dikode.** Judul bagian ini dulu berakhir
+> dengan "(belum diputuskan)". Langkah 7 mengambil angka di tabel-tabel di bawah
+> apa adanya ke `src/shared/Modules/Weapons.luau`, jadi yang di sini sekarang
+> catatan asal-usulnya, bukan usulan. Untuk angka yang BERLAKU, `Weapons.luau`
+> dan `docs/TEST_CASES.md` bagian 4.2 yang jadi acuan -- kalau salah satu tabel
+> di bawah berbeda dari keduanya, yang di bawah yang basi.
+>
+> Dua hal dikode berbeda dari yang ditulis di sini, dan dua-duanya dicatat di
+> `TEST_CASES.md` bagian 20.6: cooldown yang dinyatakan sebagai target absolut
+> ("0.5 -> 0.32") dikode sebagai nilai absolut, bukan diterjemahkan jadi pengali;
+> dan alur "Jebakan" butuh satu mekanik lagi di luar empat yang dihitung di bawah
+> -- zona yang menempel ke TEMPAT dengan umurnya sendiri, bukan slow yang
+> menempel ke musuh.
+
+Ditulis supaya kerangka di bagian 3 bisa diuji terhadap sesuatu yang konkret,
+dan supaya kelihatan bahwa 9 alur **tidak** berarti 9 mekanik baru.
 
 ### Kosakata efek, dan biaya kodingnya
 

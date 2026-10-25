@@ -16,6 +16,7 @@ local suites: { { name: string, cases: { Case } } } = {
 	{ name = "Lanes", cases = require("./Lanes.spec") },
 	{ name = "HitTest", cases = require("./HitTest.spec") },
 	{ name = "EnemyAI", cases = require("./EnemyAI.spec") },
+	{ name = "CombatEffects", cases = require("./CombatEffects.spec") },
 	{ name = "RateLimit", cases = require("./RateLimit.spec") },
 	{ name = "MatchRules", cases = require("./MatchRules.spec") },
 	{ name = "ShopRules", cases = require("./ShopRules.spec") },

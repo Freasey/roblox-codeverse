@@ -18,6 +18,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Modules.Balance)
+local CombatEffects = require(Shared.Modules.CombatEffects)
 local Config = require(Shared.Config)
 local DataSchema = require(Shared.Modules.DataSchema)
 local HitTest = require(Shared.Modules.HitTest)
@@ -101,6 +102,35 @@ local function resolveWeapon(player: Player): (Weapons.WeaponDef, Types.WeaponSt
 		})
 end
 
+-- Pengali damage yang masuk ke pemain ini, dari alur senjata yang dia pakai
+-- (alur "Bertahan", `effects.damageTakenMult`).
+--
+-- Di CombatService dan bukan di EnemyService karena di sini resolusi senjata
+-- per pemain sudah ada; di sana menambahkannya berarti EnemyService ikut
+-- bergantung ke PlayerDataService dan Weapons, dan urutan require-nya tidak
+-- lagi satu arah. `init.server.luau` yang menyuntikkan fungsi ini ke sana.
+--
+-- Menerima UserId, bukan Player: yang memanggilnya loop frame EnemyService,
+-- yang memegang UserId target dan bukan objek Player -- dengan alasan yang
+-- sama seperti `participants` di MatchService.
+function CombatService.getPlayerDamageTakenMult(userId: number): number
+	local player = Players:GetPlayerByUserId(userId)
+	if player == nil then
+		return 1
+	end
+	local _def, stats = resolveWeapon(player)
+	local mult = stats.effects.damageTakenMult
+	-- Pengali di luar (0, 1] diabaikan. Nol berarti pemain tidak bisa mati
+	-- sama sekali, dan di atas 1 berarti alur bertahan yang justru MENAIKKAN
+	-- damage masuk -- dua-duanya cuma bisa datang dari data alur yang rusak,
+	-- dan dua-duanya tidak akan dilaporkan sebagai bug oleh pemain yang
+	-- diuntungkan.
+	if mult == nil or mult ~= mult or mult <= 0 or mult > 1 then
+		return 1
+	end
+	return mult
+end
+
 local function characterOrigin(player: Player): Vector3?
 	local character = player.Character
 	if character == nil then
@@ -151,7 +181,12 @@ local function collectTargets(
 
 		if def.kind == "melee" then
 			local reach = stats.range + Balance.MELEE_RADIUS_BONUS
-			if HitTest.inCone(originVec, aimVec, targetVec, reach, Balance.MELEE_MIN_COS) then
+			-- Alur "Ayunan Berat" tingkat 2 melebarkan kerucutnya, jadi
+			-- ambangnya dari `stats.effects` kalau ada. Nilai yang lebih KECIL
+			-- berarti kerucut lebih LEBAR, dan itu arah yang mudah terbalik
+			-- kalau dibaca cepat.
+			local minCos = stats.effects.coneMinCos or Balance.MELEE_MIN_COS
+			if HitTest.inCone(originVec, aimVec, targetVec, reach, minCos) then
 				table.insert(candidates, {
 					id = id,
 					distance = HitTest.horizontalDistance(originVec, targetVec),
@@ -225,8 +260,91 @@ local function onAttack(player: Player, rawDirection: unknown)
 		return
 	end
 
-	for _, candidate in collectTargets(def, stats, origin, direction.Unit) do
+	local hits = collectTargets(def, stats, origin, direction.Unit)
+	if #hits == 0 then
+		return
+	end
+
+	-- Titik kena: posisi musuh PERTAMA yang kena, dibaca SEBELUM dia di-damage.
+	-- Sesudah `damage` dia bisa sudah mati dan Part-nya di-Destroy, dan
+	-- `enemy.position` yang dibaca dari musuh yang sudah hilang dari `active`
+	-- akan nil. Splash dan zona dua-duanya berangkat dari titik ini.
+	local impact = EnemyService.getPosition(hits[1].id)
+
+	-- Siapa yang sudah menerima damage penuh. Dipakai mengecualikan mereka dari
+	-- splash -- tanpa itu target utama kena dua kali dan damage senjatanya
+	-- terlihat lebih besar daripada yang tertulis di panel.
+	local struck: { [number]: boolean } = {}
+	for _, candidate in hits do
+		struck[candidate.id] = true
+	end
+
+	local effects = stats.effects
+
+	for _, candidate in hits do
 		EnemyService.damage(candidate.id, damage, player)
+		-- Slow dan tanda dipasang walau musuhnya mati di pukulan ini: keduanya
+		-- memeriksa `enemy.dead` sendiri dan jadi no-op, jadi tidak ada cabang
+		-- tambahan di sini yang bisa salah.
+		EnemyService.applySlow(candidate.id, effects.slowMult, effects.slowSeconds)
+		EnemyService.applyMark(candidate.id, effects.markMult, effects.markSeconds)
+	end
+
+	if impact == nil then
+		-- Target pertama hilang di antara `collectTargets` dan sekarang (mati
+		-- karena turret atau zona di frame yang sama). Tidak ada titik kena yang
+		-- bisa dipertanggungjawabkan, jadi splash dan zona dilewati -- menebak
+		-- titiknya dari posisi pemain akan menaruh ledakan di tempat yang
+		-- pemainnya tidak menembak.
+		return
+	end
+
+	-- Splash: musuh di sekitar titik kena, dengan damage yang dikali dan
+	-- tanpa yang sudah kena penuh. Mereka ikut lewat `EnemyService.damage`,
+	-- jadi tanda ikut berlaku dan koin match tetap masuk.
+	if effects.splashRadius ~= nil then
+		local splashDamage = damage * (effects.splashMult or 1)
+		if splashDamage > 0 then
+			local victims = CombatEffects.withinRadius(
+				toVec(impact),
+				EnemyService.liveTargets(),
+				effects.splashRadius,
+				struck
+			)
+			for _, id in victims do
+				EnemyService.damage(id, splashDamage, player)
+				EnemyService.applySlow(id, effects.slowMult, effects.slowSeconds)
+			end
+		end
+	end
+
+	-- Penularan tanda: musuh terdekat dari titik kena yang BELUM kena pukulan
+	-- ini. Dipasang sesudah tanda target utama, jadi penularannya tidak bisa
+	-- memilih target yang sama dua kali.
+	if effects.markSpread ~= nil and effects.markMult ~= nil then
+		local spread = CombatEffects.nearest(
+			toVec(impact),
+			EnemyService.liveTargets(),
+			effects.markSpread,
+			struck
+		)
+		for _, id in spread do
+			EnemyService.applyMark(id, effects.markMult, effects.markSeconds)
+		end
+	end
+
+	-- Zona jebakan. Ditinggalkan di titik kena, jadi dia cuma lahir dari
+	-- serangan yang benar-benar mengenai sesuatu -- bukan dari setiap tembakan
+	-- ke udara, yang akan membuat pemain bisa melapisi seluruh lane dengan
+	-- zona tanpa membidik apa pun.
+	if effects.zoneRadius ~= nil then
+		EnemyService.addZone(
+			impact,
+			effects.zoneRadius,
+			effects.zoneSlowMult,
+			effects.zoneDps,
+			effects.zoneSeconds
+		)
 	end
 end
 

@@ -98,9 +98,9 @@ lune run tests/studio/run
 
 ## Apa yang BISA dites di sini
 
-Diverifikasi dengan empat case di `cases/`, 239 assertion (222 lulus, 0 gagal, 17
+Diverifikasi dengan lima case di `cases/`, 273 assertion (251 lulus, 0 gagal, 22
 dilewati — `boot` 29/0/0, `enemy_core` 89/0/1, `remote_reject` 33/0/13,
-`core_wave` 71/0/3):
+`core_wave` 71/0/3, `path_effects` 29/0/5):
 
 - **Seluruh rantai boot `init.server.luau` di engine sungguhan** — urutan
   `require` yang melingkar, API web yang dipanggil di module scope, nama
@@ -120,6 +120,14 @@ dilewati — `boot` 29/0/0, `enemy_core` 89/0/1, `remote_reject` 33/0/13,
   Keputusan AI-nya sendiri (transisi state, pemilihan target, jadwal pukulan,
   offset cincin) ada di modul murni `EnemyAI` dan dites Lune di CI; yang di sini
   membuktikan WIRING-nya sampai ke CFrame Instance dan ke HP Core.
+- **Tiga dari enam efek alur upgrade** (`docs/ARENA_REDESIGN.md` lampiran A):
+  slow yang menempel ke musuh benar-benar memperlambat Part yang bergerak —
+  rasio terukur 0.36 untuk pengali 0.40 — zona jebakan memberi damage sebanding
+  waktu dan ikut terbuang saat `clearAll`, dan tanda mengalikan damage dari
+  sumber yang tidak punya pemain sama sekali. Tiga sisanya (splash, kerucut
+  melee yang melebar, pengurangan damage ke pemain) masuk lewat
+  `CombatService.onAttack` dan butuh Player, jadi `cases/path_effects.luau`
+  melaporkannya sebagai SKIP dengan alasannya.
 - **Validasi argumen pada satu remote** (`RequestAction`), lihat batasnya di
   bawah.
 
@@ -252,7 +260,8 @@ run:
 
 **Studio yang sudah terbuka tidak membuat runner gagal, tapi menggandakan
 waktunya.** Satu suite penuh dijalankan dengan satu jendela Studio milik
-pengembang tetap terbuka: keempat case lulus, tidak ada yang menyentuh deadline,
+pengembang tetap terbuka: keempat case yang ada saat itu lulus, tidak ada yang
+menyentuh deadline,
 dan tidak ada jejak yang tertinggal di place yang terbuka itu (`run-in-roblox`
 membuka salinannya sendiri di `%TEMP%`). Yang berubah cuma biaya start: 22–29
 detik wall clock per case, dengan 0,2–27 detik di antaranya benar-benar

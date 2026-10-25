@@ -583,4 +583,35 @@ table.insert(cases, {
 	end,
 })
 
+table.insert(cases, {
+	name = "setiap kunci di kosakata Balance benar-benar dipakai satu alur",
+	run = function()
+		-- Arah sebaliknya dari baris di atas, dan menangkap kegagalan yang
+		-- berbeda: kunci yang TERTINGGAL di daftar sesudah alur yang memakainya
+		-- diubah. Kosakata mati tidak merusak apa pun yang berjalan, tapi dia
+		-- tetap dibaca sebagai janji -- dan pembaca berikutnya akan menulis kode
+		-- yang membacanya, lalu bingung kenapa tidak pernah terpanggil.
+		local used: { [string]: boolean } = {}
+		for _, def in Weapons do
+			for _, path in def.paths do
+				for _, tier in path.tiers do
+					for key in tier.effects or {} do
+						used[key] = true
+					end
+				end
+			end
+		end
+
+		for _, key in Balance.PATH_EFFECT_KEYS do
+			assert(
+				used[key],
+				string.format(
+					"`%s` ada di Balance.PATH_EFFECT_KEYS tapi tidak dipakai satu alur pun di Weapons.luau",
+					key
+				)
+			)
+		end
+	end,
+})
+
 return cases

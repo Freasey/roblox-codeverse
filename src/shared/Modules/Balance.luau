@@ -195,26 +195,31 @@ end
 -- gejalanya cuma "alur itu tidak terasa". Jadi daftarnya satu, di sini, dan
 -- langkah 7 memakai nama dari daftar ini -- bukan sebaliknya.
 --
--- | kunci              | arti                                | dibaca di |
--- |--------------------|-------------------------------------|-----------|
+-- | kunci              | arti                                 | dibaca di |
+-- |--------------------|--------------------------------------|-----------|
 -- | `coneMinCos`       | ganti `MELEE_MIN_COS` (kerucut lebar)| CombatService, saat HitTest.inCone |
--- | `slowMult`         | pengali speed musuh yang kena        | EnemyService |
--- | `slowSeconds`      | berapa lama slow itu bertahan        | EnemyService |
+-- | `slowMult`         | pengali speed musuh yang KENA pukulan| CombatService -> EnemyService.slow |
+-- | `slowSeconds`      | berapa lama slow pukulan itu bertahan| sama |
 -- | `damageTakenMult`  | pengali damage yang masuk ke PEMAIN  | EnemyService, di jalur TakeDamage |
 -- | `splashRadius`     | radius ledakan dari titik kena       | CombatService |
 -- | `splashMult`       | pengali damage untuk korban splash   | CombatService |
 -- | `markMult`         | pengali damage ke musuh yang ditandai| EnemyService.damage |
--- | `markSeconds`      | berapa lama tanda itu bertahan       | EnemyService |
--- | `markSpread`       | berapa musuh terdekat ikut ditandai  | EnemyService |
--- | `zoneDps`          | damage per detik dari zona jebakan   | CombatService / EnemyService |
+-- | `markSeconds`      | berapa lama tanda itu bertahan       | CombatService -> EnemyService.mark |
+-- | `markSpread`       | berapa musuh terdekat ikut ditandai  | CombatService |
+-- | `zoneRadius`       | radius zona yang ditinggalkan        | CombatService -> EnemyService.addZone |
+-- | `zoneSeconds`      | umur zona itu                        | sama |
+-- | `zoneSlowMult`     | pengali speed musuh DI DALAM zona    | EnemyService, tiap frame |
+-- | `zoneDps`          | damage per detik dari zona           | EnemyService, tiap frame |
 --
--- Empat di antaranya butuh mekanik yang belum ada sama sekali (slow, damage
--- masuk yang dikurangi, splash, tanda) -- itu pekerjaan langkah 7, bukan
--- langkah 6, dan daftar ini yang menjadi daftar pekerjaannya.
+-- Slow punya dua pasang kunci, dan itu bukan duplikasi: `slowMult` menempel ke
+-- MUSUH yang kena pukulan dan ikut dia ke mana pun dia jalan, sementara
+-- `zoneSlowMult` menempel ke TEMPAT dan berhenti begitu musuhnya keluar. Satu
+-- nama untuk dua umur yang berbeda akan membuat pembaca menebak yang mana.
 --
 -- Kunci yang tidak ada di daftar ini TIDAK akan dibaca siapa pun. Itu bukan
 -- larangan yang ditegakkan kode, jadi menambah kunci baru berarti menambahnya
--- di sini DAN di tempat yang membacanya, dalam satu perubahan yang sama.
+-- di sini DAN di tempat yang membacanya, dalam satu perubahan yang sama -- dan
+-- ada unit test yang menolak kunci di `Weapons.luau` yang tidak ada di sini.
 Balance.PATH_EFFECT_KEYS = {
 	"coneMinCos",
 	"slowMult",
@@ -225,6 +230,9 @@ Balance.PATH_EFFECT_KEYS = {
 	"markMult",
 	"markSeconds",
 	"markSpread",
+	"zoneRadius",
+	"zoneSeconds",
+	"zoneSlowMult",
 	"zoneDps",
 }
 

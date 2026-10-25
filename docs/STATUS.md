@@ -18,30 +18,25 @@ pertarungan, state machine match dengan 10 wave, Toko Match, dua boss, dan
 progres permanen plus lobby. M6 sampai M8 belum disentuh. Sebagian besar
 perilaku game belum pernah dijalankan oleh seorang pemain.
 
-**Rancangan ulang arena sedang dikerjakan**, dan itu yang menentukan kapan
-playtest masuk akal dijalankan. Langkah 1 sampai 6 dari
+**Rancangan ulang arena SELESAI.** Ketujuh langkah di
 `docs/ARENA_REDESIGN.md` bagian 8 sudah mendarat: musuh yang mencapai base
 berhenti dan memukul sampai dibunuh, pemain bisa mati, hadiah koin per wave
 jalan, harga Toko Match naik tiap pembelian, ada fase `Loadout` 20 detik
-sebelum hitung mundur, dan tiap senjata bercabang jadi tiga alur upgrade
-permanen di level 4.
+sebelum hitung mundur, tiap senjata bercabang jadi tiga alur upgrade permanen
+di level 4, dan isi efek kesembilan alur itu sudah terpasang — termasuk empat
+mekanik yang sebelumnya tidak ada sama sekali: slow, pengurangan damage yang
+masuk ke pemain, splash, dan tanda, plus zona jebakan yang menempel ke tempat.
 
-Satu hal soal langkah 6 yang harus dibaca sebagai batas, bukan sebagai bug:
-**kerangkanya lengkap tapi efeknya masih kosong.** Pemain bisa memilih alur,
-pilihannya tersimpan dan tidak bisa diganti, dan panel pemilihannya menyebut apa
-yang akan terbuka di level 4, 7, dan 10 — tapi tidak satu pun tingkat alur di
-`Weapons.luau` yang mengubah damage, cooldown, range, atau jumlah proyektil.
-Jadi memilih alur sekarang mengunci keputusan tanpa memberi apa pun. Itu
-langkah 7, dan sampai itu selesai dua senjata di alur berbeda bertarung
-identik.
-
-**Playtest ditunda sampai langkah 6 dan 7 selesai**, atas permintaan Daffa
-(2026-10-25): fokus menyelesaikan rancangannya dulu. Itu juga yang paling
-murah, karena langkah 6 dan 7 mengubah damage senjata — dua baris yang mematok
-**jumlah serangan** (`WAVE-03` 4 serangan, `WAVE-07` 7 serangan di wave 5)
-hampir pasti bergeser lagi, dan `SHOP-16` mengukur jumlah serangan juga.
-Prosedur playtestnya tetap lengkap di [bagian 3](#3-playtest-m1-tugas-daffa)
-dan tidak berubah; yang berubah cuma kapan dijalankan.
+**Jadi playtest sekarang yang menghalangi, bukan kode.** Playtest ditunda atas
+permintaan Daffa (2026-10-25) sampai rancangannya selesai; rancangannya sudah
+selesai, jadi alasan penundaannya sudah habis. Prosedurnya lengkap di
+[bagian 3](#3-playtest-m1-tugas-daffa). Dua catatan yang perlu dibaca lebih
+dulu: angka **jumlah serangan** di beberapa baris (`WAVE-03`, `WAVE-07`,
+`SHOP-16`) dihitung untuk senjata TANPA alur, jadi mainkan dengan senjata level
+1-3 atau dengan alur yang belum mencapai tingkatnya; dan satu kekurangan yang
+diketahui — **zona jebakan tidak kelihatan di layar**, jadi musuh yang melambat
+dan kehilangan HP tanpa sebab yang terlihat itu benar, bukan bug (lihat
+`docs/TEST_CASES.md` bagian 5.3).
 
 ## 2. Apa yang sudah terverifikasi, dan dengan cara apa
 
@@ -49,9 +44,9 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 
 | Lapis | Cakupan | Status |
 | --- | --- | --- |
-| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit | **221 test lulus** |
+| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit | **243 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
-| Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave | **222 assertion lulus, 0 gagal, 17 di-skip** |
+| Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave, slow dan zona dan tanda alur upgrade | **251 assertion lulus, 0 gagal, 22 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
 
 ### Kenapa CI hijau tidak cukup
@@ -109,8 +104,8 @@ ditukar, dan alasannya ditulis di tempatnya masing-masing.
 ```bash
 cd "C:\Web Program
 oblox-codeverse"
-lune run tests/run          # 221 unit test, beberapa detik
-lune run tests/studio/run   # harness Studio, ~110 detik
+lune run tests/run          # 243 unit test, beberapa detik
+lune run tests/studio/run   # harness Studio, ~130 detik
 ```
 
 Baris `cd` itu bukan basa-basi. Tool di repo ini dikelola rokit, dan rokit
@@ -260,9 +255,27 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
   setelah keluar dan join lagi — yang terakhir butuh place yang sudah
   di-publish, jadi dia terkunci di belakang bagian 5.1.
 
-  Dan satu yang tidak bisa diuji sama sekali sampai langkah 7: apakah alur yang
-  dipilih **terasa** berbeda. Sekarang tidak, karena tingkatnya belum mengubah
-  stat apa pun.
+- **Tiga dari enam efek alur.** Slow, zona jebakan, dan tanda sudah dipatok
+  harness di engine sungguhan (`tests/studio/cases/path_effects.luau`): slow
+  benar-benar memperlambat Part yang bergerak, zona memberi damage sebanding
+  waktu dan terbuang saat `clearAll`, dan tanda mengalikan damage dari sumber
+  yang tidak punya pemain. **Tiga sisanya tidak bisa disentuh harness sama
+  sekali**, karena ketiganya masuk lewat `CombatService.onAttack` yang menuntut
+  Player: **splash**, **kerucut melee yang melebar**, dan **pengurangan damage
+  yang masuk ke pemain**. Matematikanya punya unit test
+  (`tests/CombatEffects.spec.luau`), tapi kabelnya belum pernah dibuktikan.
+
+  Yang paling mahal di antara ketiganya: splash yang mengenai target utamanya
+  **dua kali**. Gejalanya cuma damage yang lebih besar daripada yang tertulis di
+  panel — tidak ada error, tidak ada yang kelihatan rusak, dan pemain yang
+  diuntungkan tidak akan melaporkannya. `CombatEffects.withinRadius` punya test
+  untuk pengecualiannya, tapi yang menyusun daftar pengecualiannya
+  `CombatService`, dan bagian itu belum teruji.
+
+- **Zona jebakan tidak punya Part.** Efeknya bekerja; tempatnya tidak terlihat.
+  Jadi pemain melihat musuh melambat dan kehilangan HP tanpa sebab yang
+  terlihat. Ini kekurangan yang diketahui dan dicatat di `TEST_CASES.md` bagian
+  5.3, bukan bug — menggambarnya butuh aset, dan itu M7.
 
 - **`Config.DEV_ALL_WEAPONS`.** Default `false`, jadi jalur ini tidak pernah
   aktif di CI maupun di harness. Unit test memastikan `ownedWeapons` dan
@@ -366,8 +379,8 @@ menggantung selamanya, jadi tidak ada lebih baik daripada ada tapi mati. Lihat
   basi.** Penyebutnya 126,
   dihitung sebelum `STUDIO_CHECKLIST.md` dilebur ke `TEST_CASES.md`; sekarang
   dokumennya memuat 160 case. Pembilangnya juga sudah lewat: dia ditulis untuk
-  tiga case harness dengan 82 assertion, sementara sekarang ada empat case
-  dengan 222 dan tiga baris M1 yang naik jadi `OK`. Rasio maupun pembilangnya
+  tiga case harness dengan 82 assertion, sementara sekarang ada lima case
+  dengan 251 dan tiga baris M1 yang naik jadi `OK`. Rasio maupun pembilangnya
   belum dihitung ulang; `docs/TEST_CASES.md` bagian 3.2 adalah sumber yang
   benar untuk cakupan harness.
 
