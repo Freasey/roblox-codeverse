@@ -22,6 +22,7 @@ local localPlayer = Players.LocalPlayer
 
 local STATE_TEXT: { [string]: string } = {
 	Lobby = "Di lobby",
+	Loadout = "Pilih senjata",
 	Countdown = "Match mulai dalam",
 	WaveActive = "Bertahan!",
 	Intermission = "Jeda — toko buka",

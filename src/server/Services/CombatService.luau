@@ -18,7 +18,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Modules.Balance)
+local Config = require(Shared.Config)
 local HitTest = require(Shared.Modules.HitTest)
+local ProgressionRules = require(Shared.Modules.ProgressionRules)
 local RateLimit = require(Shared.Modules.RateLimit)
 local Remotes = require(Shared.Remotes)
 local Weapons = require(Shared.Modules.Weapons)
@@ -63,25 +65,24 @@ function CombatService.setModifiers(fn: () -> Modifiers)
 	modifiers = fn
 end
 
--- Senjata yang benar-benar dipakai pemain, menurut data di server. Kalau
--- `equippedWeapon` menunjuk senjata yang tidak ada atau belum dimiliki (data
--- lama, atau pemain mengubahnya lewat exploit sebelum validasi di
--- ProgressionService ada), jatuh ke senjata starter.
+-- Senjata yang benar-benar dipakai pemain, menurut data di server.
+--
+-- Keputusannya ada di `ProgressionRules.equippedWeapon`, bukan di sini, dan itu
+-- bukan sekadar perapian: `MatchService.onSelectLoadout` memeriksa kepemilikan
+-- lewat fungsi murni yang sama. Dulu dua tempat ini punya pemeriksaan sendiri,
+-- dan bedanya tidak kelihatan -- yang di sana menolak dengan pesan, yang di
+-- sini DIAM-DIAM jatuh ke starter. Begitu `Config.DEV_ALL_WEAPONS` ada, selisih
+-- sekecil apa pun di antara keduanya berarti pemain memilih Packet Rifle lalu
+-- mengayunkan Patch Wrench tanpa satu pesan error pun.
 local function resolveWeapon(player: Player): (Weapons.WeaponDef, number)
-	local starter = Weapons.weapon_starter
 	local data = PlayerDataService.get(player)
 	if data == nil then
-		return starter, 1
+		-- Data belum termuat: starter level 1, bukan error. Dipanggil tiap
+		-- serangan, jadi tidak ada tempat untuk melapor di sini.
+		return Weapons.weapon_starter, 1
 	end
 
-	local def = Weapons[data.equippedWeapon]
-	local save = data.weapons[data.equippedWeapon]
-	if def == nil or save == nil then
-		return starter,
-			(if data.weapons.weapon_starter ~= nil then data.weapons.weapon_starter.level else 1)
-	end
-
-	return def, math.clamp(save.level, 1, def.maxLevel)
+	return ProgressionRules.equippedWeapon(data, Weapons, Config.DEV_ALL_WEAPONS)
 end
 
 local function characterOrigin(player: Player): Vector3?

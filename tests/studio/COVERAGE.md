@@ -52,7 +52,7 @@ detik.
 | ID | Label | Dasar |
 |---|---|---|
 | MATCH-01 | SEBAGIAN | lulus — `boot.state` = `Lobby` dan `boot.tidakAdaMusuh` = 0. Sisanya ("player ada di area lobby", "panel upgrade/craft bisa dibuka") butuh Player dan client |
-| MATCH-02 … MATCH-14 | TIDAK | terhalang — `participants` diisi dari `Players:GetPlayers()`, dan tidak ada Player yang bisa dibuat (`CreateLocalPlayer` → `lacking capability LocalUser`). Tanpa Ready, tidak ada `Countdown`, `WaveActive`, `Intermission`, atau `Ended` |
+| MATCH-02 … MATCH-14 | TIDAK | terhalang — `participants` diisi dari `Players:GetPlayers()`, dan tidak ada Player yang bisa dibuat (`CreateLocalPlayer` → `lacking capability LocalUser`). Tanpa Ready, `everyoneReady()` selalu false, jadi tidak ada `Loadout`, `Countdown`, `WaveActive`, `Intermission`, atau `Ended` |
 
 ## 2. WAVE — wave dan spawn (14)
 

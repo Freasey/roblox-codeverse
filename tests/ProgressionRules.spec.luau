@@ -416,4 +416,156 @@ table.insert(cases, {
 	end,
 })
 
+-- Kepemilikan senjata ------------------------------------------------------
+
+table.insert(cases, {
+	name = "ownedWeapons tanpa flag dev cuma mengembalikan yang di data",
+	run = function()
+		local owned = ProgressionRules.ownedWeapons(newData(), Weapons, false)
+		assert(owned.weapon_starter ~= nil, "starter harus ada")
+		assert(owned.weapon_ranged == nil, "ranged belum dibeli")
+		assert(owned.weapon_boss_a == nil, "boss_a belum di-craft")
+	end,
+})
+
+table.insert(cases, {
+	name = "ownedWeapons dengan flag dev mengembalikan semua senjata level 1",
+	run = function()
+		local owned = ProgressionRules.ownedWeapons(newData(), Weapons, true)
+		local count = 0
+		for id, save in owned do
+			count += 1
+			assert(Weapons[id] ~= nil, id .. " bukan senjata yang ada")
+			assert(save.level == 1, id .. " harus level 1")
+		end
+		local total = 0
+		for _ in Weapons do
+			total += 1
+		end
+		assert(count == total, string.format("%d dari %d senjata", count, total))
+	end,
+})
+
+table.insert(cases, {
+	name = "flag dev tidak menurunkan level senjata yang benar-benar dimiliki",
+	run = function()
+		-- Kegagalan yang dicegah: menyetel flag lalu melihat Patch Wrench level 8
+		-- jadi level 1 di panel lobby, dan damage-nya ikut turun di arena.
+		local data = newData({ weapons = { weapon_starter = { level = 8 } } })
+		local owned = ProgressionRules.ownedWeapons(data, Weapons, true)
+		assert(owned.weapon_starter.level == 8, "level asli harus menang")
+		assert(owned.weapon_ranged.level == 1, "yang dari flag tetap level 1")
+	end,
+})
+
+table.insert(cases, {
+	name = "ownedWeapons tidak mengembalikan id yang tidak ada di defs",
+	run = function()
+		-- Save lama dari skema sebelumnya bisa memuat id yang sudah dihapus.
+		-- Kalau id itu lolos, `equippedWeapon` bisa menunjuk senjata tanpa def
+		-- dan pemanggil mana pun yang membaca `.cooldown` akan error.
+		local data = newData({
+			weapons = { weapon_starter = { level = 1 }, weapon_sudah_dihapus = { level = 3 } },
+		})
+		local owned = ProgressionRules.ownedWeapons(data, Weapons, false)
+		assert(owned.weapon_sudah_dihapus == nil, "id tanpa def harus dibuang")
+	end,
+})
+
+table.insert(cases, {
+	name = "menulis ke hasil ownedWeapons tidak menyentuh data pemain",
+	run = function()
+		local data = newData({ weapons = { weapon_starter = { level = 4 } } })
+		local owned = ProgressionRules.ownedWeapons(data, Weapons, false)
+		owned.weapon_starter.level = 99
+		assert(data.weapons.weapon_starter.level == 4, "data pemain ikut berubah")
+	end,
+})
+
+-- Senjata yang dipakai -----------------------------------------------------
+
+table.insert(cases, {
+	name = "equippedWeapon mengembalikan senjata dan level dari data",
+	run = function()
+		local data = newData({
+			equippedWeapon = "weapon_ranged",
+			weapons = { weapon_starter = { level = 1 }, weapon_ranged = { level = 6 } },
+		})
+		local def, level = ProgressionRules.equippedWeapon(data, Weapons, false)
+		assert(def.id == "weapon_ranged", "def salah: " .. def.id)
+		assert(level == 6, "level salah: " .. level)
+	end,
+})
+
+table.insert(cases, {
+	name = "equippedWeapon jatuh ke starter kalau senjatanya tidak dimiliki",
+	run = function()
+		-- Jatuhnya memang diam-diam; yang dites di sini justru bahwa levelnya
+		-- ikut level starter pemain, bukan 1. Pemain level starter 7 yang datanya
+		-- rusak tidak boleh mendadak menyerang seperti pemain baru.
+		local data = newData({
+			equippedWeapon = "weapon_ranged",
+			weapons = { weapon_starter = { level = 7 } },
+		})
+		local def, level = ProgressionRules.equippedWeapon(data, Weapons, false)
+		assert(def.id == "weapon_starter", "harus jatuh ke starter, dapat " .. def.id)
+		assert(level == 7, "level starter salah: " .. level)
+	end,
+})
+
+table.insert(cases, {
+	name = "flag dev membuat senjata yang belum dibeli benar-benar terpakai",
+	run = function()
+		-- Ini jebakan yang disebut ARENA_REDESIGN bagian 2: kalau cuma gerbang
+		-- SelectLoadout yang mengenal flag, pilihan diterima tapi damage-nya
+		-- tetap damage starter -- tanpa satu pesan error pun. Jadi kedua sisi
+		-- harus lewat sini.
+		local data = newData({ equippedWeapon = "weapon_ranged" })
+
+		local tanpaFlag = ProgressionRules.equippedWeapon(data, Weapons, false)
+		assert(tanpaFlag.id == "weapon_starter", "tanpa flag harus starter")
+
+		local denganFlag, level = ProgressionRules.equippedWeapon(data, Weapons, true)
+		assert(denganFlag.id == "weapon_ranged", "dengan flag harus ranged")
+		assert(level == 1, "senjata dari flag mulai level 1")
+	end,
+})
+
+table.insert(cases, {
+	name = "level di luar kurva di-clamp ke rentang senjatanya",
+	run = function()
+		local data = newData({ weapons = { weapon_starter = { level = 500 } } })
+		local def, level = ProgressionRules.equippedWeapon(data, Weapons, false)
+		assert(level == def.maxLevel, string.format("level %d, maks %d", level, def.maxLevel))
+
+		local rendah = newData({ weapons = { weapon_starter = { level = 0 } } })
+		local _, levelRendah = ProgressionRules.equippedWeapon(rendah, Weapons, false)
+		assert(levelRendah == 1, "level 0 harus jadi 1, dapat " .. levelRendah)
+	end,
+})
+
+table.insert(cases, {
+	name = "flag dev tidak membuka jalur beli, craft, atau upgrade",
+	run = function()
+		-- Batas yang paling penting di seluruh fitur flag dev: `canBuy` dan
+		-- kawan-kawannya membaca `data.weapons` langsung. Kalau mereka ikut
+		-- `ownedWeapons`, pemain bisa membayar koin sungguhan untuk meng-upgrade
+		-- senjata yang tidak dia miliki, dan hasilnya MASUK DataStore -- kerusakan
+		-- permanen dari flag yang seharusnya cuma hidup di memori.
+		--
+		-- Fungsinya tidak punya parameter flag sama sekali, jadi yang dites di
+		-- sini adalah bahwa jawabannya tidak bergeser gara-gara flag itu ada.
+		local data = newData({ coins = 99999, materials = { material_a = 99 } })
+
+		local bolehBeli = ProgressionRules.canBuy(Weapons.weapon_ranged, context(data))
+		assert(bolehBeli, "ranged yang belum dimiliki harus masih bisa dibeli")
+
+		local bolehUpgrade = ProgressionRules.canUpgrade(Weapons.weapon_ranged, context(data), 100)
+		assert(not bolehUpgrade, "ranged yang belum dimiliki tidak boleh di-upgrade")
+
+		local bolehCraft = ProgressionRules.canCraft(Weapons.weapon_boss_a, context(data))
+		assert(bolehCraft, "boss_a harus masih bisa di-craft")
+	end,
+})
+
 return cases

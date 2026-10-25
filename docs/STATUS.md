@@ -19,19 +19,20 @@ progres permanen plus lobby. M6 sampai M8 belum disentuh. Sebagian besar
 perilaku game belum pernah dijalankan oleh seorang pemain.
 
 **Rancangan ulang arena sedang dikerjakan**, dan itu yang menentukan kapan
-playtest masuk akal dijalankan. Langkah 1 sampai 4 dari
+playtest masuk akal dijalankan. Langkah 1 sampai 5 dari
 `docs/ARENA_REDESIGN.md` bagian 8 sudah mendarat: musuh yang mencapai base
 berhenti dan memukul sampai dibunuh, pemain bisa mati, hadiah koin per wave
-jalan, dan harga Toko Match naik tiap pembelian. Langkah 5 sampai 7 (fase
-`Loadout`, tiga alur upgrade senjata, isi efek per alur) belum.
+jalan, harga Toko Match naik tiap pembelian, dan ada fase `Loadout` 20 detik
+sebelum hitung mundur tempat senjata dipilih untuk terakhir kalinya. Langkah 6
+dan 7 (tiga alur upgrade senjata, isi efek per alur) belum.
 
-**Playtest M1 sekarang sudah bisa dijalankan**, dengan satu catatan yang perlu
-diketahui lebih dulu: langkah 6 dan 7 akan mengubah damage senjata, jadi dua
-baris yang mematok **jumlah serangan** (`WAVE-03` 4 serangan, `WAVE-07` 7
-serangan di wave 5) hampir pasti bergeser lagi setelah itu. Sisanya tidak
-tersentuh langkah 5-7. Kalau yang kamu cari bukti bertanggal untuk laporan,
-jalankan sekarang dan ulangi dua baris itu nanti; kalau yang kamu cari "apakah
-kodenya jalan", dua baris itu boleh dilewati dulu.
+**Playtest ditunda sampai langkah 6 dan 7 selesai**, atas permintaan Daffa
+(2026-10-25): fokus menyelesaikan rancangannya dulu. Itu juga yang paling
+murah, karena langkah 6 dan 7 mengubah damage senjata — dua baris yang mematok
+**jumlah serangan** (`WAVE-03` 4 serangan, `WAVE-07` 7 serangan di wave 5)
+hampir pasti bergeser lagi, dan `SHOP-16` mengukur jumlah serangan juga.
+Prosedur playtestnya tetap lengkap di [bagian 3](#3-playtest-m1-tugas-daffa)
+dan tidak berubah; yang berubah cuma kapan dijalankan.
 
 ## 2. Apa yang sudah terverifikasi, dan dengan cara apa
 
@@ -39,7 +40,7 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 
 | Lapis | Cakupan | Status |
 | --- | --- | --- |
-| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit | **183 test lulus** |
+| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit | **195 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
 | Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave | **222 assertion lulus, 0 gagal, 17 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
@@ -76,12 +77,13 @@ Tinggal **24 case bertanda M1** di `docs/TEST_CASES.md` (WAVE-12, CORE-04, dan C
 
 ```
 BOOT-02 BOOT-03 BOOT-06
-WAVE-03 WAVE-07 WAVE-13 WAVE-15
+WAVE-03 WAVE-07 WAVE-11 WAVE-13 WAVE-15 WAVE-17 WAVE-18 WAVE-19
 CORE-01 CORE-02 CORE-03
-COMBAT-01 COMBAT-02 COMBAT-03 COMBAT-04 COMBAT-05 COMBAT-10 COMBAT-13 COMBAT-15
+COMBAT-01 COMBAT-02 COMBAT-03 COMBAT-04 COMBAT-05 COMBAT-10 COMBAT-13
+COMBAT-15 COMBAT-16 COMBAT-17
 ```
 
-Sebagian dari 18 itu **sudah terbukti separuh**, dan bagian mana yang tersisa
+Sebagian dari 24 itu **sudah terbukti separuh**, dan bagian mana yang tersisa
 ditulis per case di `docs/TEST_CASES.md` bagian 3.2. Dua yang paling memendek:
 geometri COMBAT-03 (musuh di belakang, musuh di luar jangkauan) dan pemilihan
 target terdekat COMBAT-13 sudah dibuktikan unit test di
@@ -228,6 +230,26 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
   belum pernah dilihat manusia. Yang paling mudah salah dan paling sunyi
   kalau salah: hadiah **wave terakhir**. Kodenya sempat punya urutan yang akan
   melewatkannya, karena `onWaveCleared` memanggil `endMatch` lalu `return`.
+
+- **Fase `Loadout`.** State barunya ada di `MatchService` dan daftar state yang
+  membolehkan `SelectLoadout` dipatok unit test (`MatchRules.canSelectLoadout`),
+  tapi seluruh fase ini **tidak bisa disentuh harness sama sekali**: keluar dari
+  `Lobby` butuh `everyoneReady()`, yang butuh Player, dan harness tidak bisa
+  membuat satu pun. Jadi yang belum pernah dilihat: timer 20 detik berjalan,
+  tombol mana yang hidup dan mati selama fase itu, dan — yang paling mudah
+  salah — bahwa **tingkat kesulitan** yang diganti di dalam fase itu benar-benar
+  berlaku. `lockDifficulty()` dipindah ke akhir fase justru untuk itu, dan kalau
+  pemindahannya salah, gejalanya adalah tingkat yang dipilih diabaikan tanpa
+  pesan apa pun sementara senjatanya diterima.
+
+- **`Config.DEV_ALL_WEAPONS`.** Default `false`, jadi jalur ini tidak pernah
+  aktif di CI maupun di harness. Unit test memastikan `ownedWeapons` dan
+  `equippedWeapon` setuju soal senjata yang sama, termasuk bahwa `canBuy`,
+  `canCraft`, dan `canUpgrade` TIDAK ikut flag — tapi "memilih Packet Rifle lalu
+  benar-benar mengayunkan Packet Rifle" cuma bisa dibuktikan dengan mengukur
+  damage, dan itu butuh Player. Kalau flag ini dinyalakan untuk mencoba senjata,
+  **kembalikan ke `false` sebelum commit**; nilainya tidak pernah masuk
+  DataStore, tapi pembelian senjata jadi tidak bisa diuji selama dia hidup.
 
 ## 5. Yang menunggu tindakan di Studio
 

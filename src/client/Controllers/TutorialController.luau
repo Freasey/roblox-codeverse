@@ -39,7 +39,12 @@ local STEPS: { [string]: Step } = {
 	lobby = {
 		id = "lobby",
 		text = "Selamat datang di CodeVerse. Kamu tim IT yang menjaga Core Server. "
-			.. "Pilih senjata di panel kiri, lalu tekan Ready.",
+			.. "Upgrade senjata di panel kiri — cuma bisa di sini — lalu tekan Ready.",
+	},
+	loadout = {
+		id = "loadout",
+		text = "20 detik memilih senjata. Setelah fase ini loadout terkunci sampai "
+			.. "match selesai, jadi pilih sekarang.",
 	},
 	countdown = {
 		id = "countdown",
@@ -159,6 +164,8 @@ function TutorialController.start()
 	MatchStore.onMatchState:Connect(function(payload)
 		if payload.state == "Lobby" then
 			show(STEPS.lobby)
+		elseif payload.state == "Loadout" then
+			show(STEPS.loadout)
 		elseif payload.state == "Countdown" then
 			show(STEPS.countdown)
 		elseif payload.state == "Intermission" then

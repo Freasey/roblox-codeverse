@@ -1,9 +1,21 @@
 --!strict
 -- MatchService.luau — state machine match (docs/DEVELOPMENT_PLAN.md bagian 3.3).
 --
---   Lobby -> Countdown (10 dtk) -> WaveActive <-> Intermission (20 dtk) -> Ended -> Lobby
---                                      |
---                                      +-> Ended (core HP 0)
+--   Lobby -> Loadout (20 dtk) -> Countdown (10 dtk) -> WaveActive <-> Intermission (20 dtk) -> Ended -> Lobby
+--              |                     |                     |
+--              +-- batal Ready ------+                     +-> Ended (core HP 0)
+--                     (kembali ke Lobby)
+--
+-- `Loadout` adalah fase memilih senjata, dan dia ada supaya pilihan itu punya
+-- tempatnya sendiri: sesudah fase ini loadout TERKUNCI sampai match selesai,
+-- termasuk saat Intermission. Alasannya ganti senjata di tengah wave berarti
+-- damage berubah tanpa biaya apa pun -- dan dengan alur upgrade permanen
+-- (ARENA_REDESIGN.md bagian 3), bebas tukar senjata tiap wave membuat pilihan
+-- alur tidak ada artinya.
+--
+-- Pemain yang tidak memilih sampai waktunya habis memakai senjata terakhirnya.
+-- Itu tidak butuh satu baris kode pun: `data.equippedWeapon` permanen, jadi
+-- tidak memilih berarti tidak mengubahnya.
 --
 -- Service ini memegang state, nomor wave, kesulitan yang dikunci, dan
 -- `participants`. Service lain TIDAK BOLEH mengubah state langsung; mereka
@@ -25,6 +37,7 @@ local Balance = require(Shared.Modules.Balance)
 local Config = require(Shared.Config)
 local Difficulties = require(Shared.Modules.Difficulties)
 local MatchRules = require(Shared.Modules.MatchRules)
+local ProgressionRules = require(Shared.Modules.ProgressionRules)
 local RateLimit = require(Shared.Modules.RateLimit)
 local Remotes = require(Shared.Remotes)
 local Signal = require(Shared.Modules.Signal)
@@ -39,8 +52,14 @@ local PlayerDataService = require(script.Parent.PlayerDataService)
 
 local MatchService = {}
 
-export type State = "Lobby" | "Countdown" | "WaveActive" | "Intermission" | "Ended"
+export type State = "Lobby" | "Loadout" | "Countdown" | "WaveActive" | "Intermission" | "Ended"
 
+-- 20 detik, batas atas rentang 15-20 di rancangan. Dipilih yang atas karena
+-- fase ini harus cukup untuk EMPAT pemain membaca tiga baris senjata dan
+-- memilih, bukan cuma satu; dan karena satu-satunya biaya dari terlalu panjang
+-- adalah menunggu, sementara biaya dari terlalu pendek adalah pemain masuk
+-- match dengan senjata yang bukan pilihannya.
+MatchService.LOADOUT_SECONDS = 20
 MatchService.COUNTDOWN_SECONDS = 10
 MatchService.INTERMISSION_SECONDS = 20
 MatchService.ENDED_SECONDS = 10
@@ -184,7 +203,16 @@ local function everyoneReady(): boolean
 end
 
 local function lockDifficulty()
-	-- Kesulitan dikunci saat Countdown. Pilihan beberapa pemain bisa berbeda;
+	-- Dipanggil saat MENINGGALKAN `Loadout`, bukan saat masuk ke sana.
+	--
+	-- Dulu dipanggil saat semua pemain Ready, karena Countdown langsung
+	-- menyusul. Sekarang ada 20 detik di antaranya, dan `SelectLoadout`
+	-- membawa `difficulty` sekaligus senjata -- jadi mengunci di awal fase
+	-- berarti tingkat yang dipilih pemain DI DALAM fase itu diabaikan tanpa
+	-- pesan apa pun, sementara senjatanya diterima. Satu remote, dua argumen,
+	-- dan cuma satu yang berlaku: tidak ada cara pemain menebaknya.
+	--
+	-- Pilihan beberapa pemain bisa berbeda;
 	-- MatchRules.easiestDifficulty mengambil yang paling mudah, dan alasannya
 	-- ada di modul itu.
 	local ids: { string } = {}
@@ -269,11 +297,29 @@ local function abandonMatch()
 end
 
 local function tick(delta: number)
-	if state == "Countdown" then
+	-- Dua fase pra-match memakai syarat yang sama, dan sengaja ditulis dua kali
+	-- alih-alih digabung: yang mereka lakukan di akhir timer berbeda, dan
+	-- menggabungkannya berarti satu `if` lagi di dalam untuk memisahkannya.
+	if state == "Loadout" then
 		-- Syarat masuknya terus diperiksa, bukan cuma sekali: kalau ada pemain
 		-- yang membatalkan Ready atau pemain baru join (yang otomatis belum
-		-- Ready), hitung mundur dibatalkan. Kalau tidak, match bisa dimulai
-		-- dengan pemain yang tidak pernah menyatakan siap.
+		-- Ready), fase ini dibatalkan. Kalau tidak, match bisa dimulai dengan
+		-- pemain yang tidak pernah menyatakan siap.
+		if not everyoneReady() then
+			timer = 0
+			setState("Lobby")
+			return
+		end
+		timer -= delta
+		if timer <= 0 then
+			lockDifficulty()
+			-- Timer disetel SEBELUM setState: setState yang memanggil
+			-- broadcast(), jadi urutan sebaliknya mengirim satu payload dengan
+			-- state "Countdown" dan timer sisa dari Loadout (angka negatif).
+			timer = MatchService.COUNTDOWN_SECONDS
+			setState("Countdown")
+		end
+	elseif state == "Countdown" then
 		if not everyoneReady() then
 			timer = 0
 			setState("Lobby")
@@ -392,18 +438,22 @@ local function onSetReady(player: Player, value: unknown)
 	if type(value) ~= "boolean" then
 		return
 	end
-	-- Ready cuma bermakna di Lobby dan Countdown (bagian 3.6: hanya state
-	-- `Lobby`; Countdown diizinkan khusus untuk MEMBATALKAN).
-	if state ~= "Lobby" and state ~= "Countdown" then
+	-- Ready cuma bermakna di Lobby, Loadout, dan Countdown (bagian 3.6: hanya
+	-- state `Lobby`; dua yang lain diizinkan khusus untuk MEMBATALKAN).
+	--
+	-- `Loadout` ikut karena fase itu persis tempat pemain menyadari dia belum
+	-- siap: dia membuka panel senjata, melihat koinnya kurang untuk upgrade yang
+	-- dia mau, dan satu-satunya jalan keluar sebelum wave 1 adalah membatalkan
+	-- Ready. Tanpa ini, 20 detik itu tidak bisa dibatalkan sama sekali.
+	if state ~= "Lobby" and state ~= "Loadout" and state ~= "Countdown" then
 		return
 	end
 
 	ready[player.UserId] = value or nil
 
 	if state == "Lobby" and everyoneReady() then
-		lockDifficulty()
-		timer = MatchService.COUNTDOWN_SECONDS
-		setState("Countdown")
+		timer = MatchService.LOADOUT_SECONDS
+		setState("Loadout")
 	end
 end
 
@@ -414,13 +464,18 @@ local function onSelectLoadout(player: Player, weaponId: unknown, difficulty: un
 	if type(weaponId) ~= "string" or type(difficulty) ~= "string" then
 		return
 	end
-	-- Loadout dikunci begitu match mulai: mengganti senjata di tengah wave
-	-- berarti damage berubah di tengah pertarungan tanpa biaya apa pun.
-	if state ~= "Lobby" then
+	-- Loadout dikunci begitu hitung mundur mulai, dan tetap terkunci sampai
+	-- match selesai -- termasuk saat Intermission. Mengganti senjata di tengah
+	-- match berarti damage berubah tanpa biaya apa pun, dan membuat pilihan
+	-- alur upgrade yang permanen tidak ada artinya.
+	--
+	-- Daftar state-nya di `MatchRules`, bukan di sini: client memakai daftar
+	-- yang sama untuk mematikan tombol Equip, dan alasannya ada di modul itu.
+	if not MatchRules.canSelectLoadout(state) then
 		Remotes.Events.ActionResult:FireClient(player, {
 			action = "SelectLoadout",
 			ok = false,
-			reason = "Cuma bisa ganti loadout di lobby.",
+			reason = "Loadout sudah terkunci sampai match selesai.",
 		})
 		return
 	end
@@ -438,7 +493,13 @@ local function onSelectLoadout(player: Player, weaponId: unknown, difficulty: un
 
 	-- Validasi bagian 3.6: senjata dimiliki, tingkat terbuka. Dicek di server
 	-- dari data server, bukan dari apa pun yang dikirim client.
-	if data.weapons[weaponId] == nil then
+	--
+	-- Lewat `ownedWeapons`, bukan `data.weapons` langsung: itu pintu yang sama
+	-- yang dipakai `CombatService` saat menghitung damage, jadi senjata yang
+	-- diterima di sini dijamin tidak jatuh ke starter saat dipakai. Alasan
+	-- lengkapnya di komentar fungsi itu.
+	local owned = ProgressionRules.ownedWeapons(data, Weapons, Config.DEV_ALL_WEAPONS)
+	if owned[weaponId] == nil then
 		Remotes.Events.ActionResult:FireClient(player, {
 			action = "SelectLoadout",
 			ok = false,

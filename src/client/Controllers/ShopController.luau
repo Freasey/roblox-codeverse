@@ -222,7 +222,8 @@ function ShopController.start()
 	-- Penolakan pembelian ditampilkan di baris status panel toko. Tanpa ini
 	-- tidak ada yang menampilkannya di mana pun: satu-satunya pendengar
 	-- `ActionResult` yang lain adalah LobbyController, dan panel lobby
-	-- disembunyikan di luar state Lobby/Countdown — persis saat toko buka.
+	-- disembunyikan di luar state Lobby/Loadout/Countdown — persis saat toko
+	-- buka.
 	-- Tombol yang ditolak server jadi terlihat sama seperti tombol yang rusak.
 	--
 	-- Disaring lewat `payload.action`: aksi lobby (SelectLoadout, upgrade,

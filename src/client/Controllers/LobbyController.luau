@@ -17,7 +17,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Modules.Balance)
+local Config = require(Shared.Config)
 local Difficulties = require(Shared.Modules.Difficulties)
+local MatchRules = require(Shared.Modules.MatchRules)
 local ProgressionRules = require(Shared.Modules.ProgressionRules)
 local Remotes = require(Shared.Remotes)
 local Weapons = require(Shared.Modules.Weapons)
@@ -296,10 +298,23 @@ local function render()
 	end
 
 	local stateName = MatchStore.getStateName()
-	local inLobby = stateName == "Lobby"
-	frame.Visible = inLobby or stateName == "Countdown"
+	-- Daftar state-nya dari MatchRules, daftar yang sama yang dipakai server
+	-- untuk menolak `SelectLoadout`. Tombol Equip yang hidup di state yang
+	-- ditolak server, atau mati di fase `Loadout` yang justru dibuat untuk
+	-- menekannya, dua-duanya terlihat seperti tombol rusak.
+	local canSelect = MatchRules.canSelectLoadout(stateName)
+	-- Disimpan sebagai boolean, bukan dibandingkan ulang di bawah: gerbang
+	-- `return` berikutnya membandingkan `stateName` dengan satu literal, dan
+	-- itu membuat Luau menyempitkan tipenya jadi `"Countdown"` untuk SELURUH
+	-- sisa fungsi -- lalu perbandingan dengan "Loadout" di baris petunjuk
+	-- ditolak type checker sebagai perbandingan yang tidak mungkin.
+	local inCountdown = stateName == "Countdown"
+	-- Panel tetap terlihat sepanjang Loadout dan Countdown. Loadout adalah
+	-- satu-satunya fase yang gunanya memilih di panel ini, jadi panel yang
+	-- hilang di situ membuat fasenya tidak ada artinya.
+	frame.Visible = canSelect or inCountdown
 
-	if not inLobby and stateName ~= "Countdown" then
+	if not canSelect and not inCountdown then
 		-- Match sudah jalan: Ready dari match sebelumnya tidak boleh terbawa,
 		-- kalau tidak pemain yang kembali ke lobby langsung dianggap siap
 		-- tanpa menekan apa pun.
@@ -319,7 +334,7 @@ local function render()
 	-- Kesulitan: yang belum terbuka dimatikan, yang dipilih ditandai.
 	for difficultyId, difficultyButton in difficultyButtons do
 		local unlocked = ProfileStore.hasDifficulty(difficultyId)
-		UiKit.setButtonEnabled(difficultyButton, unlocked and inLobby)
+		UiKit.setButtonEnabled(difficultyButton, unlocked and canSelect)
 		local def = Difficulties[difficultyId]
 		local name = if def ~= nil then def.name else difficultyId
 		if not unlocked then
@@ -332,6 +347,17 @@ local function render()
 	end
 
 	-- Senjata.
+	--
+	-- Dua daftar kepemilikan, dan bedanya penting. `equippable` lewat
+	-- `ProgressionRules.ownedWeapons`, pintu yang sama yang dipakai server untuk
+	-- menerima `SelectLoadout` -- jadi tombol Equip hidup tepat kalau server
+	-- akan menerimanya, termasuk saat `Config.DEV_ALL_WEAPONS` hidup. Baris
+	-- beli/craft/upgrade di bawah tetap memakai `ProfileStore.owns`, yang
+	-- membaca `data.weapons` sungguhan: kalau dia ikut flag dev, senjata yang
+	-- belum dibeli akan menampilkan tombol "Upgrade" yang pasti ditolak server
+	-- alih-alih tombol "Beli" yang benar.
+	local equippable = ProgressionRules.ownedWeapons(data, Weapons, Config.DEV_ALL_WEAPONS)
+
 	for weaponId, row in weaponRows do
 		local def = Weapons[weaponId]
 		if def == nil then
@@ -344,8 +370,17 @@ local function render()
 		local equipped = data.equippedWeapon == weaponId
 		row.title.Text = if equipped then def.name .. " (dipakai)" else def.name
 		row.title.TextColor3 = if equipped then UiKit.COLOR_ACCENT else UiKit.COLOR_TEXT
-		UiKit.setButtonEnabled(row.equip, owned and not equipped and inLobby)
+		UiKit.setButtonEnabled(
+			row.equip,
+			equippable[weaponId] ~= nil and not equipped and canSelect
+		)
 
+		-- Upgrade, beli, dan craft tetap LOBBY SAJA, jadi tombolnya mati
+		-- sepanjang fase Loadout. Itu disengaja: ketiganya mengubah data
+		-- permanen, dan `ProgressionRules.ALLOWED_STATE` menolaknya di server
+		-- dengan alasan yang sama. Memilih alur upgrade permanen (nanti) di
+		-- bawah timer 20 detik adalah keputusan besar yang diambil terburu-buru.
+		-- Baris petunjuk di bawah yang memberitahu pemain kenapa.
 		local context: ProgressionRules.Context = { state = stateName, data = data }
 		if owned then
 			local level = ProfileStore.getWeaponLevel(weaponId) or 1
@@ -381,7 +416,10 @@ local function render()
 		hint.TextColor3 = if noticeOk then UiKit.COLOR_GOOD else UiKit.COLOR_BAD
 	else
 		hint.TextColor3 = UiKit.COLOR_MUTED
-		if stateName == "Countdown" then
+		if stateName == "Loadout" then
+			hint.Text = "Pilih senjata sekarang — terkunci setelah ini. "
+				.. "Upgrade cuma di lobby."
+		elseif inCountdown then
 			hint.Text = "Semua pemain siap. Tekan lagi untuk membatalkan."
 		elseif isReady then
 			hint.Text = "Kamu siap. Menunggu pemain lain."

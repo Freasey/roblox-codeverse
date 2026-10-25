@@ -31,6 +31,107 @@ export type Context = {
 	data: Types.PlayerData,
 }
 
+-- --------------------------------------------------------------------------
+-- Kepemilikan senjata: satu pintu untuk MEMAKAI
+-- --------------------------------------------------------------------------
+
+-- Senjata yang boleh DIPAKAI pemain, sebagai { [weaponId] = WeaponSave }.
+--
+-- Kenapa fungsi, bukan `data.weapons` langsung: ada DUA tempat di server yang
+-- memeriksa kepemilikan sebelum senjata dipakai, dan keduanya gagal dengan cara
+-- yang berbeda --
+--
+--   `MatchService.onSelectLoadout`  -> menolak, membalas ActionResult
+--   `CombatService.resolveWeapon`   -> DIAM-DIAM jatuh ke starter
+--
+-- Kalau cuma yang pertama mengenal flag dev, pemain bisa memilih Packet Rifle
+-- lalu mengayunkan Patch Wrench tanpa satu pesan error pun: pilihannya diterima,
+-- tombolnya berubah, damage-nya tidak. Bug seperti itu tidak pernah dilaporkan
+-- karena tidak ada yang kelihatan rusak. Jadi dua-duanya memanggil fungsi ini,
+-- dan flag dev cuma punya satu tempat untuk berlaku.
+--
+-- `devAllWeapons` dikirim sebagai argumen, bukan dibaca dari Config di dalam
+-- modul ini: modul ini harus tetap bisa di-require Lune, dan test harus bisa
+-- menguji kedua keadaan flag tanpa menyentuh konstanta global. Pola yang sama
+-- dengan `priceGrowth` di `ShopRules`.
+--
+-- Level senjata yang BENAR-BENAR dimiliki selalu menang atas level 1 yang
+-- diberikan flag: menyetel flag tidak boleh menurunkan senjata yang sudah
+-- di-upgrade pemain jadi level 1.
+function ProgressionRules.ownedWeapons(
+	data: Types.PlayerData,
+	defs: { [string]: Types.WeaponDef },
+	devAllWeapons: boolean
+): { [string]: Types.WeaponSave }
+	local owned: { [string]: Types.WeaponSave } = {}
+
+	if devAllWeapons then
+		for id in defs do
+			owned[id] = { level = 1 }
+		end
+	end
+
+	-- Tabel BARU, bukan `data.weapons` yang di-mutasi: pemanggil mana pun yang
+	-- menulis ke hasil fungsi ini tidak boleh bisa menyentuh data pemain.
+	for id, save in data.weapons do
+		if defs[id] ~= nil then
+			owned[id] = { level = save.level }
+		end
+	end
+
+	return owned
+end
+
+-- Senjata yang sedang dipakai, dan levelnya. Satu-satunya jalan yang boleh
+-- dipakai saat MENGHITUNG DAMAGE.
+--
+-- Jatuh ke starter kalau `equippedWeapon` tidak dimiliki atau tidak ada di
+-- `defs`. Jatuhnya memang diam-diam, dan itu disengaja: ini dipanggil tiap
+-- serangan, jadi tidak ada tempat untuk melapor, dan senjata yang hilang dari
+-- data tidak boleh membuat serangan pemain berhenti sama sekali. Gerbang yang
+-- BERBICARA ada di `onSelectLoadout`, yang memakai `ownedWeapons` yang sama --
+-- jadi pilihan yang diterima di sana tidak akan pernah jatuh di sini.
+--
+-- Levelnya di-clamp ke `[1, maxLevel]`: save lama dari skema sebelumnya, atau
+-- data yang diedit tangan, tidak boleh memberi stat di luar kurva.
+function ProgressionRules.equippedWeapon(
+	data: Types.PlayerData,
+	defs: { [string]: Types.WeaponDef },
+	devAllWeapons: boolean
+): (Types.WeaponDef, number)
+	local owned = ProgressionRules.ownedWeapons(data, defs, devAllWeapons)
+	local starter = defs.weapon_starter
+
+	local def = defs[data.equippedWeapon]
+	local save = owned[data.equippedWeapon]
+	if def == nil or save == nil then
+		if starter == nil then
+			-- Tidak bisa terjadi dengan Weapons.luau yang ada sekarang, tapi
+			-- mengembalikan nil dari fungsi bertipe non-nil akan error di
+			-- pemanggil, jauh dari penyebabnya.
+			error("ProgressionRules.equippedWeapon: weapon_starter tidak ada di defs")
+		end
+		local starterSave = owned.weapon_starter
+		return starter,
+			math.clamp(if starterSave ~= nil then starterSave.level else 1, 1, starter.maxLevel)
+	end
+
+	return def, math.clamp(save.level, 1, def.maxLevel)
+end
+
+-- Tiga fungsi di bawah SENGAJA memeriksa `context.data.weapons` langsung, bukan
+-- `ownedWeapons` di atas.
+--
+-- Mereka mengubah data permanen, dan flag dev tidak boleh menyentuh jalur itu.
+-- Lewat `ownedWeapons`, `canBuy` akan menjawab "sudah kamu miliki" untuk semua
+-- senjata selama flag hidup, dan `canUpgrade` akan membolehkan pemain membayar
+-- koin sungguhan untuk menaikkan level senjata yang tidak dia miliki -- yang
+-- berarti `data.weapons[id] = { level = 2 }` masuk DataStore. Itu persis
+-- kerusakan permanen yang membuat flag ini harus hidup di memori saja.
+--
+-- Jadi batasnya: `ownedWeapons` untuk MEMAKAI, `data.weapons` untuk MEMBELI,
+-- CRAFT, dan UPGRADE.
+
 -- Upgrade: dimiliki, belum max, koin cukup (bagian 3.6).
 function ProgressionRules.canUpgrade(
 	def: Types.WeaponDef?,

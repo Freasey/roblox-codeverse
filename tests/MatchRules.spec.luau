@@ -237,4 +237,33 @@ table.insert(cases, {
 	end,
 })
 
+-- Fase loadout ---------------------------------------------------------------
+
+table.insert(cases, {
+	name = "loadout boleh diganti di Lobby dan Loadout, tidak di yang lain",
+	run = function()
+		assert(MatchRules.canSelectLoadout("Lobby"), "Lobby harus boleh")
+		assert(MatchRules.canSelectLoadout("Loadout"), "Loadout harus boleh")
+
+		-- Countdown ikut DITOLAK, dan itu titik penguncian yang sebenarnya:
+		-- 10 detik terakhir sebelum wave 1 bukan lagi waktu memilih, dan
+		-- `lockDifficulty` sudah jalan di batas itu.
+		for _, state in { "Countdown", "WaveActive", "Intermission", "Ended" } do
+			assert(not MatchRules.canSelectLoadout(state), state .. " harus ditolak")
+		end
+	end,
+})
+
+table.insert(cases, {
+	name = "state yang tidak dikenal ditolak, bukan diterima",
+	run = function()
+		-- Default-nya harus MENOLAK: state baru yang ditambahkan nanti tanpa
+		-- menyentuh daftar ini akan mengunci loadout, bukan membukanya diam-diam
+		-- di tengah match.
+		assert(not MatchRules.canSelectLoadout(""), "string kosong harus ditolak")
+		assert(not MatchRules.canSelectLoadout("loadout"), "huruf kecil harus ditolak")
+		assert(not MatchRules.canSelectLoadout("FaseBaru"), "state asing harus ditolak")
+	end,
+})
+
 return cases

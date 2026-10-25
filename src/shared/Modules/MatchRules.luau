@@ -3,12 +3,13 @@
 --
 -- Kenapa dipisah dari MatchService dan WaveService: dua service itu menyentuh
 -- Players, RunService, dan Instance, jadi tidak bisa di-require Lune dan tidak
--- bisa dites di CI. Tiga hal di bawah ini justru yang paling mudah salah dan
+-- bisa dites di CI. Empat hal di bawah ini justru yang paling mudah salah dan
 -- paling sulit dilihat dari playtest, jadi logikanya ditaruh di modul murni:
 --
 --   1. membagi jumlah musuh satu wave menurut `share` tanpa kehilangan sisa,
 --   2. mengurutkan spawn supaya tipe musuh tercampur dan lane terbagi rata,
---   3. memilih kesulitan match dari pilihan beberapa pemain yang bisa berbeda.
+--   3. memilih kesulitan match dari pilihan beberapa pemain yang bisa berbeda,
+--   4. state mana yang masih membolehkan loadout diganti.
 
 local Types = require("./Types")
 
@@ -162,6 +163,29 @@ function MatchRules.easiestDifficulty(
 	end
 
 	return bestId
+end
+
+-- State yang masih membolehkan loadout diganti: lobby, dan fase `Loadout`
+-- 20 detik sebelum hitung mundur.
+--
+-- String, bukan tipe State milik MatchService: modul ini harus tetap bisa
+-- di-require Lune.
+--
+-- Kenapa satu fungsi dan bukan `state == "Lobby" or state == "Loadout"` di
+-- tempat yang membutuhkannya: yang membutuhkannya ada DUA, di sisi yang berbeda
+-- dari jaringan. Server menolak `SelectLoadout` di luar state ini, dan client
+-- mematikan tombol Equip di luar state ini. Kalau keduanya punya daftar
+-- sendiri, selisih satu state berarti tombol yang kelihatan bisa diklik tapi
+-- selalu ditolak (atau lebih buruk: tombol mati di fase yang justru dibuat
+-- untuk menekannya). Satu daftar, dua pembaca.
+local LOADOUT_STATES: { [string]: boolean } = {
+	Lobby = true,
+	Loadout = true,
+}
+MatchRules.LOADOUT_STATES = LOADOUT_STATES
+
+function MatchRules.canSelectLoadout(state: string): boolean
+	return LOADOUT_STATES[state] == true
 end
 
 return MatchRules
