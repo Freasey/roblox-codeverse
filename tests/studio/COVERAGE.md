@@ -32,7 +32,7 @@ Arti kolom Dasar:
 > satu terhadap kode — pekerjaan tersendiri, belum dikerjakan.
 >
 > ⚠️ **Pembilangnya juga historis.** Angka ini ditulis saat harness punya tiga
-> case dan 82 assertion; sekarang lima case dan 251 assertion, dan rancangan
+> case dan 82 assertion; sekarang lima case dan 257 assertion, dan rancangan
 > ulang arena (`docs/ARENA_REDESIGN.md`) sudah menambah case `path_effects`
 > beserta cakupan baru untuk slow, zona, dan tanda yang tidak tercermin di
 > daftar per-ID di bawah. **Sumber yang benar untuk cakupan harness terkini

@@ -9,14 +9,30 @@ informasinya ikut hilang.
 **kenyataan**. Kalau keduanya berbeda, dokumen ini yang benar — perbarui dia
 tiap kali ada milestone tutup atau ada hasil playtest.
 
-Terakhir diperbarui: 2026-10-25, pada commit `fe49484`.
+Terakhir diperbarui: 2026-10-25, tepat sesudah commit `1796f1c`.
 
 ## 1. Ringkasan satu paragraf
 
 Kode untuk **M0 sampai M5 sudah ada di `main` dan CI-nya hijau**: fondasi,
 pertarungan, state machine match dengan 10 wave, Toko Match, dua boss, dan
-progres permanen plus lobby. M6 sampai M8 belum disentuh. Sebagian besar
+progres permanen plus lobby. M7 dan M8 belum disentuh. Sebagian besar
 perilaku game belum pernah dijalankan oleh seorang pemain.
+
+**M6 kodenya sudah lengkap, buktinya belum.** Lima item M6 di
+`docs/DEVELOPMENT_PLAN.md`, dan empat di antaranya ternyata sudah terpasang
+sejak milestone sebelumnya: ready check menuntut SEMUA pemain di server
+(`everyoneReady`), koin match satu kolam tim dengan reward dihitung per
+pemain, peserta yang disconnect boleh rejoin dan match dibatalkan kalau
+semuanya keluar, dan setiap remote C -> S sudah punya rate limit. Yang
+benar-benar belum ada satu baris pun cuma papan leaderboard, dan itu yang
+baru mendarat: `LeaderboardService` dengan satu OrderedDataStore per tingkat
+kesulitan, `GetLeaderboard` yang akhirnya terdaftar bersama handler-nya, dan
+panel papan di lobby.
+
+Jadi yang tersisa di M6 bukan kode, melainkan dua hal yang tidak bisa
+dikerjakan dari command line: **playtest 4 client** (MP-01 sampai MP-14) dan
+**publish**, karena OrderedDataStore tidak jalan sama sekali di place yang
+belum pernah di-publish.
 
 **Rancangan ulang arena SELESAI.** Ketujuh langkah di
 `docs/ARENA_REDESIGN.md` bagian 8 sudah mendarat: musuh yang mencapai base
@@ -44,9 +60,9 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 
 | Lapis | Cakupan | Status |
 | --- | --- | --- |
-| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit | **243 test lulus** |
+| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit, papan wave tertinggi | **256 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
-| Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave, slow dan zona dan tanda alur upgrade | **251 assertion lulus, 0 gagal, 22 di-skip** |
+| Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave, slow dan zona dan tanda alur upgrade, pendaftaran remote papan | **257 assertion lulus, 0 gagal, 22 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
 
 ### Kenapa CI hijau tidak cukup
@@ -102,9 +118,8 @@ ditukar, dan alasannya ditulis di tempatnya masing-masing.
 **Lapis 0 — sebelum Studio dibuka.**
 
 ```bash
-cd "C:\Web Program
-oblox-codeverse"
-lune run tests/run          # 243 unit test, beberapa detik
+cd "C:\Web Program\roblox-codeverse"
+lune run tests/run          # 256 unit test, beberapa detik
 lune run tests/studio/run   # harness Studio, ~130 detik
 ```
 
@@ -272,6 +287,22 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
   untuk pengecualiannya, tapi yang menyusun daftar pengecualiannya
   `CombatService`, dan bagian itu belum teruji.
 
+- **Papan wave tertinggi.** Aturannya dipatok 13 unit test
+  (`tests/LeaderboardRules.spec.luau`), termasuk yang paling mahal kalau
+  salah: **catatan tidak pernah turun**, diuji dua kali karena aturan itu
+  dipakai di dua tempat yang sifatnya berbeda -- transform `UpdateAsync` yang
+  memutuskan tulisan ke OrderedDataStore dibatalkan, dan `merge` yang menjahit
+  rekor baru ke papan di memori. Kalau keduanya tidak sepakat, papan di layar
+  bisa menunjukkan angka yang lebih tinggi daripada yang tersimpan, dan
+  selisihnya baru ketahuan setelah server restart -- papannya "turun sendiri".
+
+  Harness membuktikan dua hal saja, dan keduanya di case `boot`: remote
+  `GetLeaderboard` benar-benar terdaftar di engine sebagai RemoteFunction, dan
+  jalur tanpa OrderedDataStore menghasilkan papan kosong yang diam. **Sisanya
+  terkunci di belakang publish**, karena OrderedDataStore tidak jalan sama
+  sekali di place yang belum pernah di-publish: tidak ada satu catatan pun
+  yang pernah ditulis atau dibaca sungguhan. Lihat LB-01 sampai LB-05.
+
 - **Zona jebakan tidak punya Part.** Efeknya bekerja; tempatnya tidak terlihat.
   Jadi pemain melihat musuh melambat dan kehilangan HP tanpa sebab yang
   terlihat. Ini kekurangan yang diketahui dan dicatat di `TEST_CASES.md` bagian
@@ -298,7 +329,10 @@ test:
   sudah ada dan sudah divalidasi terhadap kontrak marker bagian 3.4.
 - **Place harus di-publish sekali** sebelum test DataStore atau persistensi apa
   pun (M5.7). DataStore tidak jalan di place yang belum pernah di-publish.
-  Prosedurnya di bagian 5.1.
+  Prosedurnya di bagian 5.1. Sejak M6 ini menghalangi satu hal lagi: papan
+  wave tertinggi memakai OrderedDataStore, jadi seluruh kelompok LB ikut
+  menunggu di sini. Sampai itu terjadi, papannya muncul di lobby dalam
+  keadaan kosong dan server mencetak satu warn per tingkat kesulitan.
 
 ### 5.1 Publish, dan main di client Roblox alih-alih di Studio
 
@@ -316,6 +350,14 @@ baru default-nya privat, dan itu sudah cukup untuk kamu mainkan sendiri — tida
 perlu dipublikkan. Sesudahnya centang **Game Settings -> Security -> Enable
 Studio Access to API Services**, restart Studio, dan warn
 `[PlayerDataService] ... data default di memori` harus hilang.
+
+Di layar yang sama, setel **Game Settings -> Players -> Max Players = 4**.
+Itu satu-satunya tempat batas pemain ditegakkan: `Config.MAX_PLAYERS` cuma
+angka yang diasumsikan rancangan (jumlah musuh per wave dan hadiah koin
+dihitung per pemain), dan tidak ada satu baris kode pun yang menolak pemain
+kelima. Kalau langkah ini terlewat, place-nya menerima default Roblox dan
+wave 1 dengan 12 pemain akan punya musuh tiga kali lipat dari yang pernah
+diuji.
 
 **Update berikutnya tidak perlu Studio lagi.** `.github/workflows/publish.yml`
 sudah lengkap; yang belum ada tiga nilai, dan ketiganya baru bisa diisi setelah
@@ -350,28 +392,38 @@ seluruhnya:
 Dari 24 case M1 yang masih manual, **21 bisa dipindah ke client**; yang tinggal
 di Studio `COMBAT-05`, `BOOT-03`, dan `BOOT-06`.
 
-**Yang justru terbuka setelah publish:** 15 case yang sekarang terkunci. Delapan
-berkode `PUB` (`PROG-14`, `PROG-15`, `DATA-02`, `DATA-03`, `DATA-04`, `DATA-05`,
-`DATA-07`, `DATA-08`) dan delapan berkode `LIVE` (`MATCH-16`, `SHOP-13`,
-`BOSS-13`, `MP-06`, `MP-07`, `MP-08`, `MP-11`, `DATA-04`) — `DATA-04` masuk
-keduanya. Yang `LIVE` itu test rejoin, dan Studio memang tidak bisa
-mensimulasikan satu pemain keluar lalu **join lagi** ke sesi yang sama.
+**Yang justru terbuka setelah publish:** 22 case yang sekarang terkunci. Lima
+belas berkode `PUB` (`PROG-14`, `PROG-15`, `PROG-25`, `DATA-02`, `DATA-03`,
+`DATA-04`, `DATA-05`, `DATA-07`, `DATA-08`, `DATA-13`, dan seluruh `LB-01`
+sampai `LB-05`) dan delapan berkode `LIVE` (`MATCH-16`, `SHOP-13`, `BOSS-13`,
+`MP-06`, `MP-07`, `MP-08`, `MP-11`, `DATA-04`) — `DATA-04` masuk keduanya. Yang
+`LIVE` itu test rejoin, dan Studio memang tidak bisa mensimulasikan satu pemain
+keluar lalu **join lagi** ke sesi yang sama.
 
-## 6. Milestone yang belum dikerjakan
+Angka itu naik dari 15 karena dua sebab yang berbeda. Lima barisnya papan
+leaderboard yang baru mendarat. Dua sisanya, `PROG-25` dan `DATA-13`, sudah
+berkode `PUB` sejak rancangan ulang arena dan tidak pernah ikut dihitung di
+sini — jadi angka lama memang sudah kurang dua sebelum M6 menyentuhnya.
+
+## 6. Milestone yang belum tutup
 
 Checklist lengkapnya ada di `docs/DEVELOPMENT_PLAN.md` bagian 4. Ringkasnya:
 
-- **M6 — Multiplayer & leaderboard.** Ready check 2-4 player, rejoin peserta,
-  `LeaderboardService` (OrderedDataStore), rate limit di semua remote.
+- **M6 — Multiplayer & leaderboard.** **Kodenya sudah lengkap** (lihat bagian
+  1); yang tersisa playtest 4 client dan publish.
 - **M7 — Polish & pengujian.** Model final dari Blender, balancing, optimasi,
   alpha test, beta test.
 - **M8 — Rilis.** Icon dan thumbnail, secret `publish.yml`, publish, tag
   `v1.0.0`.
 
-Catatan M6: `GetLeaderboard` **sengaja belum didaftarkan** di `Remotes.luau`.
-`RemoteFunction` tanpa `OnServerInvoke` membuat client yang memanggilnya
-menggantung selamanya, jadi tidak ada lebih baik daripada ada tapi mati. Lihat
-`LB-00`.
+Catatan M6: `GetLeaderboard` sekarang **sudah terdaftar** di `Remotes.luau`,
+dan sengaja baru didaftarkan bersama `LeaderboardService` yang memasang
+`OnServerInvoke`-nya. Urutan itu syarat, bukan kerapian: `RemoteFunction` yang
+ada tapi tidak punya handler membuat client yang memanggilnya menggantung
+selamanya -- tanpa error, tanpa timeout, dan tanpa petunjuk apa pun di layar.
+Alasan yang sama membuat `LeaderboardService.start()` dipanggil di
+`init.server.luau` **sebelum** gerbang arena: kalau dia di bawah, place tanpa
+`assets/Arena.rbxmx` akan punya remote tanpa handler. Lihat `LB-00`.
 
 ## 7. Utang dokumentasi yang diketahui
 
@@ -380,7 +432,7 @@ menggantung selamanya, jadi tidak ada lebih baik daripada ada tapi mati. Lihat
   dihitung sebelum `STUDIO_CHECKLIST.md` dilebur ke `TEST_CASES.md`; sekarang
   dokumennya memuat 160 case. Pembilangnya juga sudah lewat: dia ditulis untuk
   tiga case harness dengan 82 assertion, sementara sekarang ada lima case
-  dengan 251 dan tiga baris M1 yang naik jadi `OK`. Rasio maupun pembilangnya
+  dengan 257 dan tiga baris M1 yang naik jadi `OK`. Rasio maupun pembilangnya
   belum dihitung ulang; `docs/TEST_CASES.md` bagian 3.2 adalah sumber yang
   benar untuk cakupan harness.
 

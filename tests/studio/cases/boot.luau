@@ -25,6 +25,12 @@ local ALLOWED_WARNINGS = {
 	"DataStore tidak aktif",
 	-- assets/Lobby.rbxmx belum ada (M5 menyisakan ini).
 	"Lobby tidak lengkap",
+	-- Papan leaderboard butuh OrderedDataStore, yang juga tidak ada di place
+	-- yang belum di-publish. Satu warn per tingkat kesulitan, dan teksnya
+	-- menyebut tingkatnya -- jadi keduanya tidak terbaca sebagai warn identik
+	-- yang berulang oleh assertion di bawah.
+	"papan normal tidak tersedia",
+	"papan hard tidak tersedia",
 }
 
 local EXPECTED_LINES = {
@@ -35,6 +41,7 @@ local EXPECTED_LINES = {
 	"[MatchService] siap",
 	"[BossService] siap",
 	"[ProgressionService] siap",
+	"[LeaderboardService] siap",
 }
 
 -- Berapa KALI sebuah baris muncul di log, bukan cuma apakah dia ada.
@@ -181,6 +188,7 @@ T.main(function()
 	local EnemyService = require(Services.EnemyService)
 	local MapService = require(Services.MapService)
 	local MatchService = require(Services.MatchService)
+	local LeaderboardService = require(Services.LeaderboardService)
 
 	T.eq("boot.state", MatchService.getState(), "Lobby")
 	T.eq("boot.coreHpPenuh", CoreService.getHp(), CoreService.getMaxHp())
@@ -200,6 +208,39 @@ T.main(function()
 			tostring(arena.corePosition)
 		)
 	end
+
+	-- Separuh LB-00 yang bisa dibuktikan tanpa Player: remote-nya BENAR-BENAR
+	-- ada di engine, dan dia RemoteFunction. Separuh sisanya -- bahwa
+	-- InvokeServer menjawab tanpa menggantung -- butuh client, jadi tetap
+	-- manual.
+	--
+	-- Perhatikan apa yang TIDAK dibuktikan dua baris ini: `Remotes.luau`
+	-- membuat Instance-nya di lingkup modul, jadi remote ini akan ada begitu
+	-- ada satu script saja yang me-require Remotes -- bahkan kalau
+	-- LeaderboardService tidak pernah jalan. Keberadaannya karena itu bukan
+	-- bukti bahwa `OnServerInvoke` terpasang, dan remote yang ada tanpa handler
+	-- justru bentuk paling buruk: client yang memanggilnya menggantung
+	-- selamanya, tanpa error.
+	--
+	-- Yang membuktikan handler-nya terpasang adalah baris log
+	-- `[LeaderboardService] siap` di EXPECTED_LINES, karena start() yang
+	-- mencetaknya juga yang memasang handler-nya. Dua assertion ini dan baris
+	-- log itu harus dibaca bersama.
+	local getLeaderboard = game.ReplicatedStorage.Remotes:FindFirstChild("GetLeaderboard")
+	T.ok("boot.remote.getLeaderboardAda", getLeaderboard ~= nil)
+	T.ok(
+		"boot.remote.getLeaderboardRemoteFunction",
+		getLeaderboard ~= nil and getLeaderboard:IsA("RemoteFunction")
+	)
+
+	-- Tanpa OrderedDataStore, papan harus kosong dan DIAM: tabel kosong, bukan
+	-- nil dan bukan error. Inilah jalur yang dilewati tiap orang yang baru
+	-- clone repo ini, jadi dia yang paling sering dijalankan dan paling jarang
+	-- diperiksa.
+	local board = LeaderboardService.getBoard("normal")
+	T.ok("boot.papan.bukanNil", type(board) == "table")
+	T.eq("boot.papan.kosongTanpaDataStore", #board, 0)
+	T.eq("boot.papan.tingkatTakDikenalKosong", #LeaderboardService.getBoard("tidakAda"), 0)
 
 	-- Musuh belum boleh bergerak di Lobby: init.server.luau memanggil
 	-- setRunning(false) tepat setelah start(), dan ini memastikan itu memang

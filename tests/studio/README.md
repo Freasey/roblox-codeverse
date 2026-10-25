@@ -98,8 +98,8 @@ lune run tests/studio/run
 
 ## Apa yang BISA dites di sini
 
-Diverifikasi dengan lima case di `cases/`, 273 assertion (251 lulus, 0 gagal, 22
-dilewati — `boot` 29/0/0, `enemy_core` 89/0/1, `remote_reject` 33/0/13,
+Diverifikasi dengan lima case di `cases/`, 279 assertion (257 lulus, 0 gagal, 22
+dilewati — `boot` 35/0/0, `enemy_core` 89/0/1, `remote_reject` 33/0/13,
 `core_wave` 71/0/3, `path_effects` 29/0/5):
 
 - **Seluruh rantai boot `init.server.luau` di engine sungguhan** — urutan
@@ -130,6 +130,13 @@ dilewati — `boot` 29/0/0, `enemy_core` 89/0/1, `remote_reject` 33/0/13,
   melaporkannya sebagai SKIP dengan alasannya.
 - **Validasi argumen pada satu remote** (`RequestAction`), lihat batasnya di
   bawah.
+- **Pendaftaran remote papan wave tertinggi** (M6): bahwa `GetLeaderboard`
+  benar-benar ada di `ReplicatedStorage.Remotes` sebagai RemoteFunction setelah
+  boot, dan bahwa `LeaderboardService` tetap diam tanpa OrderedDataStore —
+  papannya tabel kosong, bukan nil dan bukan error. Dua-duanya di `cases/boot`.
+  Yang TIDAK bisa dibuktikan di sini: `InvokeServer` butuh client, dan satu
+  catatan pun tidak bisa ditulis atau dibaca karena place harness tidak pernah
+  di-publish.
 
 ## Apa yang TIDAK BISA, dengan buktinya
 

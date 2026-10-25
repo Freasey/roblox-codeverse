@@ -27,6 +27,7 @@ local BossService = require(Services.BossService)
 local CombatService = require(Services.CombatService)
 local CoreService = require(Services.CoreService)
 local EnemyService = require(Services.EnemyService)
+local LeaderboardService = require(Services.LeaderboardService)
 local MapService = require(Services.MapService)
 local MatchService = require(Services.MatchService)
 local PlayerDataService = require(Services.PlayerDataService)
@@ -127,6 +128,15 @@ Remotes.Events.RequestAction.OnServerEvent:Connect(function(player: Player, acti
 		end
 	end
 end)
+
+-- Papan wave tertinggi (M6). Dijalankan DI SINI, sebelum gerbang arena di
+-- bawah, dan itu bukan soal urutan yang rapi: start() inilah yang memasang
+-- `OnServerInvoke` untuk `GetLeaderboard`, dan remote yang terdaftar tanpa
+-- handler membuat client yang memanggilnya menggantung selamanya. Kalau
+-- dipindah ke bawah, place tanpa arena akan membekukan lobby tiap kali papan
+-- dibuka -- persis keadaan saat seseorang baru clone repo ini dan belum punya
+-- assets/Arena.rbxmx.
+LeaderboardService.start()
 
 -- --------------------------------------------------------------------------
 -- Gameplay

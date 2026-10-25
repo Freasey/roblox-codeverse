@@ -14,6 +14,14 @@ Config.AUTOSAVE_INTERVAL = 120 -- detik
 Config.SAVE_RETRY_COUNT = 5
 
 -- Match
+--
+-- MAX_PLAYERS adalah angka yang DIASUMSIKAN rancangan (jumlah musuh per wave
+-- dan hadiah koin dihitung per pemain, dan keduanya diuji sampai 4), tapi dia
+-- TIDAK menegakkan apa pun: batas pemain sungguhan ada di Game Settings ->
+-- Players -> Max Players di place-nya, dan itu setelan place yang tidak
+-- dikelola Rojo maupun file ini. Jangan tambahkan kode yang mencoba menyetelnya
+-- saat runtime -- yang perlu dilakukan sekali adalah menyetelnya di Studio
+-- setelah publish pertama (docs/STATUS.md bagian 5.1).
 Config.MAX_PLAYERS = 4
 Config.LAST_WAVE = 10
 

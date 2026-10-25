@@ -12,7 +12,7 @@ keputusan implementasi — pindah ke sini.
 >
 > **Tidak satu baris pun kode M1 sampai M5 pernah dimainkan sebagai game di
 > Roblox Studio.** Yang sudah hijau: `stylua --check`, `selene`,
-> `luau-lsp analyze`, 243 unit test Lune, `rojo build`, dan — sejak harness
+> `luau-lsp analyze`, 256 unit test Lune, `rojo build`, dan — sejak harness
 > `tests/studio` ada — sisi server yang dijalankan engine sungguhan dalam mode
 > Run (lihat [bagian 3.2](#32-cakupan-harness-studio)). Lolos type check bukan
 > berarti jalan di engine, dan jalan di mode Run bukan berarti bisa dimainkan:
@@ -81,8 +81,13 @@ Ringkasan apa yang bisa dikerjakan hari ini:
 | PROG | upgrade, beli, craft, reward, **seluruh pilihan alur upgrade, dan stat yang dihasilkan tiap tingkatnya** dalam satu sesi | semua yang menyangkut "keluar, join lagi, masih ada" | — |
 | MP | ready check, koin tim, 4 player | semua rejoin | — |
 | DATA | DATA-01, DATA-09a, DATA-11, DATA-12 | sisanya | — |
-| SEC | semuanya kecuali SEC-08 | — | SEC-08 |
-| LB | — | — | semuanya |
+| SEC | semuanya, SEC-08 termasuk | — | — |
+| LB | LB-00 | LB-01 sampai LB-05 (`PUB`) — OrderedDataStore butuh place yang sudah di-publish | — |
+
+Kolom terakhir **kosong seluruhnya** sejak M6 bagian leaderboard mendarat: LB
+adalah kelompok terakhir yang isinya `BELUM`, dan sekarang yang tersisa di sana
+cuma syarat publish. Kode `BELUM` tetap didefinisikan di atas karena fitur yang
+belum ada bisa muncul lagi, bukan karena ada baris yang memakainya.
 
 ## 2. Persiapan Studio
 
@@ -108,6 +113,11 @@ di memori** dan tidak pernah menulis apa pun (`loaded` di-set false sehingga
 tersimpan. Publish place-nya sekali, lalu centang Game Settings -> Security ->
 Enable Studio Access to API Services.
 ```
+
+Penolakan yang sama berlaku untuk **OrderedDataStore**, yang dipakai papan
+leaderboard. `LeaderboardService` turun ke papan kosong di memori dengan pola
+yang sama — satu warn per tingkat kesulitan, tidak ada error — jadi seluruh
+[bagian 15](#15-leaderboard-lb) kecuali LB-00 juga berkode `PUB`.
 
 Konsekuensinya: **semua baris berkode `PUB` dijamin gagal** sebelum langkah
 publish dilakukan — termasuk seluruh [bagian 17](#17-persistence-datastore-data)
@@ -193,7 +203,9 @@ Ada dua macam cakupan dari luar dokumen ini, dan keduanya tidak boleh
 dicampur. [Bagian 3.1](#31-tidak-perlu-dites-lagi-di-sini) adalah hal yang
 **tidak perlu dites lagi** sama sekali. [Bagian 3.2](#32-cakupan-harness-studio)
 adalah cakupan **sebagian**: dia memendekkan kerja tangan untuk beberapa baris
-M1, tapi tidak satu pun dari baris itu jadi hijau karenanya.
+M1, satu baris M5, dan — sejak papan leaderboard mendarat — separuh LB-00 di
+M6. Empat baris sudah hijau karenanya dan disebut satu per satu di situ;
+sisanya tetap `-`, karena sebagian sesuai bukan `OK`.
 
 ### 3.1 Tidak perlu dites lagi di sini
 
@@ -203,7 +215,7 @@ regresi.
 
 | Yang sudah terverifikasi | Di mana | Catatan |
 |---|---|---|
-| Lint, format, type check, 243 unit test Lune, `rojo build` | CI (`.github/workflows/ci.yml`) | Modul murni di `src/shared/Modules` sudah punya test: pembagian musuh per wave jumlahnya persis `Balance.enemyCount`, ambang boss cuma terpicu sekali, seluruh daftar penolakan toko dan progres, kurva level yang aman terhadap XP inf/NaN, material drop boss cocok dengan bahan craft, daftar state yang membolehkan loadout diganti (`MatchRules.canSelectLoadout`), kedua keadaan flag `DEV_ALL_WEAPONS` di `ProgressionRules.ownedWeapons` / `.equippedWeapon`, seluruh aturan alur upgrade — kapan pilihan ditagih (`pathChoiceRequired`), urutan pemeriksaan `canUpgrade` (alur sebelum koin, level maksimum sebelum keduanya), alur yang tidak bisa diganti, dan alur yang **tidak** tersimpan sebelum titik percabangan (`pathToApply`) — dan sejak langkah 7, aritmetika efek alur yang punya umur di `tests/CombatEffects.spec.luau`: terkuat-menang di `CombatEffects.merge`, slow zona yang diambil terkuat sementara dps-nya dijumlahkan, pemilihan korban splash yang mengecualikan target utama (`withinRadius`), dan urutan deterministik `nearest` untuk penularan tanda. Plus dua test yang menjaga kosakata `effects` dari **dua arah**: kunci di `Weapons.luau` yang tidak ada di `Balance.PATH_EFFECT_KEYS` ditolak, dan kunci di `PATH_EFFECT_KEYS` yang tidak dipakai satu alur pun juga ditolak — yang pertama menangkap salah tulis yang diam-diam tidak pernah terbaca, yang kedua menangkap kosakata mati yang tetap terbaca sebagai janji. |
+| Lint, format, type check, 256 unit test Lune, `rojo build` | CI (`.github/workflows/ci.yml`) | Modul murni di `src/shared/Modules` sudah punya test: pembagian musuh per wave jumlahnya persis `Balance.enemyCount`, ambang boss cuma terpicu sekali, seluruh daftar penolakan toko dan progres, kurva level yang aman terhadap XP inf/NaN, material drop boss cocok dengan bahan craft, daftar state yang membolehkan loadout diganti (`MatchRules.canSelectLoadout`), kedua keadaan flag `DEV_ALL_WEAPONS` di `ProgressionRules.ownedWeapons` / `.equippedWeapon`, seluruh aturan alur upgrade — kapan pilihan ditagih (`pathChoiceRequired`), urutan pemeriksaan `canUpgrade` (alur sebelum koin, level maksimum sebelum keduanya), alur yang tidak bisa diganti, dan alur yang **tidak** tersimpan sebelum titik percabangan (`pathToApply`) — dan sejak langkah 7, aritmetika efek alur yang punya umur di `tests/CombatEffects.spec.luau`: terkuat-menang di `CombatEffects.merge`, slow zona yang diambil terkuat sementara dps-nya dijumlahkan, pemilihan korban splash yang mengecualikan target utama (`withinRadius`), dan urutan deterministik `nearest` untuk penularan tanda. Plus dua test yang menjaga kosakata `effects` dari **dua arah**: kunci di `Weapons.luau` yang tidak ada di `Balance.PATH_EFFECT_KEYS` ditolak, dan kunci di `PATH_EFFECT_KEYS` yang tidak dipakai satu alur pun juga ditolak — yang pertama menangkap salah tulis yang diam-diam tidak pernah terbaca, yang kedua menangkap kosakata mati yang tetap terbaca sebagai janji. Sejak M6 bagian leaderboard, ditambah tiga belas test `tests/LeaderboardRules.spec.luau` untuk aturan papan wave tertinggi: catatan yang tidak pernah turun dan yang menolak wave 0, negatif, serta NaN (`isRecord`), pemecah seri `userId` yang membuat urutan papan deterministik walau dua pemain punya wave sama, `rank` yang mengembalikan daftar baru dan **tidak** mengurutkan daftar masukan di tempat, dan satu test yang mengikat `merge` ke `isRecord` supaya keduanya tidak bisa berbeda pendapat — kalau berbeda, papan di layar menunjukkan angka yang tidak pernah tersimpan, dan selisihnya baru ketahuan setelah server restart. |
 | **Relative require jalan di engine Roblox** (DEVELOPMENT_PLAN.md bagian 1.5) | Playtest Studio pertama, lalu tiap run harness (`boot.log: [CodeVerse] relative require OK`) | Place lokal dijalankan dan eksekusi sampai masuk ke `PlayerDataService`, artinya seluruh rantai require di atasnya sukses — termasuk `require(Shared.Config)`, dan `Config.luau` baris 5 adalah `require("./Modules/Types")`. Rencana cadangan di bagian 1.5 **tidak** dipakai. |
 | **API web Roblox tidak boleh dipanggil di module scope** | Playtest Studio pertama | `GetDataStore` dulu dipanggil di module scope `PlayerDataService`; di place yang belum pernah di-publish, Roblox melempar error tepat di baris itu, require-nya gagal, dan SELURUH script server mati sebelum satu baris pun jalan — dengan pesan "Requested module experienced an error while loading" yang tidak menunjuk ke penyebabnya. Sudah diperbaiki jadi lazy + `pcall`. **Aturan ini berlaku untuk semua kode berikutnya:** `DataStoreService`, `OrderedDataStore`, `MessagingService`, `HttpService`, `MarketplaceService`, dan sejenisnya hanya dipanggil di dalam fungsi. |
 
@@ -225,7 +237,7 @@ Humanoid, tidak ada input, tidak ada kamera, dan tidak ada satu pun
 menyebut HUD, panel, bar HP, klik, atau posisi karakter berada di luar
 jangkauannya secara permanen — bukan karena harness-nya belum selesai.
 
-Run terakhir: **251 assertion lulus, 0 gagal, 22 dilewati, exit 0**, dari lima
+Run terakhir: **257 assertion lulus, 0 gagal, 22 dilewati, exit 0**, dari lima
 case: `boot`, `enemy_core`, `remote_reject`, `core_wave`, dan `path_effects`.
 Yang dilewati itu **bukan lulus**, dan kedua puluh duanya punya **tiga** sebab
 yang berbeda — dulu dua, dan yang ketiga datang bersama `path_effects`.
@@ -263,6 +275,29 @@ tetap tugas playtest manusia (COMBAT-18 sampai COMBAT-22).
 Angka 13, 4, 5, dan 22 semuanya benar dan bukan salah tulis: 13 + 4 + 5 = 22,
 dan tiga angka pertama itu tiga sebab yang berbeda, bukan tiga potongan dari
 satu sebab.
+
+Keenam assertion yang **baru** di run terakhir seluruhnya di case `boot`, dan
+isinya papan leaderboard. Yang dibuktikan ada dua hal. Pertama, remote-nya
+**benar-benar terdaftar di engine** sesudah boot dan dia `RemoteFunction`,
+bukan `RemoteEvent` (`boot.remote.getLeaderboardAda`,
+`boot.remote.getLeaderboardRemoteFunction`), dan `[LeaderboardService] siap`
+ikut muncul di jejak log boot. Kedua, **jalur tanpa DataStore diam**:
+`LeaderboardService.getBoard("normal")` mengembalikan tabel kosong — bukan
+`nil`, bukan error — dan tingkat yang tidak dikenal juga
+(`boot.papan.bukanNil`, `boot.papan.kosongTanpaDataStore`,
+`boot.papan.tingkatTakDikenalKosong`). Itu jalur yang dilewati setiap orang
+yang baru clone repo ini, jadi dia yang paling sering jalan dan paling jarang
+diperiksa. Dua warn ikut masuk daftar warn yang diizinkan di `boot` — `papan
+normal tidak tersedia` dan `papan hard tidak tersedia` — karena
+OrderedDataStore tidak ada di place yang belum di-publish; teksnya menyebut
+tingkatnya, jadi keduanya tidak terbaca sebagai warn identik yang berulang.
+
+Dua hal soal papan yang **tidak** bisa dibuktikan harness, dan keduanya bukan
+karena harness-nya kurang. `InvokeServer` butuh client, jadi separuh LB-00 —
+bahwa panggilannya kembali tanpa menggantung — tetap kerja tangan. Dan
+OrderedDataStore butuh place yang sudah di-publish, jadi LB-01 sampai LB-05
+tidak punya tempat penyimpanan untuk diuji sama sekali: yang dibuktikan di
+sini justru bahwa ketiadaan itu tidak menjatuhkan apa pun.
 
 Akibatnya untuk kolom Status: **tiga baris M1 dan satu baris M5 dibuktikan
 seluruhnya dan sudah `OK`** — WAVE-12, CORE-04, CORE-06, dan COMBAT-25 (zona
@@ -304,6 +339,7 @@ berdiri sendiri, supaya kerja tangannya lebih pendek dan bukan diulang dari nol.
 | COMBAT-21 | Pemilihan musuh terdekat untuk penularan tanda dipatok unit test `CombatEffects.nearest`, termasuk pemecah seri lewat id yang membuat hasilnya deterministik walau dua musuh berjarak sama persis. Dan bahwa tanda yang menempel benar-benar mengalikan damage dipatok `tanda.damageDikaliTanpaPemain` di engine | Siapa yang **ditulari**, dan bahwa target utama tidak ikut terpilih dua kali: penularannya dipasang `CombatService.onAttack`, yang butuh Player (`tanda.menularKeMusuhTerdekat` SKIP) |
 | COMBAT-23 | Slow benar-benar sampai ke gerak Part, bukan cuma ke angka: satu musuh diukur di dua jendela yang sama panjang, dan rasio jarak tempuhnya **0.36** untuk pengali 0.40 (`slow.jarakTurunSesudahDiperlambat`). Musuhnya juga tidak berhenti total (`slow.musuhTidakBerhentiTotal`), yang menutup "pengalinya dipakai sebagai pengganti kecepatan". Dan pukulan **lemah** tidak membatalkan slow kuat yang masih aktif (`slow.pukulanLemahTidakMembatalkan`), jadi `applySlow` terbukti lewat `CombatEffects.merge` dan bukan menimpa langsung | Bahwa **serangan pemain** yang memasangnya: harness memanggil `EnemyService.applySlow` langsung, sementara di match angkanya datang dari `stats.effects.slowMult` lewat `onAttack`. Dan bahwa pemain **melihat** musuh melambat |
 | COMBAT-24 | Zona memberi damage **sebanding waktu dan bukan sekali habis** (`zona.damageSebandingWaktuBukanSekaliHabis`), HP musuh turun tanpa ada yang menyerangnya (`zona.hpMusuhTurunTanpaDiserang`), zona di luar radius tidak kena (`zona.diLuarRadiusTidakKena`), dan ketiga API-nya aman untuk id musuh yang sudah mati (`jaga.efekPadaIdMatiTidakError`, `jaga.posisiIdMatiNil`) | Bahwa **tembakan pemain** yang meninggalkan zonanya, bahwa zona cuma lahir dari serangan yang mengenai sesuatu, dan bahwa perlambatan zonanya terlihat. Harness memanggil `EnemyService.addZone` langsung di titik yang dia pilih sendiri |
+| LB-00 | Remote `GetLeaderboard` **ada di `ReplicatedStorage/Remotes` sesudah boot** dan dia `RemoteFunction` (`boot.remote.getLeaderboardAda`, `boot.remote.getLeaderboardRemoteFunction`). Perhatikan apa yang dua baris itu TIDAK buktikan: `Remotes.luau` membuat Instance-nya di lingkup modul, jadi remote ini ada begitu ada satu script saja yang me-require `Remotes` — bahkan kalau `LeaderboardService` tidak pernah jalan. Yang membuktikan `OnServerInvoke` terpasang adalah baris log `[LeaderboardService] siap`, karena `start()` yang mencetaknya juga yang memasangnya; ketiganya harus dibaca bersama. Papan kosongnya juga sudah dipatok (`boot.papan.*`) | Bahwa `InvokeServer("normal")` **kembali** dan tidak menggantung: itu butuh client, dan mode Run tidak punya satu pun |
 
 Tiga belas baris M1 sisanya **tidak disentuh harness sama sekali** dan dikerjakan
 dari nol: BOOT-03 (butuh map-nya dihilangkan, dan menilai HUD), WAVE-07, WAVE-13,
@@ -351,12 +387,23 @@ tapi tabel itu tidak menyediakan jalurnya (alasan lengkap di
 | `CraftWeapon` | C → S | `weaponId` | 2/detik | State `Lobby`; belum dimiliki; `acquire.method == "craft"`; material cukup |
 | `ActionResult` ★ | S → C | `{ action, ok, reason }` | — | — |
 | `GetProfile` | C → S (function) | tidak menerima argumen | 2/detik | Selalu mengembalikan data pemain yang memanggil; yang kena throttle dibalas `nil` |
+| `GetLeaderboard` | C → S (function) | `difficultyId` → `{ { userId, name, wave } }` atau `nil` | 2/detik | Tingkat kesulitan harus ada di `Difficulties` (`LeaderboardRules.normalizeDifficulty`) — id dari client dipakai **menyusun nama OrderedDataStore**, jadi string apa pun yang lolos berarti satu store baru per tebakan client. Yang kena throttle dan tingkat yang tidak dikenal sama-sama dibalas `nil`, bukan error. `OnServerInvoke`-nya **tidak pernah yield**: dia menjawab dari papan yang sudah ada di memori dan paling banyak **menjadwalkan** pembacaan ulang, dengan jarak minimum 15 detik per tingkat |
 
-**`GetLeaderboard` dari tabel bagian 3.6 sengaja BELUM didaftarkan.** Itu
-milestone M6, dan `RemoteFunction` tanpa `OnServerInvoke` membuat client yang
-memanggilnya **menggantung selamanya**. Jangan mengetesnya dan menyimpulkan bug:
-`game.ReplicatedStorage.Remotes.GetLeaderboard` memang `nil` sekarang. Yang
-dites adalah SEC-08, dan statusnya `BLOK` sampai `LeaderboardService` ada.
+**`GetLeaderboard` sekarang terdaftar — bersama handler-nya, bukan
+sebelumnya.** Urutan itu syarat, bukan kebetulan: `RemoteFunction` yang sudah
+ada di `ReplicatedStorage` tapi belum punya `OnServerInvoke` membuat client
+yang memanggilnya **menggantung selamanya**, tanpa error dan tanpa timeout.
+Jadi namanya baru ditambahkan ke `FUNCTION_NAMES` di `Remotes.luau` pada
+langkah yang sama dengan `LeaderboardService.start()`, yang memasang
+handler-nya — dan `init.server.luau` memanggil `start()` itu **sebelum**
+gerbang arena, supaya place tanpa `assets/Arena.rbxmx` tidak punya remote yang
+terdaftar tanpa handler.
+
+Harness tidak bisa menjaga pasangan itu secara langsung, dan itu perlu
+disadari: `Remotes.luau` membuat Instance remote-nya di lingkup modul, jadi
+`boot.remote.getLeaderboardAda` akan tetap hijau walaupun `start()` tidak
+pernah dipanggil. Yang menjaganya baris log `[LeaderboardService] siap` di case
+yang sama. Yang mengetesnya dengan tangan LB-00 dan SEC-08.
 
 Seluruh remote C → S di tabel ini punya rate limit. `RequestAction` dan
 `GetProfile` dulu tidak (temuan T6); registry-nya ada di `init.server.luau`, bukan
@@ -1353,19 +1400,37 @@ Acuan: DEVELOPMENT_PLAN.md bagian 3.3 (aturan join dan rejoin), M6.
 
 ## 15. Leaderboard (LB)
 
-**Seluruh kelompok ini `BELUM`.** `LeaderboardService` belum ada,
-`GetLeaderboard` belum didaftarkan di `Remotes.luau`, dan tidak ada papan di
-lobby. Statusnya `BLOK` sampai M6 dikerjakan. Barisnya ditulis sekarang supaya
-kriteria M6 punya test case dan supaya tidak ada yang lupa apa yang harus jalan.
+**Kelompok ini tidak lagi `BELUM`.** `LeaderboardRules`,
+`LeaderboardService`, remote `GetLeaderboard`, dan panel papan di lobby sudah
+ada. Yang menghalangi sekarang satu hal, dan bukan kodenya: **OrderedDataStore
+ditolak di place yang belum pernah di-publish**, alasan yang sama persis dengan
+DataStore biasa —
+[kotak bagian 2.2](#22-kotak-datastore--baca-sebelum-menyalahkan-kode) berlaku
+apa adanya untuk papan ini. Jadi LB-01 sampai LB-05 berkode `PUB`. Tanpa
+publish, papannya **kosong tapi diam** — tabel kosong, satu warn per tingkat
+kesulitan, tidak ada error dan tidak ada yang menggantung — dan itu yang benar,
+bukan bug yang perlu dicatat.
+
+LB-00 bisa dijalankan sekarang, dan separuhnya sudah dijaga harness Studio
+(lihat [bagian 3.2](#32-cakupan-harness-studio)).
+
+Bentuk papannya, supaya langkah di bawah tidak perlu menebak: panel ada di sisi
+**kanan** layar dan cuma terlihat saat state `Lobby` dan `Loadout` — dua state
+yang sama dengan panel lobby (`MatchRules.canSelectLoadout`). Sisi kanan itu
+juga dipakai panel toko, tapi toko cuma muncul saat `Intermission`, jadi
+keduanya tidak pernah tampil bersamaan. Dua tab, **Normal** dan **Hard**,
+sepuluh baris berformat `1.  Nama  --  wave 7`, dan baris milik pemain sendiri
+diwarnai aksen. Papannya diminta ulang saat start, saat ganti tab, saat state
+kembali ke `Lobby`, dan tiap 20 detik selama panel terlihat.
 
 | ID | Prakondisi | Langkah | Hasil yang diharapkan | Milestone | Jalankan? | Status |
 |---|---|---|---|---|---|---|
-| LB-00 | — | `print(game.ReplicatedStorage.Remotes:FindFirstChild("GetLeaderboard"))` dari command bar client | Setelah M6: bukan `nil`, dan `R.GetLeaderboard:InvokeServer("normal")` mengembalikan data tanpa menggantung. Sekarang: `nil`, dan itu **disengaja** — `RemoteFunction` tanpa `OnServerInvoke` membuat client yang memanggilnya menggantung selamanya | M6 | BELUM | - |
-| LB-01 | API Services aktif; papan leaderboard ada di lobby | Selesaikan satu match di `normal` sampai wave tertentu, kembali ke lobby | Wave tertinggi player tercatat dan tampil di papan `normal` dengan nama player | M6 | BELUM | - |
-| LB-02 | `hard` sudah terbuka | Selesaikan satu match di `hard` dengan wave berbeda dari catatan `normal` | Catatan `hard` dan `normal` terpisah; wave di `hard` tidak menimpa catatan `normal` dan sebaliknya | M6 | BELUM | - |
-| LB-03 | Sudah ada catatan wave tinggi (misal wave 8) | Selesaikan match baru yang berakhir di wave lebih rendah (misal wave 3) | Catatan di papan tetap wave 8; tidak turun | M6 | BELUM | - |
-| LB-04 | Papan terlihat di lobby, server tidak di-restart | Selesaikan match yang memecahkan rekor, kembali ke lobby | Papan ikut terupdate tanpa perlu restart server atau rejoin | M6 | BELUM | - |
-| LB-05 | 2 client dengan wave tertinggi berbeda | Lihat papan dari kedua client | Urutan sesuai wave tertinggi (yang lebih tinggi di atas); angka tiap player benar | M6 | BELUM | - |
+| LB-00 | — | `print(game.ReplicatedStorage.Remotes:FindFirstChild("GetLeaderboard"))` lalu `print(game.ReplicatedStorage.Remotes.GetLeaderboard:InvokeServer("normal"))`, dua-duanya dari command bar client | Yang pertama mencetak remote-nya, bukan `nil`. Yang kedua **kembali**, dan mengembalikan tabel — kosong kalau place belum di-publish, dan itu benar. Yang dinilai di sini bukan isinya tapi bahwa panggilannya selesai: `OnServerInvoke` menjawab dari papan di memori dan tidak pernah yield, jadi tidak ada jalur yang bisa menggantungkan client. Separuh pertama sudah dipatok harness (`boot.remote.getLeaderboardAda`, `boot.remote.getLeaderboardRemoteFunction`) | M6 | solo | - |
+| LB-01 | API Services aktif; panel papan terlihat di lobby, tab **Normal** | Selesaikan satu match di `normal` sampai wave tertentu, kembali ke lobby | Wave tertinggi player tercatat dan tampil di papan `normal` dengan nama player. Pencatatannya terjadi saat match selesai, untuk peserta yang **masih terhubung** — peserta yang keluar di tengah match sudah dicatat sendiri saat dia keluar, dengan wave yang dia capai saat itu | M6 | PUB | - |
+| LB-02 | `hard` sudah terbuka | Selesaikan satu match di `hard` dengan wave berbeda dari catatan `normal`, lalu bandingkan kedua tab | Catatan `hard` dan `normal` terpisah; wave di `hard` tidak menimpa catatan `normal` dan sebaliknya. Pemisahnya bukan filter saat membaca melainkan **store yang berbeda**: `HighestWave_v1_normal` dan `HighestWave_v1_hard` (`LeaderboardRules.storeNameFor`). Yang dicari kalau baris ini gagal: sepuluh teratas satu tab berisi catatan tingkat yang lain | M6 | PUB | - |
+| LB-03 | Sudah ada catatan wave tinggi (misal wave 8) | Selesaikan match baru yang berakhir di wave lebih rendah (misal wave 3), lihat papan, lalu ulangi setelah restart server | Catatan di papan tetap wave 8; tidak turun — di papan yang tampil **maupun** setelah restart. Dua tempat itu memang dua pembukuan yang berbeda (papan memori lewat `merge`, penyimpanan lewat transform `UpdateAsync`), dan keduanya memakai `isRecord` yang sama. Papan yang "turun sendiri" baru sesudah restart berarti keduanya tidak lagi sepakat | M6 | PUB | - |
+| LB-04 | Papan terlihat di lobby, server tidak di-restart | Selesaikan match yang memecahkan rekor, kembali ke lobby | Papan ikut terupdate tanpa perlu restart server atau rejoin, paling lambat pada permintaan berikutnya (panel meminta ulang saat state kembali ke `Lobby`, dan tiap 20 detik sesudahnya). Rekor baru **dijahit ke papan memori**, bukan memicu pembacaan ulang OrderedDataStore — jadi angka yang muncul datang dari `merge`, bukan dari `GetSortedAsync` | M6 | PUB | - |
+| LB-05 | 2 client dengan wave tertinggi berbeda | Lihat papan dari kedua client, di tab yang sama | Urutan sesuai wave tertinggi (yang lebih tinggi di atas); angka tiap player benar; **kedua client melihat urutan yang sama**, dan baris milik pemain yang sedang melihat diwarnai aksen di masing-masing client. Dua pemain yang wave-nya kebetulan sama tidak boleh bertukar baris saat papan di-refresh — pemecah serinya `userId` menaik | M6 | PUB+2P | - |
 
 ## 16. Keamanan remote (SEC)
 
@@ -1399,13 +1464,13 @@ dimiliki, koin kurang). Jadi "tidak ada `ActionResult`" bukan kegagalan.
 | SEC-05 | State `Lobby` | `R.UpgradeWeapon:FireServer()`, `FireServer(42)`, `FireServer("weapon_tidak_ada")`, `FireServer("weapon_ranged")` tanpa memilikinya, lalu spam 200x dengan senjata milik saat koin cuma cukup untuk satu level. Lalu argumen **kedua**: `FireServer("weapon_starter", {})`, `FireServer("weapon_starter", 1)`, `FireServer("weapon_starter", "a", "b")`, dan `FireServer("weapon_starter", "none")` | Hanya senjata yang dimiliki, belum level 10, dan koin cukup yang naik level. Spam tidak menaikkan beberapa level dengan bayar sekali. Koin permanen tidak negatif. Untuk argumen kedua: `pathId` yang bukan string **dibuang jadi nil, bukan membatalkan aksinya** — jadi `{}` dan `1` di level yang tidak butuh pilihan alur tetap **menaikkan level** dan itu benar, karena client lama yang cuma mengirim `weaponId` harus tetap bisa upgrade. Argumen ketiga dan seterusnya diabaikan seluruhnya. `"none"` diperlakukan **sama dengan tidak mengirim apa pun**, bukan sebagai id alur yang dicari di `def.paths`: dia nilai sentinel "belum memilih", dan menerimanya sebagai pilihan berarti pemain bisa "memilih" untuk tidak punya alur di level 4 dan lolos dari titik percabangan. Di level 3 tanpa alur, keempatnya ditolak dengan pesan "Pilih dulu" dari PROG-19, dan `path` tetap `"none"` | M6 | solo | - |
 | SEC-06 | State `Lobby`, `weapon_ranged` belum dimiliki | `R.BuyWeapon:FireServer()`, `FireServer(-1)`, `FireServer("weapon_tidak_ada")`, `FireServer("weapon_starter")` (sudah dimiliki), `FireServer("weapon_boss_a")` (harus di-craft), lalu spam 100x `FireServer("weapon_ranged")` saat koin cuma cukup satu kali | Hanya senjata yang memang dijual, belum dimiliki, dan koin cukup yang masuk. Spam tidak memotong koin dua kali. Senjata craft-only tidak bisa dibeli dengan koin | M6 | solo | - |
 | SEC-07 | State `Lobby`, `material_a` cukup untuk satu craft | `R.CraftWeapon:FireServer()`, `FireServer(-1)`, `FireServer("weapon_tidak_ada")`, `FireServer("weapon_ranged")` (bukan senjata craft), lalu spam 100x `FireServer("weapon_boss_a")` | Hanya senjata craft yang resepnya terpenuhi yang masuk. Spam tidak menghasilkan dua senjata dan material tidak jadi negatif | M6 | solo | - |
-| SEC-08 | — | Lihat LB-00. `GetLeaderboard` belum ada, jadi `R.GetLeaderboard:InvokeServer(...)` error di **client** sebelum menyentuh server | Setelah M6: mengembalikan data valid atau menolak dengan rapi (nil / tabel kosong), tidak pernah error; panggilan berlebih di-rate-limit dan tidak membanjiri OrderedDataStore | M6 | BELUM | - |
+| SEC-08 | State apa pun; place boleh belum di-publish | `R.GetLeaderboard:InvokeServer()`, `InvokeServer(nil)`, `InvokeServer(-1)`, `InvokeServer("tidakAda")`, `InvokeServer({})`, `InvokeServer("normal", "hard")`, lalu `for _ = 1, 100 do R.GetLeaderboard:InvokeServer("normal") end` | Tidak pernah error — tidak di client, tidak di server. Tingkat yang tidak dikenal (termasuk `nil`, angka, dan tabel) dibalas **`nil`**, bukan error dan bukan tabel kosong: id itu dipakai menyusun nama OrderedDataStore, jadi yang tidak ada di `Difficulties` harus berhenti di gerbang. Panggilan yang kena throttle (**2/detik**) juga dibalas `nil`, dengan alasan yang sama seperti `GetProfile` di SEC-10 — `error()` di dalam `OnServerInvoke` muncul di client sebagai error yang tidak bisa dia tangani dengan rapi, dan client memperlakukan `nil` sebagai "papan belum ada" lalu membiarkan papan lamanya. Spam 100x **tidak membanjiri OrderedDataStore**: `OnServerInvoke` menjawab dari papan di memori dan cuma menjadwalkan pembacaan ulang, dengan jarak minimum **15 detik** per tingkat, jadi seluruh spam itu menghasilkan paling banyak satu `GetSortedAsync`. Argumen kedua dan seterusnya diabaikan | M6 | solo | - |
 | SEC-09 | State apa pun | `R.RequestAction:FireServer()`, `FireServer(-1)`, `FireServer("aksi_tidak_ada")`, `FireServer({})`, `FireServer("claimDailyBonus")`, lalu spam 500x | Aksi yang tidak dikenal diabaikan tanpa error dan tanpa `ActionResult`. `"claimDailyBonus"` tidak memberi koin karena `lastLogin` baru di-set saat load, jadi selisihnya belum lewat 86400 detik — itu benar. Spam 500x **di-throttle 2/detik** — sisanya diabaikan tanpa error dan tanpa `ActionResult`, dan tidak ada perubahan data sama sekali | M6 | solo | - |
 | SEC-10 | State apa pun, dua player di server | `R.GetProfile:InvokeServer()`, `InvokeServer(nil)`, `InvokeServer(-1)`, `InvokeServer(<UserId player lain>)`, lalu panggil 100x berturut-turut | Yang dikembalikan **selalu** data player yang memanggil — fungsinya tidak menerima argumen sama sekali, jadi apa pun yang dikirim diabaikan. Tidak pernah error. Pemanggilan 100x berturut-turut **di-throttle 2/detik**, dan yang kena throttle mengembalikan `nil` — bukan error, supaya client yang menunggu nilai balik tidak kena error yang tidak bisa dia tangani. Catatan: kalau data pemain belum siap, pemanggilan bisa menggantung sampai 90 detik lalu juga mengembalikan `nil` — itu batas yang disengaja, bukan hang, dan dari sisi client dua-duanya terbaca sama: `ProfileStore` tetap menunggu `DataLoaded` | M6 | solo | - |
 | SEC-11 | 2 client, match berjalan | Dari satu client, spam seluruh remote C → S bergantian terus-menerus selama 30 detik | Server tetap responsif untuk client kedua (musuh tetap bergerak, HUD tetap update); pelaku di-throttle di **setiap** remote C → S; tidak ada error di Output server | M6 | 2P | - |
 | SEC-12 | Match berjalan | Dari command bar client, ubah angka di salinan modul shared yang ter-replikasi ke client (misal `require(game.ReplicatedStorage.Shared.Modules.Weapons).weapon_starter.baseDamage = 9999`), lalu serang musuh | Damage yang masuk **tidak berubah** — server memakai salinan modulnya sendiri dan tidak pernah percaya angka dari client. Begitu juga harga di toko dan di panel lobby: mengubahnya di client cuma mengubah teks tombol, pembeliannya tetap divalidasi server | M6 | solo | - |
 | SEC-13 | Match berjalan | Panggil `:FireServer()` pada remote yang arahnya **S → C**: `R.MatchState`, `R.MatchCoins`, `R.MatchResult`, `R.EnemyHit`, `R.ShopState`, `R.BossState`, `R.ShowInfoCard`, `R.ActionResult`, `R.DataLoaded`, `R.DataChanged` | Tidak terjadi apa pun dan **tidak ada error di Output server** — tidak ada satu pun dari remote itu yang punya `OnServerEvent` tersambung. Yang dicari di sini adalah remote S → C yang diam-diam dipakai dua arah | M6 | solo | - |
-| SEC-14 | Inventaris, bukan percobaan | Bandingkan daftar remote C → S di `Remotes.luau` dengan registry `RateLimit` di tiap service dan di `init.server.luau` | Setiap remote C → S punya rate limit: `Attack` 20/detik; `SetReady`, `SelectLoadout`, `BuyShopItem`, `UpgradeWeapon`, `BuyWeapon`, `CraftWeapon`, `RequestAction`, `GetProfile` 2/detik. Tidak ada yang tertinggal — itu item M6 "Rate limit di semua remote". `GetLeaderboard` belum didaftarkan sama sekali (lihat LB-00), jadi dia belum termasuk hitungan ini | M6 | solo | - |
+| SEC-14 | Inventaris, bukan percobaan | Bandingkan daftar remote C → S di `Remotes.luau` dengan registry `RateLimit` di tiap service dan di `init.server.luau` | Setiap remote C → S punya rate limit: `Attack` 20/detik; `SetReady`, `SelectLoadout`, `BuyShopItem`, `UpgradeWeapon`, `BuyWeapon`, `CraftWeapon`, `RequestAction`, `GetProfile`, `GetLeaderboard` 2/detik. Tidak ada yang tertinggal — itu item M6 "Rate limit di semua remote". Registry `GetLeaderboard` ada di `LeaderboardService`, bukan di `init.server.luau`, karena wiring remote-nya juga di situ | M6 | solo | - |
 
 ## 17. Persistence DataStore (DATA)
 
@@ -1483,9 +1548,9 @@ bisa dicentang — tapi dia juga tidak sedang gagal.
 | M5 | Senjata `weapon_ranged` dan `weapon_boss_a` jalan di CombatService | PROG-10, COMBAT-06, COMBAT-07, COMBAT-08, COMBAT-09, MATCH-18, MATCH-22, MATCH-23 | COMBAT-06 butuh `LAG`; MATCH-22 dan MATCH-23 butuh `solo+EDIT` (`Config.DEV_ALL_WEAPONS`) dan **harus dibalikkan sebelum commit**. Ketiganya mengukur hal yang sama dari sisi yang berbeda: senjata yang terpilih benar-benar sampai ke perhitungan damage, bukan cuma ke teks tombol |
 | M6 | Playtest 4 player lewat Studio (Test → Clients and Servers) lancar | MP-01, MP-02, MP-03, MP-04, MP-05, MP-12, MP-13, MP-14, BOSS-04, BOSS-11, WAVE-06, WAVE-08, WAVE-10, DATA-01 | Semuanya butuh `2P`/`4P`, dan itu memang isi kriterianya. MATCH-16 (pemain join saat `Loadout` atau `Countdown`) berkode `LIVE` karena Studio tidak bisa menambah pemain di tengah sesi |
 | M6 | Rejoin di tengah match berhasil | MP-06, MP-07, MP-08, MP-09, MP-10, MP-11, DATA-04, DATA-05, DATA-07, DATA-08 | MP-09 dan MP-10 bisa dites sekarang dengan `2P`. **Sisanya `LIVE`** — Studio tidak bisa mensimulasikan join ulang dengan UserId yang sama |
-| M6 | Leaderboard (`LeaderboardService` + papan di lobby) | LB-00 sampai LB-05, SEC-08 | **Seluruhnya `BELUM`** — belum ada satu baris kode pun |
+| M6 | Leaderboard (`LeaderboardService` + papan di lobby) | LB-00 sampai LB-05, SEC-08 | **LB-01 sampai LB-05 berkode `PUB`** — OrderedDataStore ditolak di place yang belum pernah di-publish, jadi kriteria ini tidak bisa ditutup sampai langkah publish dilakukan, persis seperti baris M5 "keluar, join lagi". Yang berubah: halangannya bukan lagi kode yang belum ada. LB-00 dan SEC-08 bisa dijalankan sekarang (`solo`), dan separuh LB-00 sudah dipatok harness Studio |
 | M6 | Rate limit di semua remote | SEC-14, SEC-01 sampai SEC-07, SEC-11 | — |
-| M6 | Tidak ada error di output server | MP-03, MP-12, SEC-01 sampai SEC-14, DATA-09a, DATA-09b, BOOT-01 | SEC-08 (`BELUM`), DATA-09b (`LIVE`) |
+| M6 | Tidak ada error di output server | MP-03, MP-12, SEC-01 sampai SEC-14, DATA-09a, DATA-09b, BOOT-01 | DATA-09b (`LIVE`). SEC-08 tidak lagi tertunda: remote-nya ada, dan jalur tanpa OrderedDataStore memang salah satu yang harus dibuktikan bersih |
 | M7 | Tidak ada bug blocker dari alpha | Seluruh dokumen ini diisi sekali lagi dari atas ke bawah, kolom Status dikosongkan dulu | Baris `BELUM` dan `PUB` harus sudah hilang pada titik ini |
 | M8 | Publish versi `Saved`, cek di server live | Seluruh baris `LIVE` dijalankan di server live: MATCH-16, MP-06, MP-07, MP-08, MP-11, BOSS-13, SHOP-13, DATA-04, DATA-06b, DATA-09b | — |
 
@@ -1508,7 +1573,7 @@ atas langsung mengacu ke sini saat hasilnya terasa aneh tapi sebenarnya benar.
 | Mapping `assets/` di `default.project.json` saat filenya belum ada | Mapping **ditambahkan sekarang**, memakai `"$path": { "optional": "..." }` | Diuji empiris: `"$path": "assets/Arena.rbxmx"` biasa membuat `rojo build` **gagal keras** ("could not be turned into a Roblox Instance") dan CI jadi merah. Bentuk `optional` membuat rojo melewatkan path yang tidak ada tanpa error, lalu otomatis memakainya begitu filenya muncul. Jadi mapping-nya tidak perlu ditunda sampai assetnya ada. |
 | Tabrakan fisik musuh | `CanCollide = false` | Musuh adalah Part **anchored** yang digerakkan lewat `CFrame`. Part anchored yang bertabrakan dengan karakter akan mendorong pemain ke dalam geometry atau menahan musuh di tempat. Uji kena serangan tidak memakai tabrakan sama sekali (bagian 3.7), jadi tidak ada yang hilang. |
 | Tiga remote tambahan di luar tabel bagian 3.6 | `BossState`, `ShopState`, `ActionResult` ditambahkan | Milestone-nya memintanya tapi tabel 3.6 tidak menyediakan jalurnya: HP bar boss (M4) tidak punya tempat di payload `MatchState` yang sudah dipatok, pembukuan pembelian per item (M3) tidak boleh ditebak client — dulu untuk sisa jatah, sekarang juga untuk menghitung harga sekarang di tombol — dan penolakan server tanpa jalur balasan membuat pemain mengira tombolnya rusak. Ketiganya **penambahan**, bukan penggantian nama, jadi tidak ada yang bergeser dari tabel 3.6. Alasan lengkapnya ada di komentar `src/shared/Remotes.luau`. |
-| `GetLeaderboard` dari tabel bagian 3.6 | **Sengaja belum didaftarkan** | Itu milestone M6, dan `RemoteFunction` tanpa `OnServerInvoke` membuat client yang memanggilnya menggantung selamanya. Lihat LB-00 dan SEC-08. |
+| `GetLeaderboard` dari tabel bagian 3.6 | **Didaftarkan bersama handler-nya, dalam satu langkah** — sampai M6 bagian leaderboard dikerjakan, namanya sengaja tidak ada di `FUNCTION_NAMES` | `RemoteFunction` yang sudah ada di `ReplicatedStorage` tapi belum punya `OnServerInvoke` membuat client yang memanggilnya **menggantung selamanya**: tanpa error, tanpa timeout, dan tanpa apa pun di Output yang menunjuk ke penyebabnya. Jadi nama di tabel remote tidak boleh mendahului service yang memasang handler-nya, dan urutan itu berlaku untuk setiap `RemoteFunction` berikutnya. Dijaga `boot.remote.getLeaderboardAda` dan `boot.remote.getLeaderboardRemoteFunction`; dites LB-00 dan SEC-08. |
 
 ### 20.2 Keputusan M2
 
@@ -1620,3 +1685,14 @@ tanpa pernah bisa menunjuk penyebabnya.
 | Splash: target utama ikut jadi korbannya sendiri? | **Tidak.** Semua yang sudah menerima damage penuh dikecualikan lewat tabel `struck` yang dioper sebagai `exclude` ke `CombatEffects.withinRadius` | Tanpa pengecualian itu target utama kena **dua kali** — sekali penuh, sekali lagi dikali `splashMult` — jadi Fork Bomb Ledakan tingkat 1 memberi `40.8 + 20.4` = 61.2 ke target yang panelnya menulis 40.8. Itu kegagalan **termahal** di antara seluruh efek alur, dan bukan karena besarnya: gejalanya cuma damage yang lebih besar daripada yang tertulis, dan **tidak ada satu pun pemain yang melaporkan senjatanya terlalu kuat**. Jadi dia akan hidup sampai alpha, lalu sampai rilis, lalu ditemukan saat ada yang membandingkan panel dengan bar HP. Dikecualikan **semua** yang kena, bukan cuma yang pertama, karena alur lain bisa mengenai beberapa target sekaligus (`projectiles` 3, 5, 7) dan target kedua punya masalah yang sama persis. Dipatok unit test `CombatEffects.withinRadius`; di harness dia SKIP karena butuh Player, jadi COMBAT-18 yang membuktikannya. |
 | Dari mana zona dan splash berangkat | **Dari posisi musuh PERTAMA yang kena**, dibaca lewat `EnemyService.getPosition` **sebelum** musuh itu di-damage. Serangan yang tidak mengenai apa pun tidak meninggalkan apa pun | Tiga alternatif, dan ketiganya lebih buruk. **Dari posisi pemain:** ledakan muncul di kaki pemain alih-alih di tempat dia menembak. **Dari ujung garis bidik:** zona lahir dari setiap tembakan ke udara, jadi pemain bisa **melapisi seluruh lane** dengan zona slow tanpa membidik apa pun — Fork Bomb Jebakan jadi senjata penghalang area dengan cooldown 0.6 detik, bukan alur jebakan. **Dari posisi musuh sesudah di-damage:** musuh yang mati di pukulan itu sudah lepas dari `active` dan Part-nya di-Destroy, jadi posisinya nil dan zona terbesar — yang ditinggalkan pukulan yang membunuh — justru yang paling sering hilang. Dan kalau target pertama hilang di antara `collectTargets` dan pembacaan itu (mati karena turret atau zona di frame yang sama), splash dan zona **dilewati** alih-alih ditebak dari posisi pemain: ledakan di tempat yang pemainnya tidak menembak lebih sulit dipercaya daripada ledakan yang tidak terjadi. Dites COMBAT-18 dan COMBAT-24. |
 | Zona digambar atau tidak | **Tidak digambar sama sekali** — tabel Lua di `EnemyService`, tanpa satu Part pun | Kekurangan yang **diketahui dan diterima**, bukan kelupaan, dan dicatat di sini supaya tidak ada yang melaporkannya sebagai bug. Yang dibutuhkan langkah 7 adalah efeknya **bekerja**; menggambarnya butuh Part, ukuran, warna, dan transparansi yang masuk ke daftar entri graybox seperti `VISUALS` milik musuh, dan seluruh prioritas rancangan ini logika sebelum efek ([ARENA_REDESIGN.md](ARENA_REDESIGN.md) bagian 0). Harganya langsung terasa dan harus ditulis di dokumen ini dua kali: musuh yang melambat dan kehilangan HP di tempat yang **terlihat kosong** (T15), dan satu alur yang tidak bisa dinilai "terasa enak atau tidak" di playtest karena pemainnya tidak tahu di mana zonanya. Satu hal yang **tidak** ikut ditunda walau Part-nya belum ada: zona dibuang `clearAll()` bersama musuhnya, karena zona sisa match sebelumnya yang tidak kelihatan adalah bug yang mustahil didiagnosis dari dalam game. Dites COMBAT-24 dan COMBAT-25. |
+
+### 20.7 Keputusan M6 (leaderboard)
+
+| Keputusan | Yang dipilih | Alasan |
+|---|---|---|
+| Satu store untuk semua tingkat, atau satu per tingkat | **Satu OrderedDataStore per tingkat kesulitan** (`HighestWave_v1_<id>`), key = UserId, value = wave tertinggi | `GetSortedAsync` mengurutkan **seluruh** store, bukan bagian yang diminta. Kalau catatan `normal` dan `hard` tinggal di satu store dengan key gabungan, papan `hard` harus membaca seluruh catatan `normal` lebih dulu lalu membuangnya satu per satu — dan sepuluh teratas yang diminta bisa habis dipakai catatan tingkat yang salah, sehingga papannya kosong padahal datanya ada. Itu LB-02. Versi di nama store ikut naik kalau artinya berubah: store lama tidak bisa dihapus, dan catatan yang artinya sudah berbeda lebih buruk daripada papan kosong. |
+| `OnServerInvoke` boleh yield atau tidak | **Tidak pernah yield.** Dia menjawab dari papan yang sudah ada di memori dan paling banyak **menjadwalkan** pembacaan ulang | Kalau dia memanggil `GetSortedAsync` sendiri, client yang membuka lobby ikut menunggu panggilan web — dan saat DataStore sedang throttle, menunggunya bisa puluhan detik. Papan yang terlambat satu menit masih papan; lobby yang membeku bukan lobby. Ini juga yang membuat LB-00 bisa dipenuhi tanpa syarat apa pun soal isi papannya: yang dijanjikan cuma bahwa panggilannya kembali. |
+| Rekor baru: baca ulang store, atau jahit ke papan memori | **Dijahit ke papan memori** lewat `LeaderboardRules.merge` | `GetSortedAsync` punya kuota sendiri, dan satu match empat pemain akan memanggilnya empat kali beruntun untuk hasil yang sudah diketahui. Menjahitnya di memori yang membuat papan ikut terupdate tanpa restart server (LB-04). Pembacaan ulang berkala tetap ada — 60 detik, dengan jarak minimum 15 detik per tingkat — karena server **lain** menulis ke store yang sama dan tanpa itu papan di sini tidak akan pernah melihat rekor pemain yang sedang main di tempat lain. |
+| Di mana aturan "catatan tidak pernah turun" tinggal | **Satu fungsi, `LeaderboardRules.isRecord`, dipakai dua tempat**: transform `UpdateAsync` dan `merge` papan memori | Dua pembukuan untuk angka yang sama, dan keduanya harus sepakat. Kalau tidak, papan di layar bisa menunjukkan angka yang lebih tinggi daripada yang benar-benar tersimpan — dan selisihnya tidak terlihat sampai server restart, saat papannya "turun sendiri". Gejala seperti itu mustahil dilacak dari dalam game, jadi aturannya ditarik keluar jadi modul murni yang punya test sendiri, termasuk satu test yang memang hanya menjaga agar keduanya tidak berbeda pendapat. Dites LB-03. |
+| Dari mana nilai lama dibaca saat menulis rekor | **Dari DALAM transform `UpdateAsync`**, bukan lewat `GetAsync` terpisah | Dua panggilan berarti dua titik waktu, dan di antara keduanya server lain bisa menulis rekor yang lebih tinggi — yang lalu ditimpa rekor lebih rendah dari sini. `UpdateAsync` membaca dan menulis dalam satu transaksi, jadi di situlah satu-satunya tempat yang benar untuk membaca nilai lamanya. Transformnya mengembalikan `nil` untuk **membatalkan** tulisan kalau bukan rekor; alternatifnya mengembalikan nilai lama, dan itu satu tulisan DataStore untuk setiap match yang tidak memecahkan rekor. |
+| Siapa yang dicatat saat match selesai | **Hanya peserta yang masih terhubung** | Peserta yang sudah keluar dicatat sendiri saat dia keluar, dengan wave yang dia capai **saat itu**. Mencatatnya lagi di akhir match akan memberinya wave yang dicapai orang lain setelah dia pergi. Aturan yang sama dipakai `RewardService` untuk membayar reward, dan dua pembukuan yang memakai aturan berbeda untuk match yang sama akan saling bertentangan di layar. Dites LB-01. |

@@ -64,11 +64,15 @@ local EVENT_NAMES = {
 -- Semuanya penambahan, bukan penggantian nama, jadi tidak ada yang bergeser
 -- dari tabel 3.6.
 --
--- `GetLeaderboard` dari tabel 3.6 sengaja BELUM didaftarkan: itu milestone M6,
--- dan RemoteFunction tanpa `OnServerInvoke` membuat client yang memanggilnya
--- menggantung selamanya.
+-- `GetLeaderboard` baru didaftarkan di M6, BERSAMA `LeaderboardService` yang
+-- memasang `OnServerInvoke`-nya. Urutan itu syarat, bukan kerapian:
+-- RemoteFunction yang ada tapi tidak punya handler membuat client yang
+-- memanggilnya menggantung selamanya -- tanpa error, tanpa timeout, dan tanpa
+-- petunjuk apa pun di layar. Jadi jangan pernah menambah nama ke tabel di
+-- bawah lebih dulu supaya client bisa mulai ditulis. Lihat LB-00.
 local FUNCTION_NAMES = {
 	"GetProfile", -- C -> S (yields): snapshot data sekarang
+	"GetLeaderboard", -- C -> S: difficultyId -> { { userId, name, wave } } atau nil
 }
 
 local function getFolder(): Instance

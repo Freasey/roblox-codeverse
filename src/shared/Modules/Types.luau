@@ -249,4 +249,14 @@ export type ShopItemDef = {
 	maxPurchases: number, -- per match, 0 = tak terbatas
 }
 
+-- Satu baris di papan wave tertinggi (M6). `name` disimpan di baris ini, bukan
+-- dicari ulang client: OrderedDataStore cuma menyimpan UserId dan angka, dan
+-- nama pemain yang tidak ada di server ini cuma bisa dicari lewat panggilan web
+-- yang yield. Server yang melakukannya sekali lalu mengirim hasilnya.
+export type LeaderboardEntry = {
+	userId: number,
+	name: string,
+	wave: number,
+}
+
 return {}
