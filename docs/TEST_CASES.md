@@ -12,7 +12,7 @@ keputusan implementasi — pindah ke sini.
 >
 > **Tidak satu baris pun kode M1 sampai M5 pernah dimainkan sebagai game di
 > Roblox Studio.** Yang sudah hijau: `stylua --check`, `selene`,
-> `luau-lsp analyze`, 149 unit test Lune, `rojo build`, dan — sejak harness
+> `luau-lsp analyze`, 183 unit test Lune, `rojo build`, dan — sejak harness
 > `tests/studio` ada — sisi server yang dijalankan engine sungguhan dalam mode
 > Run (lihat [bagian 3.2](#32-cakupan-harness-studio)). Lolos type check bukan
 > berarti jalan di engine, dan jalan di mode Run bukan berarti bisa dimainkan:
@@ -203,7 +203,7 @@ regresi.
 
 | Yang sudah terverifikasi | Di mana | Catatan |
 |---|---|---|
-| Lint, format, type check, 149 unit test Lune, `rojo build` | CI (`.github/workflows/ci.yml`) | Modul murni di `src/shared/Modules` sudah punya test: pembagian musuh per wave jumlahnya persis `Balance.enemyCount`, ambang boss cuma terpicu sekali, seluruh daftar penolakan toko dan progres, kurva level yang aman terhadap XP inf/NaN, dan material drop boss cocok dengan bahan craft. |
+| Lint, format, type check, 183 unit test Lune, `rojo build` | CI (`.github/workflows/ci.yml`) | Modul murni di `src/shared/Modules` sudah punya test: pembagian musuh per wave jumlahnya persis `Balance.enemyCount`, ambang boss cuma terpicu sekali, seluruh daftar penolakan toko dan progres, kurva level yang aman terhadap XP inf/NaN, dan material drop boss cocok dengan bahan craft. |
 | **Relative require jalan di engine Roblox** (DEVELOPMENT_PLAN.md bagian 1.5) | Playtest Studio pertama, lalu tiap run harness (`boot.log: [CodeVerse] relative require OK`) | Place lokal dijalankan dan eksekusi sampai masuk ke `PlayerDataService`, artinya seluruh rantai require di atasnya sukses — termasuk `require(Shared.Config)`, dan `Config.luau` baris 5 adalah `require("./Modules/Types")`. Rencana cadangan di bagian 1.5 **tidak** dipakai. |
 | **API web Roblox tidak boleh dipanggil di module scope** | Playtest Studio pertama | `GetDataStore` dulu dipanggil di module scope `PlayerDataService`; di place yang belum pernah di-publish, Roblox melempar error tepat di baris itu, require-nya gagal, dan SELURUH script server mati sebelum satu baris pun jalan — dengan pesan "Requested module experienced an error while loading" yang tidak menunjuk ke penyebabnya. Sudah diperbaiki jadi lazy + `pcall`. **Aturan ini berlaku untuk semua kode berikutnya:** `DataStoreService`, `OrderedDataStore`, `MessagingService`, `HttpService`, `MarketplaceService`, dan sejenisnya hanya dipanggil di dalam fungsi. |
 
@@ -302,7 +302,7 @@ tapi tabel itu tidak menyediakan jalurnya (alasan lengkap di
 | `SelectLoadout` | C → S | `weaponId, difficultyId` | 2/detik | Hanya state `Lobby`; senjata dimiliki; tingkat terbuka |
 | `Attack` | C → S | `Vector3` arah bidik | **20/detik** | `Vector3` yang bukan nol / NaN / inf; state `WaveActive`; pemain ada di `participants`; Core belum hancur; karakter hidup; cooldown senjata |
 | `EnemyHit` | S → C | `{ id, damage, position }` | — | Untuk efek saja — **belum ada yang memakainya**, lihat [bagian 5](#5-yang-sudah-diketahui-sebelum-playtest) |
-| `BuyShopItem` | C → S | `itemId` | 2/detik | Pemain ada di `participants`; state `Intermission`; toko tidak terkunci; item ada; jatah belum habis; koin tim cukup |
+| `BuyShopItem` | C → S | `itemId` | 2/detik | Pemain ada di `participants`; state `Intermission`; toko tidak terkunci; item ada; jatah belum habis (**cuma `shop_barrier` yang masih punya jatah**); koin tim cukup untuk **harga sekarang**, bukan harga dasar |
 | `ShopState` ★ | S → C | `{ open, locked, purchases, suspended }` | — | `suspended` = upgrade tim disandera Locker: pembeliannya masih tercatat di `purchases`, tapi pengalinya kembali ke dasar sampai boss mati |
 | `BossState` ★ | S → C | `{ bossId, hp, maxHp, alive }` | — | Disiarkan paling cepat tiap 0.2 detik dan cuma kalau HP-nya berubah |
 | `ShowInfoCard` | S → C | `bossId` | — | Dikirim hanya ke peserta match |
@@ -418,13 +418,74 @@ keluar selain mati, jadi berdiri di sebelahnya tidak akan menunda kerusakan.
 
 **Toko Match** (`ShopItems.luau`, urutan tampil dari `ShopItems.order`):
 
-| # | id | Nama | Harga | Maks beli | Efek |
+| # | id | Nama | Harga dasar | Maks beli | Efek |
 |---|---|---|---|---|---|
-| 1 | `shop_damage_up` | Exploit Patch | 200 | 5 | Damage semua pemain **+10% per pembelian, linear** |
-| 2 | `shop_fire_rate` | Overclock | 200 | 5 | Cooldown semua pemain **-8% per pembelian, linear**, lantai 0.4x |
-| 3 | `shop_core_repair` | Hotfix | 150 | 3 | Pulihkan **15% dari 1000 = 150 HP** Core, **langsung saat dibeli** |
-| 4 | `shop_barrier` | Firewall Block | 100 | 5 | Tahan musuh di **semua lane** 6 detik per pembelian, berlaku **wave berikutnya** |
-| 5 | `shop_turret` | Scanner Turret | 250 | 2 | Turret: 12 damage tiap 1 detik, radius 70 stud, mengelilingi Core |
+| 1 | `shop_damage_up` | Exploit Patch | 200 | **tak terbatas** | Damage semua pemain **+10% per pembelian, linear** |
+| 2 | `shop_fire_rate` | Overclock | 200 | **tak terbatas** | Cooldown semua pemain **-8% per pembelian, linear**, lantai 0.4x |
+| 3 | `shop_core_repair` | Hotfix | 150 | **tak terbatas** | Pulihkan **15% dari 1000 = 150 HP** Core, **langsung saat dibeli** |
+| 4 | `shop_barrier` | Firewall Block | 100 | **5** | Tahan musuh di **semua lane** 6 detik per pembelian, berlaku **wave berikutnya** |
+| 5 | `shop_turret` | Scanner Turret | 250 | **tak terbatas** | Turret: 12 damage tiap 1 detik, radius 70 stud, mengelilingi Core |
+
+**Yang membatasi pembelian sekarang harga, bukan jumlahnya.** Empat dari lima
+item di atas dulu punya jatah (5, 5, 3, dan 2); jatah itu dihapus dan diganti
+harga yang naik `x1.25` tiap kali **item yang sama** dibeli:
+`harga = floor(harga_dasar * 1.25^jumlah_yang_sudah_dibeli)`. Harga satu item
+tidak terpengaruh pembelian item lain — sepuluh Exploit Patch tidak menaikkan
+harga Scanner Turret sama sekali. Rumusnya ditulis di sini supaya angka di tabel
+berikut bisa dihitung ulang kalau `Balance.SHOP_PRICE_GROWTH` atau harga dasarnya
+disetel di M7, bukan dihafal:
+
+| Pembelian ke- | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Exploit Patch / Overclock (200) | 200 | 250 | 312 | 390 | 488 | 610 | 762 | 953 | 1192 | 1490 |
+| Hotfix (150) | 150 | 187 | 234 | 292 | 366 | 457 | 572 | 715 | 894 | 1117 |
+| Scanner Turret (250) | 250 | 312 | 390 | 488 | 610 | 762 | 953 | 1192 | 1490 | 1862 |
+| Firewall Block (100) | 100 | 125 | 156 | 195 | 244 | — | — | — | — | — |
+
+Sepuluh Exploit Patch berturut-turut memakan **6.647** koin, bukan 2.000 (harga
+dasar x10). Yang 3 koin lebih rendah dari jumlah geometris eksaknya (6.650,58)
+bukan salah hitung: harga dibulatkan ke bawah **setiap** pembelian, bukan sekali
+di akhir, dan 6.647 itu yang benar-benar dipotong dari kolam. Koin diperiksa
+terhadap harga **sekarang**, bukan harga dasar: koin tepat satu di bawahnya
+ditolak, koin tepat sebesarnya diterima. Dan **tombol di panel toko menampilkan
+harga sekarang** — tombol yang masih menulis harga dasar sementara koin terpotong
+lebih banyak adalah GAGAL, bukan pembulatan.
+
+**`shop_barrier` satu-satunya yang batasnya dipertahankan**, dan itu disengaja.
+Empat item lain menambah **kemampuan**, yang tetap harus dipakai pemain; yang ini
+menambah **waktu musuh tertahan**, 6 detik per pembelian di semua lane. Dua puluh
+tumpuk berarti 120 detik tahan dan wave-nya lewat tanpa pemain menyentuh apa pun,
+jadi harga yang naik tidak menolong — yang dibeli bukan kekuatan melawan wave,
+tapi penghapusan wave itu sendiri. Alasan ini ada di komentar `ShopItems.luau`.
+Lima Firewall Block memakan **820** koin, dan pembelian ke-6 ditolak — bukan
+dengan "koin kurang", walaupun harganya kalau jatahnya ada akan 305.
+
+**Hadiah koin match per wave** (`Balance.waveReward`). Ini **bukan** koin
+permanen: dia masuk ke kolam koin match milik tim, kolam yang sama yang dipakai
+Toko Match dan yang di-reset tiap `Countdown`. Rumusnya
+`200 + 50 * (wave - 1)`, lalu **wave boss dikali 2**, lalu dikali pengali jumlah
+pemain. Wave boss dikenali dari `bossId` di `Waves.luau`, bukan dari daftar nomor
+wave — boss baru yang ditambahkan nanti ikut terkali dua tanpa menyentuh
+`Balance.luau`. Kurvanya pada pengali x1:
+
+| Wave | 1 | 2 | 3 | 4 | 5 (boss) | 6 | 7 | 8 | 9 | 10 (boss) | Total |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Hadiah | 200 | 250 | 300 | 350 | **800** | 450 | 500 | 550 | 600 | **1300** | **5.300** |
+
+| Jumlah pemain | Pengali | Total 10 wave |
+|---|---|---|
+| 1 | **x4** | **21.200** |
+| 2 | **x2** | **10.600** |
+| 3 atau lebih | **x1** | **5.300** |
+
+Pengalinya tangga, bukan kurva: ambangnya di **3** pemain, jadi tim 3 orang dan
+tim 4 orang sama-sama x1. Hadiah solo wave 1 = `200 * 4` = **800** koin, dan itu
+160x koin satu `basic`. Pengali besar untuk solo masuk akal karena kolamnya milik
+tim dan efek Toko Match berlaku untuk seluruh tim: tim berempat mendapat 4x nilai
+dari tiap koin yang dibelanjakan, jadi x4 solo menormalkan daya beli per orang
+alih-alih memberi keuntungan. Hadiah diberikan **juga untuk wave terakhir**
+(wave 10), sebelum match dinyatakan menang. Tiap pemberian mencetak satu baris di
+Output server: `[ShopService] hadiah wave N: X koin tim, kolam jadi Y`.
 
 **Kesulitan** (`Difficulties.luau`): `normal` hpMult 1.0 / rewardMult 1.0, terbuka
 default. `hard` hpMult **1.8** / rewardMult **1.6**, terbuka setelah first clear
@@ -473,10 +534,12 @@ yang menjalankan test tidak membuang waktu mendiagnosis ulang, dan supaya tidak
 ada yang menulis "GAGAL, penyebab tidak diketahui" untuk sesuatu yang sudah
 dijelaskan.
 
-Sejak itu, perilaku musuh berubah besar (`docs/ARENA_REDESIGN.md` bagian 4 dan 5,
-langkah 1-2 sudah ter-commit). Tiga akibatnya **pasti** terlihat salah waktu
-dimainkan padahal benar, dan satu di antaranya terlihat seperti game yang
-menggantung. Itu [bagian 5.3](#53-perilaku-baru-yang-akan-terlihat-seperti-bug),
+Sejak itu dua hal berubah besar: perilaku musuh (`docs/ARENA_REDESIGN.md` bagian
+4 dan 5) dan ekonomi koin match (bagian 6). Langkah 1 sampai 4 sudah ter-commit.
+Lima akibatnya **pasti** terlihat salah waktu dimainkan padahal benar — satu di
+antaranya terlihat seperti game yang menggantung, dan satu lagi seperti harga
+toko yang berubah sendiri. Itu
+[bagian 5.3](#53-perilaku-baru-yang-akan-terlihat-seperti-bug),
 dan di antara seluruh bagian 5 itulah yang paling perlu dibaca sebelum Studio
 dibuka.
 
@@ -506,22 +569,38 @@ ada yang melaporkannya sebagai temuan baru setiap kali dokumen ini diisi.
 
 ### 5.3 Perilaku baru yang akan terlihat seperti bug
 
-Mekanismenya dulu, karena tiga baris di bawah cuma masuk akal setelah ini.
-**Dulu** musuh yang mencapai ujung lane men-damage Core sekali sebesar
-`coreDamage` lalu dihapus dari arena; kebocoran berarti kehilangan HP satu kali,
-dan arena **dijamin** bersih cepat atau lambat. **Sekarang** musuh yang mencapai
-ujung lane berhenti di base, mengambil satu slot cincin di sekitar Core, tetap
-hidup, dan memukul tiap `attackInterval` detik sampai pemain membunuhnya — dan
-musuh juga bisa memukul dan membunuh pemain. Angkanya ada di
-[bagian 4.2](#42-angka-patokan).
+Lima baris di bawah datang dari dua perubahan yang berbeda, dan dua-duanya cuma
+masuk akal kalau mekanisme sebelumnya dibaca dulu.
 
-Dua jaminan lama hilang karena itu, dan keduanya hilang **dengan sengaja**.
+**Perubahan pertama — musuh yang lolos.** **Dulu** musuh yang mencapai ujung lane
+men-damage Core sekali sebesar `coreDamage` lalu dihapus dari arena; kebocoran
+berarti kehilangan HP satu kali, dan arena **dijamin** bersih cepat atau lambat.
+**Sekarang** musuh yang mencapai ujung lane berhenti di base, mengambil satu slot
+cincin di sekitar Core, tetap hidup, dan memukul tiap `attackInterval` detik
+sampai pemain membunuhnya — dan musuh juga bisa memukul dan membunuh pemain.
+Dua jaminan lama hilang karena itu, dan keduanya hilang **dengan sengaja**;
+akibatnya T8, T9, dan T10.
+
+**Perubahan kedua — ekonomi koin match.** **Dulu** koin match cuma datang dari
+musuh yang mati, 5 sampai 15 per musuh, dan seluruh isi toko dibatasi jumlah
+pembelian: harga satu item tidak pernah berubah, dan tiap tombol memuat sisa
+jatahnya. **Sekarang** tiap wave yang selesai memberi hadiah koin tim yang
+beberapa kali lebih besar daripada seluruh koin musuh wave itu, dan empat dari
+lima item toko tidak punya jatah lagi — yang membatasinya harga yang naik x1.25
+tiap kali item yang sama dibeli. Keduanya satu paket: hadiah besar tanpa harga
+yang naik berarti toko habis diborong di wave 3-4, dan harga yang naik tanpa
+hadiah besar berarti pembelian kedua tidak akan pernah terjangkau. Itu T11 dan
+T12.
+
+Angka untuk keduanya ada di [bagian 4.2](#42-angka-patokan).
 
 | # | Perilaku | Kenapa begitu |
 |---|---|---|
 | T8 | **Wave tertunda selama masih ada musuh hidup di base, dan tidak ada batas waktunya.** Nomor wave tidak naik, state tetap `Bertahan!`, `Intermission` dan panel Toko Match tidak muncul, sementara bar Core terus turun satu langkah tiap interval pukulan. Bisa berlangsung selama pemain membiarkannya. | `WaveService.isWaveClear()` tetap menuntut nol musuh aktif dan nol antrian, dan jaminan bahwa itu pasti tercapai sudah tidak ada. Tidak ditambal dengan "musuh di base tidak dihitung" (rancangan bagian 5): kebocoran jadi menghukum dua kali — HP Core dan waktu belanja — tanpa satu aturan tambahan. **Ini bukan hang dan bukan sinyal `onAllClear` yang hilang.** Bedakan dari hang yang sesungguhnya dengan satu pertanyaan: apakah masih ada musuh hidup di arena, termasuk yang berdiri menempel di Core? Kalau ada, itu T8. Kalau arena benar-benar kosong dan state tetap `WaveActive` lebih dari satu detik, itu bug — jaring pengaman `WaveService` memeriksanya dua kali per detik. Dan T8 tidak bisa menggantung permanen: kalau pemain tidak mampu, Core habis dan match berakhir kalah. Dites WAVE-20. |
 | T9 | **Pemain bisa mati, dan itu hal baru.** Sebelum ini tidak ada satu pun `TakeDamage` di `src/server`, jadi kematian pemain tidak punya konsekuensi apa pun dan tidak pernah terjadi karena musuh. Sekarang `fast` memburu pemain, dan tipe lain memukul pemain yang berdiri dalam 6 stud dari mereka. | Respawn 5 detik (`Balance.RESPAWN_SECONDS`, disetel eksplisit ke `Players.RespawnTime`), di `Arena/PlayerSpawn`, **tanpa sistem nyawa** — mati cuma berarti kehilangan waktu, dan waktu itu mahal karena musuh terus memukul base selama pemain tidak ada. Selama mati, `Attack` ditolak karena `CombatService.characterOrigin` mengembalikan nil untuk karakter mati (COMBAT-10), dan itu bukan rate limit yang salah. Dites COMBAT-16 dan COMBAT-17. |
 | T10 | **Slot cincin tidak dipakai ulang, jadi cincinnya melebar selama match berjalan.** | Nomor slot (`ringSlotNext` di `EnemyService`) naik terus dan tidak pernah dipakai ulang: slot yang dibebaskan musuh mati tidak boleh langsung diberikan ke musuh lain, kalau tidak dua musuh bisa berdiri di titik yang sama persis saat yang pertama mati tepat sebelum yang kedua sampai. Akibatnya yang terlihat: dengan banyak kebocoran, cincinnya makin lebar dari Core — itu wajar, bukan bug. Dua musuh di titik yang **sama persis** tetap GAGAL tanpa pengecualian: `EnemyAI.ringSlotOffset` memberi tiap cincin radiusnya sendiri (10, 14, 18, 22, ...), jadi tidak ada dua nomor slot yang bisa berbagi tempat berapa pun banyaknya kebocoran. Dihitung ulang tiap match (`clearAll` me-reset nomornya). Dites WAVE-19, dan dipatok unit test `EnemyAI` lintas tiga cincin. |
+| T11 | **Harga item toko berubah tiap kali dibeli, dan itu akan terlihat seperti bug.** Exploit Patch yang tadi 200 jadi 250, lalu 312, lalu 390. Tombolnya juga tidak lagi memuat "· sisa N" untuk empat dari lima item, jadi baris yang dulu berbunyi "200 koin · sisa 5 — ..." sekarang berbunyi "250 koin — ...". | Jatah pembelian (`maxPurchases`) diganti harga yang naik x1.25 per pembelian item yang sama; kurvanya di [bagian 4.2](#42-angka-patokan). Alasannya ada di hadiah per wave di baris berikutnya: dengan solo mengumpulkan 21.200 koin, toko yang seluruh itemnya dibatasi cuma bisa menyerap 3.450 — habis diborong di wave 3-4, lalu enam wave sisanya koinnya tidak ada gunanya. Harga yang naik membuat uang selalu punya tujuan. **Yang bukan bug:** angka di tombol berubah sendiri antar pembelian, dan empat item tidak punya "· sisa N" lagi. **Yang GAGAL:** tombol menulis satu angka tapi kolam terpotong angka lain — harga di tombol dan potongan koin dihitung dari sumber yang sama (`ShopRules.priceFor` dengan `purchases` sebelum dinaikkan), jadi selisih di antara keduanya berarti salah satu sisi memakai `def.cost`. Dites SHOP-20, dan `shop_barrier` yang batasnya memang dipertahankan dites SHOP-22. |
+| T12 | **Saldo koin tim melompat ratusan sampai ribuan di detik wave selesai.** Solo wave 1 melompat dari 40 ke 840; wave 10 solo menambah 5.200 sekaligus. Jauh lebih besar daripada 5 koin per `basic` yang jadi satu-satunya sumber sebelum ini. | Hadiah koin match per wave, `200 + 50*(wave-1)`, wave boss x2, dikali pengali jumlah pemain (solo x4). Angka dan kurvanya di [bagian 4.2](#42-angka-patokan). Lompatannya memang ordenya segitu: hadiah satu wave sengaja beberapa kali lebih besar daripada seluruh koin musuh wave itu, karena koin musuh saja tidak pernah cukup untuk membeli apa pun yang berarti sejak wave awal. **Yang bukan bug:** saldo naik tanpa ada musuh yang mati, tepat saat state pindah ke `Intermission`. **Yang GAGAL:** tidak ada lompatan sama sekali, atau angkanya tidak cocok dengan baris `[ShopService] hadiah wave N: ...` di Output server. Hadiah masuk kolam koin **match**, jadi jangan mencarinya di koin permanen di panel lobby — di sana tidak akan pernah muncul. Dites SHOP-17 sampai SHOP-19 dan SHOP-23, SHOP-24. |
 
 ## 6. Boot dan map (BOOT)
 
@@ -628,27 +707,46 @@ Acuan: DEVELOPMENT_PLAN.md bagian 3.7.
 
 ## 11. Toko Match (SHOP)
 
-Acuan: DEVELOPMENT_PLAN.md bagian 3.6 dan M3. Harga dan jatah ada di
-[bagian 4.2](#42-angka-patokan).
+Acuan: DEVELOPMENT_PLAN.md bagian 3.6 dan M3. Harga, kurva harga yang naik, dan
+hadiah koin per wave ada di [bagian 4.2](#42-angka-patokan).
+
+Dua hal berubah di sini sejak langkah 4 rancangan ulang arena, dan keduanya
+membuat baris yang menyebut "jatah" perlu dibaca ulang. **Harga naik x1.25 tiap
+kali item yang sama dibeli**, dan batas jumlah pembelian dihapus untuk empat dari
+lima item — `shop_barrier` satu-satunya yang masih dibatasi 5. Dan **tiap wave
+yang selesai memberi hadiah koin tim** yang jauh lebih besar daripada koin musuh:
+solo wave 1 = 800 koin. Jadi saldo yang dipakai baris-baris di bawah jauh lebih
+mudah terkumpul daripada yang dibayangkan waktu baris itu ditulis, dan harga yang
+tertulis di satu baris cuma berlaku kalau item itu **belum pernah dibeli** di
+match yang sama. Dua perilaku itu dijelaskan sebagai T11 dan T12 di
+[bagian 5.3](#53-perilaku-baru-yang-akan-terlihat-seperti-bug).
 
 | ID | Prakondisi | Langkah | Hasil yang diharapkan | Milestone | Jalankan? | Status |
 |---|---|---|---|---|---|---|
-| SHOP-01 | State `Intermission` | Lihat panel Toko Match di kanan layar | Lima item **dalam urutan ini**: Exploit Patch (200), Overclock (200), Hotfix (150), Firewall Block (100), Scanner Turret (250). Urutannya dari `ShopItems.order` — kalau berubah-ubah tiap kali client dibuka, daftar itu tidak dipakai. Header menampilkan "N koin tim", dan angkanya naik setiap musuh mati selama wave berjalan. Tiap baris memuat "· sisa N" | M3 | solo | - |
-| SHOP-02 | State `Intermission`, koin ≥ 200 | Beli **Exploit Patch**, lanjut ke wave berikutnya, hitung serangan untuk membunuh satu `tank` | Koin turun 200. Damage semua pemain naik **+10% linear** (bukan berlipat): satu pembelian 1.1x, lima pembelian 1.5x — bukan 1.61x. Paling mudah diukur di `tank` karena HP-nya besar. Di `basic` wave 2, satu Exploit Patch belum mengubah jumlah serangan (tetap 5); tiga pembelian membuatnya 4 | M3 | solo | - |
+| SHOP-01 | State `Intermission` | Lihat panel Toko Match di kanan layar | Lima item **dalam urutan ini**: Exploit Patch (200), Overclock (200), Hotfix (150), Firewall Block (100), Scanner Turret (250). Urutannya dari `ShopItems.order` — kalau berubah-ubah tiap kali client dibuka, daftar itu tidak dipakai. Header menampilkan "N koin tim", dan angkanya naik setiap musuh mati selama wave berjalan **dan melompat sekali saat wave selesai** (hadiah per wave, SHOP-17). Hanya **Firewall Block** yang memuat "· sisa N" — empat item lain tak terbatas, jadi barisnya berbunyi "200 koin — ..." tanpa sisa. Baris yang memuat "· sisa N" untuk kelima item berarti jatah yang sudah dihapus masih dipakai | M3 | solo | - |
+| SHOP-02 | State `Intermission`, koin ≥ 200, dan Exploit Patch **belum pernah dibeli** di match ini | Beli **Exploit Patch**, lanjut ke wave berikutnya, hitung serangan untuk membunuh satu `tank` | Koin turun 200 — itu harga pembelian **pertama**; yang kedua 250 dan seterusnya naik x1.25 (SHOP-20). Damage semua pemain naik **+10% linear** (bukan berlipat): satu pembelian 1.1x, lima pembelian 1.5x — bukan 1.61x. Paling mudah diukur di `tank` karena HP-nya besar. Di `basic` wave 2, satu Exploit Patch belum mengubah jumlah serangan (tetap 5); tiga pembelian membuatnya 4 | M3 | solo | - |
 | SHOP-03 | State `Intermission`, koin ≥ 200 | Beli **Overclock**, lanjut ke wave berikutnya | Jeda antar serangan terasa lebih pendek: cooldown turun **-8% linear per pembelian**, dengan lantai 0.4x. Tahan klik kiri dan bandingkan ritme bar HP musuh turun, sebelum dan sesudah beli | M3 | solo | - |
 | SHOP-04 | State `Intermission`, HP Core sudah berkurang | Beli **Hotfix** | Lihat CORE-05: +150 HP langsung, tidak melebihi 1000 | M3 | solo | - |
-| SHOP-05 | State `Intermission`, koin ≥ 100 | Beli **Firewall Block** satu kali, lanjut ke wave berikutnya. Lalu ulangi dengan membeli **dua** kali | Dinding biru tembus pandang muncul di tengah **kedua** lane tepat saat wave berikutnya mulai, dan musuh di lane itu **berhenti bergerak** 6 detik, lalu jalan lagi. Dua pembelian menggandakan **durasi blokirnya** jadi 12 detik, bukan jumlah dindingnya — dan dindingnya hilang **tepat** saat musuh mulai jalan lagi, 12 detik juga. Kalau dinding hilang di detik 6 sementara musuh masih tertahan, temuan T5 kembali | M3 | solo | - |
-| SHOP-06 | State `Intermission`, koin ≥ 250 | Beli **Scanner Turret**, lanjut ke wave berikutnya. Lalu beli turret kedua | Balok hijau-kebiruan muncul mengelilingi Core (radius 26 stud). Saat wave jalan, dia menembak musuh terdekat sendiri — 12 damage tiap 1 detik, radius 70 stud — dan HP musuh turun tanpa kamu menyerang. Musuh yang mati karena turret tetap memberi koin **tim**. Turret kedua muncul di sudut berbeda, tidak menumpuk. Turret **tidak** menembak saat `Intermission` | M3 | solo | - |
+| SHOP-05 | State `Intermission`, koin ≥ 100 untuk bagian pertama dan ≥ 281 untuk bagian kedua (pembelian ke-2 dan ke-3 berharga 125 dan 156). Penumpukan durasi dihitung **per jeda**, bukan per match, jadi pembelian dari jeda sebelumnya tidak ikut memperpanjang | Beli **Firewall Block** satu kali, lanjut ke wave berikutnya. Lalu ulangi dengan membeli **dua** kali | Dinding biru tembus pandang muncul di tengah **kedua** lane tepat saat wave berikutnya mulai, dan musuh di lane itu **berhenti bergerak** 6 detik, lalu jalan lagi. Dua pembelian menggandakan **durasi blokirnya** jadi 12 detik, bukan jumlah dindingnya — dan dindingnya hilang **tepat** saat musuh mulai jalan lagi, 12 detik juga. Kalau dinding hilang di detik 6 sementara musuh masih tertahan, temuan T5 kembali | M3 | solo | - |
+| SHOP-06 | State `Intermission`, koin ≥ 250, dan Scanner Turret belum pernah dibeli di match ini | Beli **Scanner Turret**, lanjut ke wave berikutnya. Lalu beli turret kedua — harganya **312**, bukan 250 lagi | Balok hijau-kebiruan muncul mengelilingi Core (radius 26 stud). Saat wave jalan, dia menembak musuh terdekat sendiri — 12 damage tiap 1 detik, radius 70 stud — dan HP musuh turun tanpa kamu menyerang. Musuh yang mati karena turret tetap memberi koin **tim**. Turret kedua muncul di sudut berbeda, tidak menumpuk. Turret **tidak** menembak saat `Intermission` | M3 | solo | - |
 | SHOP-07 | State `WaveActive`. Pasang listener dulu di command bar client: `R.ActionResult.OnClientEvent:Connect(print)` | `R.BuyShopItem:FireServer("shop_barrier")` | Ditolak dengan alasan **"Toko cuma buka saat jeda antar wave."**; koin tim tidak berubah; tidak ada efek item; tidak ada error di Output server. Alasannya cuma terlihat di listener, dan itu memang satu-satunya cara di state ini: di `WaveActive` biasa tidak ada panel yang terbuka, jadi tidak ada tombol yang bisa diklik. Yang ditampilkan di panel toko adalah penolakan yang bisa dicapai pemain — lihat SHOP-09 dan SHOP-10 | M3 | solo | - |
 | SHOP-08 | State `Lobby`, listener `ActionResult` masih terpasang | `R.BuyShopItem:FireServer("shop_barrier")` | Ditolak, tapi alasannya **berbeda** dari SHOP-07: **"Kamu bukan peserta match ini."** — di Lobby `participants` sudah dikosongkan, dan pemeriksaan peserta jalan sebelum pemeriksaan state. Koin tidak berubah | M3 | solo | - |
-| SHOP-09 | State `Intermission`, koin tim **kurang** dari harga item | Perhatikan tombol **Scanner Turret** (250), lalu coba klik, lalu ulangi lewat `R.BuyShopItem:FireServer("shop_turret")` | Tombolnya abu-abu dan **mengkliknya tidak mengirim apa pun**. Lewat remote: ditolak dengan "Koin tim kurang: butuh 250, ada N." — dan alasan itu **ikut muncul merah di baris status panel toko** selama 4 detik, lalu kembali ke "N koin tim". Koin tidak jadi negatif; item tidak aktif di wave berikutnya. Tombol yang harganya di bawah saldo kelihatan biru dan bisa diklik | M3 | solo | - |
+| SHOP-09 | State `Intermission`, koin tim **kurang** dari harga item, dan Scanner Turret **belum pernah dibeli** di match ini — kalau sudah, harga di pesan penolakan bukan 250 lagi tapi harga sekarang (312, 390, ...) | Perhatikan tombol **Scanner Turret** (250), lalu coba klik, lalu ulangi lewat `R.BuyShopItem:FireServer("shop_turret")` | Tombolnya abu-abu dan **mengkliknya tidak mengirim apa pun**. Lewat remote: ditolak dengan "Koin tim kurang: butuh 250, ada N." — dan alasan itu **ikut muncul merah di baris status panel toko** selama 4 detik, lalu kembali ke "N koin tim". Koin tidak jadi negatif; item tidak aktif di wave berikutnya. Tombol yang harganya di bawah saldo kelihatan biru dan bisa diklik | M3 | solo | - |
 | SHOP-10 | Wave dengan `boss_locker`, boss masih hidup | Lihat kanan layar saat Locker spawn, lalu `R.BuyShopItem:FireServer("shop_barrier")` dari command bar client, lalu kalahkan boss-nya | Saat Locker spawn, panel Toko Match **muncul walau masih `WaveActive`**, dengan baris status merah **"Dikunci — kalahkan boss-nya dulu"** dan seluruh tombolnya abu-abu. Output server mencetak `[Locker] toko dikunci, memanggil 3 basic tiap 8 detik`. `BuyShopItem` ditolak dengan **"Toko dikunci. Kalahkan boss-nya dulu."** — bukan "Toko cuma buka saat jeda antar wave." — dan alasan itu muncul di baris status panel toko. Setelah boss mati: Output server mencetak `[Locker] boss mati, upgrade tim dipulihkan`, dan panel toko hilang sampai `Intermission` datang | M4 | solo | - |
 | SHOP-11 | Sementara pindahkan `bossId = "boss_locker"` ke wave 1 di `Waves.luau` **dan** ubah `wave = 1` di `Bosses.luau` — `Waves.validate()` memeriksa keduanya cocok dan akan mencetak warn saat boot kalau cuma satu yang diubah | Kalahkan `boss_locker` di wave 1, masuk `Intermission`, beli item | Toko buka normal dan pembelian berhasil — kunci dilepas saat boss mati. **Balikkan kedua file sebelum commit** | M4 | solo+EDIT | - |
-| SHOP-12 | Satu match selesai setelah membeli Exploit Patch, Overclock, dan Scanner Turret | Tekan Ready lagi dan mulai match kedua | Saldo koin **0** saat hitung mundur match kedua (di-reset saat `Countdown`, bukan saat wave mulai, supaya pemain melihatnya sebelum wave pertama). Semua tombol kembali ke jatah penuh. **Tidak ada turret sisa** di sekitar Core. Buff damage dan attack speed tidak terbawa — kalau musuh wave 1 match kedua mati lebih cepat dari biasanya, pembukuan pembelian tidak di-reset | M3 | solo | - |
+| SHOP-12 | Satu match selesai setelah membeli **Exploit Patch 3x**, Overclock 1x, dan **Scanner Turret 2x**. Catat harga yang tertulis di tombolnya di jeda terakhir: Exploit Patch **390**, Overclock **250**, Scanner Turret **390** | Tekan Ready lagi, mulai match kedua, dan lihat panel toko di jeda pertama match itu | Saldo koin **0** saat hitung mundur match kedua (di-reset saat `Countdown`, bukan saat wave mulai, supaya pemain melihatnya sebelum wave pertama). Tiap tombol kembali ke **harga dasar**: Exploit Patch 200, Overclock 200, Hotfix 150, Firewall Block 100 · sisa 5, Scanner Turret 250 — bukan 390 / 250 / 390 dari match pertama. Harga di tombol dihitung dari pembukuan `purchases`, jadi harga dasar yang kembali adalah bukti paling langsung bahwa pembukuannya di-reset. **Tidak ada turret sisa** di sekitar Core. Buff damage dan attack speed tidak terbawa — kalau musuh wave 1 match kedua mati lebih cepat dari biasanya, pembukuan pembelian tidak di-reset | M3 | solo | - |
 | SHOP-13 | Match sedang `WaveActive`, lalu masuk dengan pemain **baru** yang bukan peserta. Listener `ActionResult` terpasang di client pemain itu | Dari client pemain baru: `R.BuyShopItem:FireServer("shop_barrier")` | Ditolak dengan "Kamu bukan peserta match ini." — pemain yang ditahan di lobby tidak boleh membelanjakan koin tim | M3 | LIVE | - |
 | SHOP-14 | State `Lobby` dan `WaveActive`, **tanpa** `boss_locker` di wave itu | Lihat kanan layar di dua state itu | Panel Toko Match **tidak terlihat** sama sekali di luar `Intermission`. Satu-satunya pengecualian adalah toko yang dikunci Locker, yang sengaja ikut menampilkan panelnya — lihat SHOP-10 | M3 | solo | - |
 | SHOP-15 | Masuk wave Locker, **jangan bunuh boss-nya** — biarkan Core hancur. Setelah kembali ke lobby, tekan Ready lagi dan selesaikan wave 1 | Lihat panel toko di jeda setelah wave 1 match kedua, dan lihat baris state di HUD sepanjang match kedua | Toko **buka normal**, header menampilkan koin bukan "Dikunci". Baris state HUD **tidak** memuat "upgrade tim disandera" kapan pun di match kedua. Ini jalur yang paling mudah bocor, dan sekarang ada dua hal yang bisa bocor: kunci toko, dan sandera upgrade. Kalau keduanya cuma dilepas lewat kematian boss, pemain berikutnya main dengan toko terkunci atau dengan damage yang diam-diam kembali ke dasar — yang kedua jauh lebih sulit disadari. Ulangi juga dengan cara keluar lain: saat wave Locker berjalan, tutup semua client (match dibatalkan). Hasilnya harus sama | M4 | solo+EDIT | - |
-| SHOP-16 | Wave dengan `boss_locker`. **Sebelum** wave itu, beli Exploit Patch (damage) sampai jatahnya habis di `Intermission` sebelumnya, dan catat berapa serangan yang dibutuhkan untuk membunuh satu `basic` | Hitung serangan untuk membunuh satu `basic` tiga kali: (a) saat wave Locker **sebelum** boss spawn, (b) saat Locker **hidup**, (c) setelah Locker **mati** | Inilah mekanik Locker yang sebenarnya menggigit — analogi ransomware: dia menyandera yang sudah kamu miliki, bukan melarangmu berbelanja. (a) jumlah serangan sesuai damage yang sudah di-upgrade. (b) jumlah serangan **naik** ke angka seperti belum pernah upgrade sama sekali, dan baris state HUD memuat **"upgrade tim disandera"**. (c) jumlah serangan **kembali** seperti (a), dan teks itu hilang. Pembelian tidak hilang: panel toko di `Intermission` berikutnya tetap menampilkan jatah Exploit Patch sebagai sudah habis terpakai — yang disandera cuma efeknya, bukan pembukuannya | M4 | solo | - |
+| SHOP-16 | Match solo `normal` sampai wave 10 (`boss_locker`). Di `Intermission` setelah wave 8, beli **Exploit Patch tepat 5 kali** — 200 + 250 + 312 + 390 + 488 = **1.640** koin, dan tombolnya harus berakhir menampilkan **610** (harga ke-6). Dulu 5 adalah jatah maksimumnya; sekarang 5 cuma angka yang dipilih supaya pengalinya bulat **1,5x** dan hasilnya bisa dihitung di muka | Hitung serangan untuk membunuh satu `basic` tiga kali, dengan `weapon_starter` level 1: (a) saat **wave 9**, (b) saat **wave 10 dengan Locker hidup**, pada minion `basic` yang dia panggil, (c) setelah **Locker mati**, pada minion `basic` yang masih hidup. Saat (b), lihat juga harga di baris Exploit Patch di panel toko yang ikut muncul terkunci | Inilah mekanik Locker yang sebenarnya menggigit — analogi ransomware: dia menyandera yang sudah kamu miliki, bukan melarangmu berbelanja. Damage jadi 1,5x linear, jadi 25 per serangan jadi 37,5. (a) `basic` wave 9 punya 220 HP → **6** serangan, bukan 9. (b) minion `basic` wave 10 punya 235 HP → **10** serangan, persis angka "belum pernah upgrade sama sekali" di [bagian 4.2](#42-angka-patokan), dan baris state HUD memuat **"upgrade tim disandera"**. (c) `basic` yang sama → **7** serangan, dan teks itu hilang. Pembelian tidak hilang: selama Locker hidup, baris Exploit Patch di panel toko yang terkunci tetap menampilkan **610 koin** — harga pembelian ke-6, yang cuma bisa dihitung dari 5 pembelian yang masih tercatat. Kalau di situ tertulis **200**, yang disandera bukan cuma efeknya tapi pembukuannya juga, dan itu GAGAL | M4 | solo | - |
+| SHOP-17 | Match solo `normal`, wave 1, belum membeli apa pun. Panel toko belum terlihat (masih `WaveActive`) | Habiskan seluruh **8** `basic` wave 1, catat angka "N koin tim" di header panel toko begitu panel itu muncul, dan baca Output server. Lalu habiskan wave 2 dan catat ulang. Terakhir, catat koin permanen di header panel lobby **sebelum** match dimulai dan lagi setelah match ini berakhir dengan cara apa pun | Selama wave 1 berjalan koin naik 5 tiap `basic` mati, jadi 8 musuh = **40** koin. Di detik wave dinyatakan bersih, Output mencetak satu baris: `[ShopService] hadiah wave 1: 800 koin tim, kolam jadi 840` — hadiahnya `200 * 4` karena solo dikali empat. Header panel toko yang muncul sesudahnya menampilkan **840 koin tim**, bukan 40. Wave 2: hadiahnya **1.000** (`250 * 4`), dan kolam naik tepat 1.000 di detik wave selesai, **di luar** koin musuh wave 2 yang sudah masuk satu-satu sebelumnya. Hadiah masuk kolam koin **match**, jadi koin permanen **tidak** ikut naik per wave: catat koin permanen di panel lobby sebelum match dan sesudahnya, dan selisihnya harus tetap mengikuti rumus akhir match (`10*wave + 50` kalau menang, `x rewardMult`) — ratusan, bukan ribuan. Kalau koin permanen ikut melompat per wave, hadiahnya masuk mata uang yang salah dan main solo jadi 4x lebih efisien per orang untuk farming | M3 | solo | - |
+| SHOP-18 | Match solo `normal` sampai **wave 5** (`boss_splitter`). Catat hadiah wave 4 dan wave 6 juga | Baca tiga baris `[ShopService] hadiah wave N: ...` untuk wave 4, 5, dan 6 | Wave 4 = **1.400** (`350 * 4`), wave 5 = **3.200**, wave 6 = **1.800** (`450 * 4`). Wave 5 bukan 1.600: dia **dikali dua** karena punya boss, jadi `(200 + 50*4) * 2 * 4`. Yang dinilai bukan angka 3.200-nya saja tapi bentuk kurvanya — hadiah wave boss harus **dua kali** hadiah wave itu kalau boss-nya tidak ada, dan karena itu wave 5 lebih besar daripada wave 6 **dan** wave 7 (2.000) sekaligus. Wave boss dikenali dari `bossId` di `Waves.luau`, bukan dari nomor wave yang ditulis tangan. Tanpa memainkan lima wave: pindahkan `bossId = "boss_splitter"` ke wave 1 dengan prosedur di [bagian 12](#12-boss-boss), lalu hadiah wave 1 harus **1.600**, bukan 800. **Balikkan kedua file sebelum commit** | M3 | solo (atau solo+EDIT) | - |
+| SHOP-19 | Match solo `normal` dimainkan sampai **menang** di wave 10. Baris ini ikut terbukti sendiri setiap kali satu match penuh dimainkan (WAVE-02, MP-03), jadi tidak perlu sesi sendiri | Habiskan Locker dan seluruh minionnya, lalu baca **dua baris terakhir** Output server berurutan | `[ShopService] hadiah wave 10: 5200 koin tim, kolam jadi Y` muncul **lebih dulu**, baru `[MatchService] match selesai: menang di wave 10 (normal), 1 peserta`. Hadiahnya `(200 + 50*9) * 2 * 4` = 5.200: wave terakhir juga wave boss, jadi dia hadiah **terbesar di seluruh match**. Yang GAGAL adalah baris `[ShopService]` yang **tidak muncul sama sekali** untuk wave 10 — wave terakhir yang menyatakan match menang lalu berhenti akan melewatkan hadiahnya tanpa satu error pun, dan yang hilang justru yang paling besar. Perhatikan bahwa kolamnya tidak bisa diperiksa di layar: panel toko sudah hilang di state `Ended`, jadi Output server satu-satunya buktinya | M3 | solo | - |
+| SHOP-20 | State `Intermission` di jeda setelah wave 2, solo — kolam sudah di atas **1.200** koin (840 dari wave 1 ditambah 1.000 hadiah wave 2 dan koin musuhnya). Exploit Patch belum pernah dibeli di match ini | Beli **Exploit Patch empat kali berturut-turut**. Sebelum tiap klik, catat angka harga di barisnya; sesudah tiap klik, catat saldo "N koin tim" di header | Angka di baris Exploit Patch berjalan **200 → 250 → 312 → 390 → 488**, dan saldo turun persis sebesar angka yang tertulis **sebelum** klik — bukan 200 empat kali, dan bukan harga berikutnya. Total yang hilang dari kolam = **1.152**. Harga naik `x1.25` per pembelian, dibulatkan ke bawah tiap kali ([bagian 4.2](#42-angka-patokan)). Baris Overclock, Hotfix, Firewall Block, dan Scanner Turret **tidak berubah sama sekali** selama ini — harga satu item cuma dinaikkan pembelian item yang sama. Angka di tombol yang tidak cocok dengan potongan koin adalah GAGAL: keduanya dihitung dari fungsi yang sama, jadi selisihnya berarti satu sisi memakai harga dasar | M3 | solo | - |
+| SHOP-21 | State `Intermission` di jeda setelah wave 5, solo — kolam di atas **4.100** koin | Beli melewati batas yang dulu berlaku untuk tiga item: **Exploit Patch 6 kali** (dulu maks 5), **Hotfix 4 kali** (dulu maks 3), **Scanner Turret 3 kali** (dulu maks 2) | Semuanya **diterima**. Tidak ada satu pun penolakan "Jatah ... sudah habis", dan tidak ada tombol yang mati karena jumlah. Harga pembelian terakhir tiap item: Exploit Patch ke-6 = **610**, Hotfix ke-4 = **292**, Scanner Turret ke-3 = **390**; totalnya 2.250 + 863 + 952 = **4.065** koin. Tiga baris itu juga **tidak** memuat "· sisa N" sama sekali — teks itu cuma ada di Firewall Block. Efeknya ikut: damage tim jadi **1,6x** (6 x +10% linear), Core dipulihkan 150 HP per Hotfix sampai mentok 1000, dan turret ketiga muncul di sudut ketiga mengelilingi Core tanpa menumpuk di atas dua yang sudah ada | M3 | solo | - |
+| SHOP-22 | State `Intermission`, kolam di atas **850** koin, Firewall Block belum pernah dibeli di match ini. Listener `ActionResult` terpasang di command bar client | Beli **Firewall Block lima kali**, catat harga dan sisa di barisnya tiap kali. Lalu coba klik tombolnya, lalu `R.BuyShopItem:FireServer("shop_barrier")` | Lima pembelian pertama diterima dengan harga **100 → 125 → 156 → 195 → 244** (total **820**), dan teks sisanya turun **5 → 4 → 3 → 2 → 1 → 0**. Sesudah yang kelima tombolnya **abu-abu** dan barisnya memuat "· sisa 0"; mengkliknya tidak mengirim apa pun. Lewat remote, pembelian ke-6 **ditolak** dengan **"Jatah Firewall Block sudah habis (5)."** — bukan "Koin tim kurang", walaupun koinnya memang masih di atas harga ke-6 (305) — dan alasan itu muncul merah di baris status panel toko selama 4 detik. Kolam **tidak** terpotong. Ini satu-satunya item yang batasnya dipertahankan, dan alasannya di [bagian 4.2](#42-angka-patokan): yang dibeli bukan kekuatan melawan wave tapi waktu musuh tertahan, jadi 20 tumpuk = 120 detik dan wave-nya lewat tanpa pemain menyentuh apa pun | M3 | solo | - |
+| SHOP-23 | Sesi **2 client**, keduanya Ready, `normal`, wave 1 | Habiskan wave 1 dan baca baris `[ShopService] hadiah wave 1: ...` di Output jendela server | Hadiahnya **400** koin, bukan 800: dua pemain dikali **x2**, bukan x4. Wave 1 dengan 2 player tetap 8 musuh (pembulatan ke bawah dari 8,5 — [bagian 4.2](#42-angka-patokan)), jadi koin musuhnya tetap 40 dan barisnya berbunyi `kolam jadi 440`. Angkanya **sama di kedua client**: kolam koin match satu, milik tim. Bandingkan dengan 800 di SHOP-17 — separuh hadiah per wave, tapi efek tiap koin yang dibelanjakan berlaku untuk dua orang | M3 | 2P | - |
+| SHOP-24 | Sesi **4 client**, keempatnya Ready, `normal`, wave 1 | Habiskan wave 1 dan baca baris `[ShopService] hadiah wave 1: ...`. Lalu ulangi dengan **3 client** | 4 player: hadiahnya **200** koin — pengalinya **x1**, jadi hadiahnya persis rumus dasarnya. Wave 1 dengan 4 player ada 9 musuh, jadi koin musuhnya 45 dan barisnya berbunyi `kolam jadi 245`. 3 player: hadiahnya **juga 200**, bukan 266 — pengalinya tangga dengan ambang di **3 pemain**, jadi 3 dan 4 pemain diperlakukan sama, dan wave 1 juga 9 musuh di dua-duanya. Hadiah yang mengecil terus seiring jumlah pemain naik di atas 3 berarti pengalinya diimplementasikan sebagai pembagian, bukan tangga | M3 | 4P | - |
 
 ## 12. Boss (BOSS)
 
@@ -725,7 +823,7 @@ Acuan: DEVELOPMENT_PLAN.md bagian 3.3 (aturan join dan rejoin), M6.
 | MP-11 | 2 client, koin tim sudah terkumpul, state `Intermission` | Satu peserta disconnect lalu rejoin, lalu beli item di toko | Koin tim masih utuh setelah rejoin (tidak hangus dan tidak dobel); pembelian memakai koin yang sama | M6 | LIVE | - |
 | MP-12 | 4 client, wave 10 dengan `boss_locker` dan minion | Amati Output jendela server selama wave 10 sampai layar hasil | Tidak ada error atau warning berulang; game tetap responsif | M6 | 4P | - |
 | MP-13 | 2 client, `hard` terbuka untuk keduanya. Satu pemain memilih **Hard**, satu memilih **Normal** | Keduanya Ready, masuk wave 1, hitung serangan untuk membunuh satu `basic` | Match jalan di **Normal** — yang paling mudah di antara pilihan mereka. 4 serangan, bukan 8. Alasannya di [tabel keputusan M2](#202-keputusan-m2): `hard` harus dibuka per pemain, jadi aturan yang mengambil yang lebih sulit bisa memaksa pemain ikut match di tingkat yang belum dia buka | M6 | 2P | - |
-| MP-14 | 2 client, state `Intermission`, koin tim cukup | Pemain A membeli **Hotfix** (150) tiga kali — jatah maksimumnya | Saldo di layar pemain B **ikut turun** 150 tiap pembelian, dan setelah pembelian ketiga tombol Hotfix di layar **B juga mati**. Jatah item dibagi tim, bukan per pemain | M3 | 2P | - |
+| MP-14 | 2 client, state `Intermission`, kolam di atas **1.400** koin. Hotfix dan Firewall Block belum pernah dibeli di match ini | Pemain A membeli **Hotfix** tiga kali, lalu **Firewall Block** lima kali. Pemain B tidak menyentuh apa pun — cuma melihat panelnya | Saldo di layar pemain B **ikut turun**, dan sebesar harga yang naik: **150, 187, 234** untuk Hotfix. Harga di baris Hotfix di layar **B juga naik** mengikuti, jadi tombol B menampilkan 187 lalu 234 lalu **292** tanpa B membeli apa pun — pembukuan `purchases` dibagi tim, bukan per pemain, dan harga dihitung dari pembukuan itu. Lalu untuk Firewall Block: setelah pembelian **kelima**, tombol Firewall Block di layar **B juga mati** dan barisnya memuat "· sisa 0". Satu kolam, satu pembukuan, dua layar. Perhatikan bahwa Hotfix **tidak** bisa dipakai menguji jatah yang habis — jatahnya sudah dihapus, dan satu-satunya item yang masih dibatasi adalah Firewall Block | M3 | 2P | - |
 
 ## 15. Leaderboard (LB)
 
@@ -771,7 +869,7 @@ dimiliki, koin kurang). Jadi "tidak ada `ActionResult`" bukan kegagalan.
 | SEC-01 | State `Lobby`, lalu ulangi saat `WaveActive` | `R.SetReady:FireServer(nil)`, `FireServer(-1)`, `FireServer("true")`, `FireServer({})`, `FireServer()`, lalu `for _ = 1, 200 do R.SetReady:FireServer(true) end` | Ready hanya berubah untuk boolean yang sah, dan hanya saat `Lobby` atau `Countdown` (Countdown diizinkan khusus untuk **membatalkan**). Argumen lain diabaikan. Spam dibatasi **2 per detik** dan sisanya dibuang tanpa error; countdown tidak terpicu berulang | M6 | solo | - |
 | SEC-02 | State `Lobby` | `R.SelectLoadout:FireServer(nil, nil)`, `FireServer(1, 2)`, `FireServer("weapon_tidak_ada", "normal")`, `FireServer("weapon_starter", "critical")`, `FireServer("weapon_ranged", "normal")` tanpa memilikinya, `FireServer("weapon_starter", "hard")` sebelum hard terbuka, `FireServer({}, {})`, lalu spam 200x | Loadout hanya berubah untuk senjata yang **dimiliki** dan tingkat yang **terbuka**. Dua baris terakhir yang bermakna membalas `ActionResult` dengan `ok = false` dan alasannya ("Senjata itu belum kamu miliki.", "Tingkat kesulitan itu belum terbuka.") dan **tidak** mengubah `equippedWeapon`. `"critical"` dan id yang tidak ada dibuang tanpa balasan — `critical` memang belum ada di v1. Spam dibatasi 2 per detik | M6 | solo | - |
 | SEC-03 | State `WaveActive` sebagai peserta, lalu ulangi sebagai player yang bukan peserta | `R.Attack:FireServer()`, `FireServer(-1)`, `FireServer("depan")`, `FireServer(Vector3.new(0, 0, 0))`, `FireServer(Vector3.new(0/0, 0, 0))`, `FireServer(Vector3.new(1e9, 1e9, 1e9))`, `FireServer({})`, lalu `for _ = 1, 500 do R.Attack:FireServer(Vector3.new(0, 0, -1)) end` | Hanya `Vector3` dengan magnitude wajar yang diproses. Arah nol, NaN, dan inf ditolak sebelum dipakai. Arah ekstrem dinormalisasi jadi arah biasa, tidak membuat damage aneh dan tidak menjangkau musuh di luar `range`. Serangan dari player di luar `participants` ditolak. Spam dibatasi **20 per detik** di rate limit **dan** cooldown senjata di atasnya — musuh tidak mati lebih cepat dari ~2 serangan per detik dengan starter | M6 | solo | - |
-| SEC-04 | State `Intermission`, lalu ulangi saat `WaveActive` dan `Lobby` | `R.BuyShopItem:FireServer()`, `FireServer(123)`, `FireServer("shop_tidak_ada")`, `FireServer({ id = "shop_barrier" })`, lalu spam 100x dengan id valid saat koin cuma cukup untuk satu | Hanya id yang ada di `ShopItems.luau` dan hanya saat `Intermission` yang diproses. Spam tidak membuat item terbeli berkali-kali melebihi koin (koin dipotong **sebelum** efeknya dijalankan, jadi tidak ada celah). Koin tim **tidak pernah negatif** dan **tidak berubah sama sekali** setelah semua percobaan yang ditolak. Kalau turun, ada jalur yang memotong koin sebelum validasinya lengkap | M6 | solo | - |
+| SEC-04 | State `Intermission`, lalu ulangi saat `WaveActive` dan `Lobby` | `R.BuyShopItem:FireServer()`, `FireServer(123)`, `FireServer("shop_tidak_ada")`, `FireServer({ id = "shop_barrier" })`, lalu spam 100x dengan id valid saat koin cuma cukup untuk satu | Hanya id yang ada di `ShopItems.luau` dan hanya saat `Intermission` yang diproses. Spam tidak membuat item terbeli berkali-kali melebihi koin (koin dipotong **sebelum** efeknya dijalankan, jadi tidak ada celah). Koin tim **tidak pernah negatif** dan **tidak berubah sama sekali** setelah semua percobaan yang ditolak. Kalau turun, ada jalur yang memotong koin sebelum validasinya lengkap. Dengan harga yang naik, spam itu punya cara baru untuk membuat kolam negatif: pembelian pertama lolos, lalu pembelian kedua diperiksa terhadap **harga dasar** sementara yang dipotong **harga sekarang** yang lebih besar. Jadi yang dinilai di sini bukan cuma "tidak negatif" tapi angkanya — setelah spam, sisa kolam harus persis saldo awal dikurangi harga pembelian yang benar-benar diterima | M6 | solo | - |
 | SEC-05 | State `Lobby` | `R.UpgradeWeapon:FireServer()`, `FireServer(42)`, `FireServer("weapon_tidak_ada")`, `FireServer("weapon_ranged")` tanpa memilikinya, lalu spam 200x dengan senjata milik saat koin cuma cukup untuk satu level | Hanya senjata yang dimiliki, belum level 10, dan koin cukup yang naik level. Spam tidak menaikkan beberapa level dengan bayar sekali. Koin permanen tidak negatif | M6 | solo | - |
 | SEC-06 | State `Lobby`, `weapon_ranged` belum dimiliki | `R.BuyWeapon:FireServer()`, `FireServer(-1)`, `FireServer("weapon_tidak_ada")`, `FireServer("weapon_starter")` (sudah dimiliki), `FireServer("weapon_boss_a")` (harus di-craft), lalu spam 100x `FireServer("weapon_ranged")` saat koin cuma cukup satu kali | Hanya senjata yang memang dijual, belum dimiliki, dan koin cukup yang masuk. Spam tidak memotong koin dua kali. Senjata craft-only tidak bisa dibeli dengan koin | M6 | solo | - |
 | SEC-07 | State `Lobby`, `material_a` cukup untuk satu craft | `R.CraftWeapon:FireServer()`, `FireServer(-1)`, `FireServer("weapon_tidak_ada")`, `FireServer("weapon_ranged")` (bukan senjata craft), lalu spam 100x `FireServer("weapon_boss_a")` | Hanya senjata craft yang resepnya terpenuhi yang masuk. Spam tidak menghasilkan dua senjata dan material tidak jadi negatif | M6 | solo | - |
@@ -842,9 +940,9 @@ bisa dicentang — tapi dia juga tidak sedang gagal.
 | M2 | Satu match penuh bisa dimainkan dari lobby sampai hasil | MATCH-01 sampai MATCH-09, MATCH-11, MATCH-12, MATCH-13, MATCH-15, MATCH-16, WAVE-01, WAVE-02, WAVE-04, WAVE-05, WAVE-14, WAVE-16, WAVE-20, COMBAT-11, HUD-01, HUD-02 | MATCH-16 berkode `LIVE` |
 | M2 | Bisa diulang tanpa restart server | MATCH-10, MATCH-14, SHOP-12 | — |
 | M2 | Scaling jumlah dan HP musuh per player; batas musuh aktif + antrian | WAVE-06, WAVE-08, WAVE-10 | Semuanya butuh `2P`/`4P` |
-| M3 | Beli item mengubah gameplay di wave berikutnya | SHOP-01 sampai SHOP-06, SHOP-14, CORE-05, COMBAT-14 | — |
-| M3 | Tidak bisa beli di luar jeda atau dengan koin kurang (dicoba lewat remote manual) | SHOP-07, SHOP-08, SHOP-09, SHOP-12, SEC-04 | SHOP-13 (`LIVE`) menutup kasus bukan-peserta |
-| M3 | Koin match per tim, reset tiap match | MP-04, MP-14, SHOP-12 | MP-04 dan MP-14 butuh `2P`/`4P` |
+| M3 | Beli item mengubah gameplay di wave berikutnya | SHOP-01 sampai SHOP-06, SHOP-14, SHOP-20, SHOP-21, CORE-05, COMBAT-14 | — |
+| M3 | Tidak bisa beli di luar jeda atau dengan koin kurang (dicoba lewat remote manual) | SHOP-07, SHOP-08, SHOP-09, SHOP-12, SHOP-22, SEC-04 | SHOP-13 (`LIVE`) menutup kasus bukan-peserta |
+| M3 | Koin match per tim, reset tiap match | MP-04, MP-14, SHOP-12, SHOP-17, SHOP-18, SHOP-19, SHOP-23, SHOP-24 | MP-04, MP-14, SHOP-23, dan SHOP-24 butuh `2P`/`4P`. SHOP-17 sampai SHOP-19 menutup hadiah koin per wave, yang **tidak** punya kriteria "Selesai kalau" sendiri — dia datang dari `ARENA_REDESIGN.md` bagian 6 dan dipetakan ke sini karena hadiahnya masuk kolam koin match milik tim |
 | M4 | Kedua boss bisa dikalahkan dengan mekaniknya berjalan | BOSS-01, BOSS-02, BOSS-03, BOSS-05 sampai BOSS-09, BOSS-12, BOSS-14, SHOP-10, SHOP-11, SHOP-15, SHOP-16, HUD-04, HUD-08 | SHOP-16 adalah mekanik Locker yang sebenarnya menggigit; SHOP-10 cuma penandanya |
 | M4 | Material tercatat di data player setelah match | BOSS-04, BOSS-09, BOSS-10 | BOSS-04 butuh `2P`; BOSS-13 (`LIVE`) menutup kasus peserta yang disconnect; persistensi sesungguhnya butuh `PUB` |
 | M5 | Player baru bisa main | PROG-16, HUD-05, HUD-06, BOOT-04, BOOT-05 | — |
@@ -880,7 +978,7 @@ atas langsung mengacu ke sini saat hasilnya terasa aneh tapi sebenarnya benar.
 |---|---|---|
 | Mapping `assets/` di `default.project.json` saat filenya belum ada | Mapping **ditambahkan sekarang**, memakai `"$path": { "optional": "..." }` | Diuji empiris: `"$path": "assets/Arena.rbxmx"` biasa membuat `rojo build` **gagal keras** ("could not be turned into a Roblox Instance") dan CI jadi merah. Bentuk `optional` membuat rojo melewatkan path yang tidak ada tanpa error, lalu otomatis memakainya begitu filenya muncul. Jadi mapping-nya tidak perlu ditunda sampai assetnya ada. |
 | Tabrakan fisik musuh | `CanCollide = false` | Musuh adalah Part **anchored** yang digerakkan lewat `CFrame`. Part anchored yang bertabrakan dengan karakter akan mendorong pemain ke dalam geometry atau menahan musuh di tempat. Uji kena serangan tidak memakai tabrakan sama sekali (bagian 3.7), jadi tidak ada yang hilang. |
-| Tiga remote tambahan di luar tabel bagian 3.6 | `BossState`, `ShopState`, `ActionResult` ditambahkan | Milestone-nya memintanya tapi tabel 3.6 tidak menyediakan jalurnya: HP bar boss (M4) tidak punya tempat di payload `MatchState` yang sudah dipatok, sisa jatah beli per item (M3) tidak boleh ditebak client, dan penolakan server tanpa jalur balasan membuat pemain mengira tombolnya rusak. Ketiganya **penambahan**, bukan penggantian nama, jadi tidak ada yang bergeser dari tabel 3.6. Alasan lengkapnya ada di komentar `src/shared/Remotes.luau`. |
+| Tiga remote tambahan di luar tabel bagian 3.6 | `BossState`, `ShopState`, `ActionResult` ditambahkan | Milestone-nya memintanya tapi tabel 3.6 tidak menyediakan jalurnya: HP bar boss (M4) tidak punya tempat di payload `MatchState` yang sudah dipatok, pembukuan pembelian per item (M3) tidak boleh ditebak client — dulu untuk sisa jatah, sekarang juga untuk menghitung harga sekarang di tombol — dan penolakan server tanpa jalur balasan membuat pemain mengira tombolnya rusak. Ketiganya **penambahan**, bukan penggantian nama, jadi tidak ada yang bergeser dari tabel 3.6. Alasan lengkapnya ada di komentar `src/shared/Remotes.luau`. |
 | `GetLeaderboard` dari tabel bagian 3.6 | **Sengaja belum didaftarkan** | Itu milestone M6, dan `RemoteFunction` tanpa `OnServerInvoke` membuat client yang memanggilnya menggantung selamanya. Lihat LB-00 dan SEC-08. |
 
 ### 20.2 Keputusan M2
@@ -935,11 +1033,14 @@ atas langsung mengacu ke sini saat hasilnya terasa aneh tapi sebenarnya benar.
 
 ### 20.6 Keputusan rancangan ulang arena
 
-Baris di bawah datang dari `docs/ARENA_REDESIGN.md` bagian 4 dan 5, bukan dari
-DEVELOPMENT_PLAN.md — jadi tidak ada kriteria "Selesai kalau" yang
-memaksanya, dan semuanya pilihan. Yang paling mengubah rasa main: musuh yang
-lolos **tidak hilang lagi**, dan dari satu perubahan itu lahir seluruh sisa
-tabel ini.
+Baris di bawah datang dari `docs/ARENA_REDESIGN.md` bagian 4, 5, dan 6, bukan
+dari DEVELOPMENT_PLAN.md — jadi tidak ada kriteria "Selesai kalau" yang
+memaksanya, dan semuanya pilihan. Dua akar perubahannya terpisah. Yang pertama
+dan paling mengubah rasa main: musuh yang lolos **tidak hilang lagi**, dan dari
+situ lahir sembilan baris pertama tabel ini. Yang kedua menyangkut uang:
+**tiap wave yang selesai memberi hadiah koin tim**, dan hadiah sebesar itu
+memaksa batas jumlah pembelian di Toko Match diganti harga yang naik —
+empat baris terakhir.
 
 | Keputusan | Yang dipilih | Alasan |
 |---|---|---|
@@ -952,3 +1053,7 @@ tabel ini.
 | Penumpukan musuh di base | **Slot cincin**: 12 posisi per cincin, radius tumbuh per cincin (10, 14, 18, ...), nomor slot **tidak pernah dipakai ulang** | Tanpa collision, 20 musuh yang berhenti di titik yang sama jadi satu gumpalan yang tidak bisa dibidik satu-satu. Nomor slot tidak dipakai ulang supaya slot yang dibebaskan musuh mati tidak langsung diberikan ke musuh lain yang sedang datang — dua musuh bisa berdiri di titik yang sama persis kalau yang pertama mati tepat sebelum yang kedua sampai. Harganya: cincinnya melebar selama match berjalan, dan itu diterima. Radiusnya tumbuh per cincin (10, 14, 18, ...) supaya jumlah cincin tidak terbatas tanpa dua slot pernah berbagi tempat — versi pertama memakai satu radius luar untuk semua cincin dan membuat slot 24 berdiri tepat di posisi slot 12. Dites WAVE-19 dan unit test `EnemyAI`. |
 | Wave boleh dinyatakan bersih sementara masih ada musuh di base? | **Tidak**, dan jaminan "arena pasti bersih" memang dibuang — bukan ditambal dengan "musuh di base tidak dihitung" | Efek sampingnya yang justru dicari: Intermission dan Toko Match tertunda selama masih ada kebocoran, sambil base terus kehilangan HP. Kebocoran menghukum dua kali, HP dan waktu belanja, tanpa satu aturan tambahan. Dan ini tidak bisa menggantung permanen — kalau pemain tidak mampu, Core habis dan match berakhir kalah. Konsekuensinya untuk yang playtest: satu wave yang "tidak mau selesai" adalah hal yang benar, dan itu yang paling mudah salah dilaporkan. Dites WAVE-20, dijelaskan di T8. |
 | Konsekuensi kematian pemain | **Respawn biasa 5 detik di spawn arena, tanpa sistem nyawa** | Sebelum ini musuh tidak bisa menyentuh pemain sama sekali, jadi `RESPAWN_SECONDS` tidak punya arti. Sistem nyawa menambah state, UI, dan aturan multiplayer ("apa yang terjadi kalau satu pemain habis nyawa") untuk sesuatu yang sudah dihukum cukup oleh waktu: selama pemain tidak ada, musuh di base terus memukul. Angkanya ditulis eksplisit, bukan dibiarkan memakai default Roblox yang kebetulan juga 5 detik, supaya kesulitan game tidak bisa bergeser karena default engine berubah. Dites COMBAT-16. |
+| Hadiah per wave masuk mata uang yang mana | **Koin match** — kolam milik tim yang habis tiap match, bukan koin permanen per pemain | Pengali jumlah pemain (solo x4) cuma koheren untuk kolam tim, dan itu argumen terkuatnya. Kalau hadiahnya masuk koin permanen, main solo jadi **4x lebih efisien per orang** untuk farming, dan game co-op yang menghukum main bareng akan dimainkan solo oleh semua orang. Kolam koin match dibagi tim, jadi x4 solo cuma menormalkan daya beli per orang — tidak memberi solo keuntungan yang dibawa keluar dari match. Dites SHOP-17, yang secara eksplisit memeriksa koin permanen **tidak** ikut naik. |
+| Pengali jumlah pemain: kurva atau tangga | **Tangga** — 1 pemain x4, 2 pemain x2, 3 atau lebih x1 | Tangga dengan tiga nilai bisa dihitung di kepala dan dibaca dari satu baris Output; kurva (misal `4/playerCount`) memberi 1,33 untuk 3 pemain dan membuat tiap angka hadiah harus dihitung ulang sebelum bisa dinilai. Ambangnya di 3, bukan 4, karena efek Toko Match sudah berlaku untuk seluruh tim: tim berempat mendapat 4x nilai dari tiap koin, jadi tim 3 dan 4 orang sudah berada di sisi yang sama dari pertukaran itu. Jumlah pemain yang tidak masuk akal (nol, negatif, NaN) jatuh ke **x4**, bukan ke nol — hadiah yang terlalu besar langsung terlihat saat playtest, hadiah yang diam-diam hilang tidak. Dites SHOP-23 dan SHOP-24, dan dipatok unit test `Balance`. |
+| Hadiah untuk wave terakhir | **Diberikan**, dan urutannya dipatok: hadiah ditembakkan **sebelum** pengecekan wave terakhir | Cabang wave terakhir memanggil `endMatch(true)` lalu `return`, jadi hadiah yang ditaruh sesudahnya tidak akan pernah diberikan untuk wave 10 — dan wave 10 adalah wave boss, jadi yang hilang justru hadiah **terbesar di seluruh match** (5.200 untuk solo). Kegagalannya juga tidak mencetak error apa pun: pemain cuma menang dengan koin yang tidak pernah dia lihat, di detik terakhir sebelum kolamnya di-reset. Urutan itu satu-satunya yang benar, dan itu sebabnya dia punya test sendiri. Dites SHOP-19. |
+| Batas jumlah pembelian di Toko Match | **Dihapus untuk empat item, diganti harga yang naik x1.25 per pembelian item yang sama.** `shop_barrier` tetap dibatasi 5 | Dengan hadiah per wave, solo mengumpulkan sekitar **21.200** koin sepanjang 10 wave, sementara toko yang seluruh itemnya dibatasi cuma bisa menyerap **3.450**: habis diborong di wave 3-4, lalu enam wave sisanya koinnya tidak ada gunanya. Menurunkan hadiahnya bukan perbaikannya, karena alasan x4-nya valid — yang salah batas jumlahnya. Dengan harga yang naik, 10 tumpuk Exploit Patch memakan 6.647 koin alih-alih 2.000: uang selalu punya tujuan, dan kelebihan pasokan solo terkoreksi lewat harga, bukan lewat tembok yang membuat sisa koin tidak ada gunanya. `shop_barrier` ditinggalkan dari daftar itu karena empat item lain menambah **kemampuan**, yang tetap harus dipakai, sementara dia menambah **waktu musuh tertahan** — 20 tumpuk berarti 120 detik dan wave-nya lewat tanpa pemain menyentuh apa pun, jadi harga yang naik tidak membatasi apa pun yang perlu dibatasi. Konsekuensinya untuk yang playtest: harga di tombol berubah sendiri antar pembelian, dan itu T11. Dites SHOP-20 sampai SHOP-22. |

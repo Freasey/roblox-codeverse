@@ -79,7 +79,7 @@ Balance.WAVE_REWARD_BOSS_MULT = 2
 -- 21.200 koin sepanjang 10 wave, sementara toko yang seluruh itemnya dibatasi
 -- cuma bisa menyerap 3.450. Artinya toko habis diborong di wave 3-4 dan enam
 -- wave sisanya koinnya tidak ada gunanya. Dengan harga yang naik, 10 tumpuk
--- damage up memakan 6.650 koin alih-alih 1.000: uang selalu punya tujuan, dan
+-- damage up memakan 6.647 koin alih-alih 2.000: uang selalu punya tujuan, dan
 -- kelebihan pasokan solo terkoreksi lewat harga, bukan lewat tembok.
 Balance.SHOP_PRICE_GROWTH = 1.25
 

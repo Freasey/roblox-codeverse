@@ -39,7 +39,7 @@ ShopRules.OPEN_STATE = "Intermission"
 --
 -- Ini yang menggantikan `maxPurchases` sebagai pembatas untuk item tak
 -- terbatas. Dengan growth 1.25 dan harga dasar 200, sepuluh tumpuk memakan
--- 6.650 koin alih-alih 2.000 -- jadi kelebihan koin terkoreksi lewat harga,
+-- 6.647 koin alih-alih 2.000 -- jadi kelebihan koin terkoreksi lewat harga,
 -- bukan lewat tembok yang membuat sisa koin tidak ada gunanya.
 --
 -- `growth` di bawah 1 akan membuat barang makin MURAH tiap dibeli, dan nol atau
