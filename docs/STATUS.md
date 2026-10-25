@@ -357,6 +357,13 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
   SHOP-16 yang dulu satu-satunya cara membuktikan mekanik ini tidak bisa
   membuktikan apa pun sekarang.
 
+  **Daffa menunda keputusannya sampai sesudah playtest (2026-10-25)**, dan
+  alasannya masuk akal: seberapa kejam sandera yang pantas tergantung seberapa
+  mahal level senjata itu terasa saat dimainkan, dan harga 150 x1.35 sendiri
+  masih tebakan pertama. Sampai itu diputuskan, wave 10 dimainkan dengan boss
+  yang mekanik andalannya tidak melakukan apa-apa -- itu keadaan yang
+  diketahui, bukan bug yang perlu dilaporkan.
+
 - **Ketiga senjata terbuka sejak awal, dan ini SEMENTARA.**
   `Config.DEFAULT_DATA.weapons` sekarang memuat `weapon_starter`,
   `weapon_ranged`, dan `weapon_boss_a` di level 1 (permintaan Daffa,
