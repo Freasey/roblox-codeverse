@@ -131,7 +131,7 @@ local function renderCoins()
 	if coins == nil then
 		return
 	end
-	coins.Text = string.format("%d koin tim", MatchStore.getCoins())
+	coins.Text = string.format("%d cash tim", MatchStore.getCoins())
 end
 
 local function renderBoss()

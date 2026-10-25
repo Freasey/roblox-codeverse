@@ -61,7 +61,7 @@ local STEPS: { [string]: Step } = {
 	},
 	intermission = {
 		id = "intermission",
-		text = "Jeda 20 detik. Toko Match buka di kanan — koinnya milik tim, "
+		text = "Jeda 20 detik. Toko Match buka di kanan — cash-nya milik tim, "
 			.. "dan habis saat match selesai. Pakai, jangan ditabung.",
 	},
 	boss = {

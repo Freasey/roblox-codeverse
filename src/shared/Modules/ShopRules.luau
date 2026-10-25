@@ -65,7 +65,7 @@ end
 -- tanpa itu penolakan server terlihat sama seperti tombol yang rusak.
 --
 -- Urutan pemeriksaannya penting untuk pesan yang masuk akal: kunci boss dulu,
--- lalu state, lalu keberadaan item, lalu jatah, baru koin.
+-- lalu state, lalu keberadaan item, lalu jatah, baru cash.
 --
 -- Kunci boss sebelum state, bukan sesudahnya: Locker (boss wave 10) cuma
 -- mengunci toko selama dia hidup, dan selama dia hidup state-nya selalu
@@ -75,8 +75,8 @@ end
 -- yang kena mekanik boss justru dibilang "tunggu jeda" — padahal jeda itu
 -- baru datang setelah boss-nya mati.
 --
--- Di bawah kunci, state tetap sebelum koin: kalau tokonya memang tutup,
--- "koin kurang" menyesatkan dan membuat pemain mengumpulkan koin untuk
+-- Di bawah kunci, state tetap sebelum cash: kalau tokonya memang tutup,
+-- "cash kurang" menyesatkan dan membuat pemain mengumpulkan cash untuk
 -- masalah yang bukan masalahnya.
 function ShopRules.canBuy(def: Types.ShopItemDef?, context: Context): (boolean, string?)
 	if context.locked then
@@ -95,13 +95,13 @@ function ShopRules.canBuy(def: Types.ShopItemDef?, context: Context): (boolean, 
 	end
 
 	-- Harga yang dipakai harga SEKARANG, bukan `def.cost`. Item tak terbatas
-	-- dibatasi oleh harga yang naik, jadi membandingkan koin dengan harga dasar
+	-- dibatasi oleh harga yang naik, jadi membandingkan cash dengan harga dasar
 	-- akan meloloskan pembelian yang tidak bisa dibayar -- dan ShopService
-	-- memotong koin sebesar harga sekarang, jadi saldonya bisa jadi negatif.
+	-- memotong cash sebesar harga sekarang, jadi saldonya bisa jadi negatif.
 	local price = ShopRules.priceFor(def, context.purchases, context.priceGrowth)
 	if context.coins < price then
 		return false,
-			string.format("Koin tim kurang: butuh %d, ada %d.", price, math.floor(context.coins))
+			string.format("Cash tim kurang: butuh %d, ada %d.", price, math.floor(context.coins))
 	end
 
 	return true, nil

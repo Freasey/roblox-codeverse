@@ -1,10 +1,24 @@
 --!strict
--- ShopService.luau — Toko Match: koin match tim dan efek pembeliannya.
+-- ShopService.luau — Toko Match: cash tim dan efek pembeliannya.
 --
--- KOIN MATCH MILIK TIM, SATU KOLAM, dan reset tiap match. Bukan per pemain.
+-- DUA MATA UANG, DAN NAMANYA SENGAJA BERBEDA. Yang di sini **cash**: milik
+-- tim, habis tiap match selesai, cuma bisa dibelanjakan di Toko Match. Yang di
+-- lobby **koin**: milik satu pemain, permanen, dipakai untuk upgrade senjata.
+-- Keduanya pernah sama-sama disebut "koin", dan itu membuat pemain menabung
+-- mata uang yang salah untuk barang yang dia incar -- satu-satunya tanda
+-- bahwa dia salah adalah angka yang tidak pernah naik.
+--
+-- Yang TIDAK ikut berganti nama: field dan remote. `MatchCoins`, `addCoins`,
+-- `context.coins`, dan `Enemies[...].matchCoins` tetap memakai kata coins,
+-- karena nama remote dipatok tabel docs/DEVELOPMENT_PLAN.md bagian 3.6 dan
+-- mengubahnya berarti mengubah kontrak jaringan untuk sebuah pergantian kata
+-- di layar. Jadi: kalau sebuah nama dibaca PEMAIN, dia "cash"; kalau dia cuma
+-- dibaca programmer, dia tetap coins.
+--
+-- CASH MILIK TIM, SATU KOLAM, dan reset tiap match. Bukan per pemain.
 -- Itu yang diminta M3 ("koin match per tim") dan bagian 3.7 ("musuh mati:
 -- tambah koin match ke tim"), dan sekaligus menyelesaikan satu hal yang
--- bagian 3.3 serahkan ke implementasi: koin match pemain yang disconnect tidak
+-- bagian 3.3 serahkan ke implementasi: cash pemain yang disconnect tidak
 -- bisa hangus, karena tidak ada saldo per pemain yang bisa hilang. Saat dia
 -- rejoin, saldo tim yang dia lihat sama dengan saat dia keluar.
 --
@@ -429,7 +443,7 @@ local function onBuy(player: Player, rawId: unknown)
 
 	print(
 		string.format(
-			"[ShopService] %s beli %s (%d koin), sisa %d",
+			"[ShopService] %s beli %s (%d cash), sisa %d",
 			player.Name,
 			def.id,
 			price,
@@ -464,7 +478,7 @@ function ShopService.start()
 		award(amount)
 		print(
 			string.format(
-				"[ShopService] hadiah wave %d: %d koin tim, kolam jadi %d",
+				"[ShopService] hadiah wave %d: %d cash tim, kolam jadi %d",
 				waveNumber,
 				amount,
 				math.floor(coins)

@@ -23,7 +23,7 @@ local EVENT_NAMES = {
 
 	-- Match (bagian 3.6)
 	"MatchState", -- S -> C: { state, wave, timer, coreHp, coreMaxHp }
-	"MatchCoins", -- S -> C: number (koin match tim)
+	"MatchCoins", -- S -> C: number (cash tim; nama remote tetap Coins, lihat ShopService)
 	"MatchResult", -- S -> C: { won, waveReached, coins, xp, materials, unlocked }
 	"SetReady", -- C -> S: boolean
 	"SelectLoadout", -- C -> S: weaponId, difficultyId

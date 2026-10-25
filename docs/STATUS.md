@@ -60,7 +60,7 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 
 | Lapis | Cakupan | Status |
 | --- | --- | --- |
-| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit, papan wave tertinggi | **256 test lulus** |
+| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit, papan wave tertinggi | **258 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
 | Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave, slow dan zona dan tanda alur upgrade, pendaftaran remote papan | **257 assertion lulus, 0 gagal, 22 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
@@ -119,7 +119,7 @@ ditukar, dan alasannya ditulis di tempatnya masing-masing.
 
 ```bash
 cd "C:\Web Program\roblox-codeverse"
-lune run tests/run          # 256 unit test, beberapa detik
+lune run tests/run          # 258 unit test, beberapa detik
 lune run tests/studio/run   # harness Studio, ~130 detik
 ```
 
@@ -303,6 +303,60 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
   sekali di place yang belum pernah di-publish: tidak ada satu catatan pun
   yang pernah ditulis atau dibaca sungguhan. Lihat LB-01 sampai LB-05.
 
+- **Ketiga senjata terbuka sejak awal, dan ini SEMENTARA.**
+  `Config.DEFAULT_DATA.weapons` sekarang memuat `weapon_starter`,
+  `weapon_ranged`, dan `weapon_boss_a` di level 1 (permintaan Daffa,
+  2026-10-25). **Upgrade tetap bayar koin**; yang dimatikan pintu masuknya,
+  bukan ekonominya, jadi harga 50 untuk level 1 ke 2 dan kurva x1.35 di atasnya
+  tidak berubah sedikit pun.
+
+  Dilakukan lewat `DEFAULT_DATA`, bukan lewat `Config.DEV_ALL_WEAPONS`, dan
+  bedanya bukan gaya: flag itu memberi senjata di MEMORI saja, sementara
+  `canUpgrade` membaca `data.weapons` langsung -- lewat flag, senjatanya bisa
+  dipakai tapi upgrade-nya ditolak "belum dimiliki" selamanya. Dua unit test
+  baru di `tests/ProgressionRules.spec.luau` yang menjaganya.
+
+  Yang perlu disadari sebelum ini dibalikkan: begitu data pernah tersimpan,
+  ketiga senjata sudah ada di DataStore dan tidak bisa dibedakan dari senjata
+  yang dibeli. Menghapus baris di `Config.luau` TIDAK mengambilnya kembali;
+  yang mengambilnya cuma menaikkan `Config.DATASTORE_NAME`. Hari ini biayanya
+  nol karena place-nya belum pernah di-publish.
+
+  Akibatnya untuk playtest: setiap baris yang prakondisinya "senjata belum
+  dimiliki" tidak bisa dijalankan apa adanya lagi -- MATCH-22 dan MATCH-23
+  yang justru menguji flag dev itu sendiri, SEC-02, dan beberapa baris PROG dan
+  COMBAT. Rinciannya per case di `docs/TEST_CASES.md`.
+
+  Tiga pesan penolakan ikut jadi **tidak terjangkau** selama keadaan ini
+  berlaku, dan itu bukan kebetulan melainkan urutan gerbangnya: `canBuy` dan
+  `canCraft` memeriksa kepemilikan SEBELUM `acquire.method`, jadi yang pulang
+  selalu "sudah kamu miliki." dan bukan "tidak dijual dengan koin." /
+  "tidak dibuat dengan material."; dan `onSelectLoadout` membuang id senjata
+  yang tidak dikenal secara diam-diam sebelum memeriksa kepemilikan, jadi
+  "Senjata itu belum kamu miliki." tidak punya satu pun id yang bisa
+  memicunya. Ketiganya kembali hidup sendiri begitu senjata dikunci lagi --
+  yang perlu dijaga cuma jangan sampai ada yang menghapusnya karena mengira
+  kode mati.
+
+  Dan satu akibat yang tidak kelihatan dari panel lobby: **material drop boss
+  sekarang tidak bisa dibelanjakan sama sekali.** Satu-satunya yang pernah
+  memakainya craft Fork Bomb, dan Fork Bomb sudah dimiliki sejak awal. Layar
+  hasil tetap mengumumkan "Material: material_a x1" tiap boss mati, jadi
+  pemain tetap dijanjikan sesuatu yang tidak ada tempat membelanjakannya.
+  Bukan bug, tapi janji yang menggantung selama keadaan ini berlaku.
+
+- **Mata uang dalam match sekarang bernama "cash", bukan "koin".** Koin tetap
+  nama mata uang global di lobby. Keduanya pernah sama-sama disebut "koin", dan
+  itu membuat pemain menabung mata uang yang salah untuk barang yang dia incar
+  -- satu-satunya tanda bahwa dia salah adalah angka yang tidak pernah naik.
+
+  Yang TIDAK ikut berganti nama: field dan remote. `MatchCoins`, `addCoins`,
+  `context.coins`, dan `Enemies[...].matchCoins` tetap memakai kata coins,
+  karena nama remote dipatok `docs/DEVELOPMENT_PLAN.md` bagian 3.6 dan
+  mengubahnya berarti mengubah kontrak jaringan untuk sebuah pergantian kata di
+  layar. Aturannya: dibaca PEMAIN berarti "cash", dibaca programmer berarti
+  tetap coins. Catatan lengkapnya di header `ShopService.luau`.
+
 - **Zona jebakan tidak punya Part.** Efeknya bekerja; tempatnya tidak terlihat.
   Jadi pemain melihat musuh melambat dan kehilangan HP tanpa sebab yang
   terlihat. Ini kekurangan yang diketahui dan dicatat di `TEST_CASES.md` bagian
@@ -411,6 +465,20 @@ Checklist lengkapnya ada di `docs/DEVELOPMENT_PLAN.md` bagian 4. Ringkasnya:
 
 - **M6 — Multiplayer & leaderboard.** **Kodenya sudah lengkap** (lihat bagian
   1); yang tersisa playtest 4 client dan publish.
+- **Toko Match diganti jadi toko UPGRADE SENJATA.** Keputusan Daffa,
+  2026-10-25, dan **sengaja belum dikerjakan** -- yang dikerjakan lebih dulu
+  implementasi yang sudah ada. Isinya: upgrade senjata pindah dari lobby ke
+  DALAM match, jadi yang ditawarkan toko adalah upgrade senjata beserta
+  ketiga alur upgrade-nya; kelima item toko sekarang (Exploit Patch,
+  Overclock, Hotfix, Firewall Block, Scanner Turret) dihapus; dan jumlah alur
+  upgrade diperbanyak supaya gameplay lebih bervariasi.
+
+  Yang perlu dipikirkan saat mengerjakannya, karena menyentuh dua hal yang
+  sudah mendarat: upgrade yang pindah ke dalam match membuat **koin global**
+  kehilangan satu-satunya hal yang bisa dibeli dengannya, dan membuat alur
+  upgrade yang **permanen** berhadapan dengan mata uang yang **habis tiap
+  match**. Keduanya keputusan desain, bukan detail implementasi.
+
 - **M7 — Polish & pengujian.** Model final dari Blender, balancing, optimasi,
   alpha test, beta test.
 - **M8 — Rilis.** Icon dan thumbnail, secret `publish.yml`, publish, tag
@@ -425,7 +493,27 @@ Alasan yang sama membuat `LeaderboardService.start()` dipanggil di
 `init.server.luau` **sebelum** gerbang arena: kalau dia di bawah, place tanpa
 `assets/Arena.rbxmx` akan punya remote tanpa handler. Lihat `LB-00`.
 
-## 7. Utang dokumentasi yang diketahui
+## 7. Utang yang diketahui
+
+### 7.1 `core_wave` kadang gagal di waypoint pertama
+
+Dua assertion di `tests/studio/cases/core_wave.luau` --
+`waypoint.lewatDekatWaypoint1` dan `waypoint.urutan1Sampai7` -- **pernah gagal
+sekali lalu lulus di run berikutnya tanpa satu baris kode pun berubah**. Yang
+tercatat saat gagal: jarak terdekat ke waypoint 1 **20.42 stud** (toleransi 5),
+dengan sampel PERTAMA sudah sejauh itu. Saat lulus, sampel pertama 1.52 stud.
+
+Jadi yang gagal bukan jalur musuhnya, melainkan kapan pengambilan sampel mulai:
+harness berjalan di ~8 Hz, dan kalau sampel pertama jatuh setelah musuh melewati
+waypoint 1, jarak terdekat yang pernah TERLIHAT tidak pernah sekecil jarak
+terdekat yang sebenarnya. Enam waypoint lain tidak kena karena musuh masih lama
+di perjalanan saat sampel-sampel berikutnya jatuh.
+
+Ini belum diperbaiki. Bahayanya bukan test yang gagal, tapi test yang gagal
+TANPA sebab -- dia mengajari pembacanya mengulang run sampai hijau, dan
+kebiasaan itu akan menelan kegagalan yang sungguhan juga.
+
+### 7.2 Utang dokumentasi yang diketahui
 
 - **`tests/studio/COVERAGE.md` persentasenya historis, dan sekarang dua kali
   basi.** Penyebutnya 126,

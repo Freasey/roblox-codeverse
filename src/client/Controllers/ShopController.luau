@@ -44,7 +44,7 @@ local started = false
 -- Balasan `ActionResult` terakhir, ditahan di baris status selama beberapa
 -- detik. Perlu ditahan dengan penanda waktu, bukan cuma ditulis sekali:
 -- `MatchState` dikirim server tiap 0.2 detik dan tiap paketnya memanggil
--- render(), jadi tanpa ini pesannya ketimpa "N koin tim" sebelum pemain
+-- render(), jadi tanpa ini pesannya ketimpa "N cash tim" sebelum pemain
 -- selesai membacanya.
 local NOTICE_SECONDS = 4
 local noticeText: string? = nil
@@ -168,7 +168,7 @@ local function render()
 		status.Text = "Dikunci — kalahkan boss-nya dulu"
 		status.TextColor3 = UiKit.COLOR_BAD
 	else
-		status.Text = string.format("%d koin tim", coins)
+		status.Text = string.format("%d cash tim", coins)
 		status.TextColor3 = UiKit.COLOR_WARN
 	end
 
@@ -184,10 +184,10 @@ local function render()
 			else string.format(" · sisa %d", remaining)
 		-- Harga SEKARANG, bukan `def.cost`. Untuk item tak terbatas harganya
 		-- naik tiap pembelian, dan tombol yang menampilkan harga dasar akan
-		-- memotong koin lebih banyak daripada yang tertulis -- pemain akan
+		-- memotong cash lebih banyak daripada yang tertulis -- pemain akan
 		-- menganggapnya bug, dan dia benar.
 		local price = ShopRules.priceFor(def, shop.purchases, Balance.SHOP_PRICE_GROWTH)
-		row.detail.Text = string.format("%d koin%s — %s", price, remainingText, def.description)
+		row.detail.Text = string.format("%d cash%s — %s", price, remainingText, def.description)
 
 		local canBuy = ShopRules.canBuy(def, {
 			state = stateName,

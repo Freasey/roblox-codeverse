@@ -8,6 +8,7 @@
 -- dengan mencoba-coba di Studio.
 
 local Balance = require("../src/shared/Modules/Balance")
+local Config = require("../src/shared/Config")
 local Difficulties = require("../src/shared/Modules/Difficulties")
 local ProgressionRules = require("../src/shared/Modules/ProgressionRules")
 local Weapons = require("../src/shared/Modules/Weapons")
@@ -38,6 +39,48 @@ end
 local function context(data, state)
 	return { state = state or "Lobby", data = data }
 end
+
+-- Senjata yang terbuka sejak awal ---------------------------------------------
+--
+-- Ketiga senjata sekarang ada di `Config.DEFAULT_DATA.weapons` (sementara,
+-- lihat komentarnya di sana). Dua test di bawah menjaga dua hal yang
+-- membedakan cara itu dari sekadar menyalakan `Config.DEV_ALL_WEAPONS`, dan
+-- dua-duanya gagal dengan cara yang tidak menghasilkan error apa pun.
+
+table.insert(cases, {
+	name = "tiap senjata di DEFAULT_DATA benar-benar ada di Weapons",
+	run = function()
+		-- Id yang salah tulis di DEFAULT_DATA tidak menghasilkan error: dia
+		-- cuma disaring diam-diam oleh `ownedWeapons`, dan senjata yang
+		-- dijanjikan terbuka tidak pernah muncul di lobby.
+		for id in Config.DEFAULT_DATA.weapons do
+			assert(
+				Weapons[id] ~= nil,
+				string.format("DEFAULT_DATA memberi %s, yang tidak ada di Weapons.luau", id)
+			)
+		end
+	end,
+})
+
+table.insert(cases, {
+	name = "senjata yang terbuka sejak awal bisa di-upgrade, bukan cuma dipakai",
+	run = function()
+		-- Inilah alasan senjatanya dibuka lewat DEFAULT_DATA dan bukan lewat
+		-- `Config.DEV_ALL_WEAPONS`. Flag itu memberi senjata di memori saja,
+		-- sementara `canUpgrade` membaca `data.weapons` langsung -- jadi lewat
+		-- flag, senjatanya bisa dipakai tapi upgrade-nya ditolak "belum
+		-- dimiliki" selamanya, dan pemain tidak punya cara menebak kenapa.
+		local data = newData({
+			coins = 100000,
+			weapons = Config.DEFAULT_DATA.weapons,
+		})
+		for id in Config.DEFAULT_DATA.weapons do
+			local def = Weapons[id]
+			local ok, reason = ProgressionRules.canUpgrade(def, context(data), 50)
+			assert(ok, string.format("%s: %s", id, tostring(reason)))
+		end
+	end,
+})
 
 -- Upgrade --------------------------------------------------------------------
 

@@ -65,7 +65,34 @@ Config.DEFAULT_DATA = {
 	weapons = { -- [weaponId] = { level = number, path = string }
 		-- `path = "none"` eksplisit, bukan dibiarkan kosong: nil tidak bertahan
 		-- di JSON DataStore. Lihat `Types.WeaponSave`.
+		--
+		-- KETIGA SENJATA TERBUKA SEJAK AWAL, SEMENTARA (permintaan Daffa,
+		-- 2026-10-25). Upgrade TETAP bayar koin; yang dimatikan cuma pintu
+		-- masuknya, bukan ekonominya.
+		--
+		-- Dilakukan di sini, bukan lewat `Config.DEV_ALL_WEAPONS`, dan bedanya
+		-- bukan gaya: flag itu memberi senjata di MEMORI saja, jadi senjatanya
+		-- bisa dipakai tapi `canUpgrade` -- yang membaca `data.weapons`
+		-- langsung -- tetap menolaknya. Hasilnya senjata gratis yang tidak bisa
+		-- di-upgrade sama sekali, yaitu separuh dari yang diminta. Lewat
+		-- DEFAULT_DATA, `DataSchema.reconcile` menuliskannya ke data pemain,
+		-- jadi senjatanya benar-benar dimiliki: bisa dipakai, bisa di-upgrade,
+		-- dan ikut tersimpan.
+		--
+		-- Konsekuensi yang harus disadari sebelum ini dibalikkan: begitu data
+		-- pernah tersimpan, ketiga senjata itu sudah ada di DataStore dan tidak
+		-- ada cara membedakannya dari senjata yang dibeli. Menghapus dua baris
+		-- di bawah TIDAK mengambilnya kembali; yang mengambilnya cuma menaikkan
+		-- `Config.DATASTORE_NAME`. Hari ini biayanya nol karena place-nya belum
+		-- pernah di-publish dan tidak ada yang tersimpan sama sekali.
+		--
+		-- `acquire` di `Weapons.luau` sengaja TIDAK disentuh: harga 1.500 dan
+		-- resep craft-nya masih benar dan menunggu dinyalakan lagi. Yang
+		-- terjadi sekarang cuma `canBuy`/`canCraft` tidak pernah tercapai
+		-- karena senjatanya sudah dimiliki lebih dulu.
 		weapon_starter = { level = 1, path = "none" },
+		weapon_ranged = { level = 1, path = "none" },
+		weapon_boss_a = { level = 1, path = "none" },
 	},
 	materials = {}, -- [materialId] = jumlah
 	unlockedDifficulties = { normal = true },

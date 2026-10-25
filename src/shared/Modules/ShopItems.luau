@@ -1,6 +1,7 @@
 --!strict
--- ShopItems.luau — isi Toko Match. Dibeli pakai koin match, habis tiap match
--- selesai (CONCEPT.md: dua lapis progres).
+-- ShopItems.luau — isi Toko Match. Dibeli pakai CASH tim, yang habis tiap
+-- match selesai (CONCEPT.md: dua lapis progres). Bukan koin lobby: itu mata
+-- uang permanen milik satu pemain, dan bedanya dijelaskan di ShopService.
 --
 -- Lima item yang diminta M3: upgrade damage tim, upgrade attack speed, repair
 -- core, penghalang, dan turret kecil.

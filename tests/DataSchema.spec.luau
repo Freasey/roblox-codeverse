@@ -101,18 +101,26 @@ table.insert(cases, {
 	name = "reconcile sendiri TIDAK mengisi path untuk senjata non-default",
 	run = function()
 		-- Bukan bug yang dites, tapi batas `reconcile` yang harus tetap diketahui:
-		-- dia mengisi dari `DEFAULT_DATA`, dan satu-satunya senjata di sana
-		-- `weapon_starter`. Kalau baris ini mendadak gagal, berarti `reconcile`
+		-- dia mengisi dari `DEFAULT_DATA`, jadi senjata yang TIDAK ada di sana
+		-- tidak tersentuh. Kalau baris ini mendadak gagal, berarti `reconcile`
 		-- jadi tahu soal senjata -- dan `migrate` di bawah tidak perlu lagi.
+		--
+		-- Id-nya sengaja yang tidak ada di `DEFAULT_DATA` MAUPUN di
+		-- `Weapons.luau`, bukan salah satu senjata sungguhan. Versi sebelumnya
+		-- memakai `weapon_ranged`, dan baris ini langsung gagal begitu ketiga
+		-- senjata dibuka lewat `DEFAULT_DATA` -- bukan karena `reconcile`
+		-- berubah, tapi karena contohnya berhenti jadi contoh. Yang dijaga di
+		-- sini perilaku `reconcile` terhadap kunci asing, dan itu tidak boleh
+		-- ikut berubah tiap kali daftar senjata default diubah.
 		local old = {
 			weapons = {
 				weapon_starter = { level = 3 },
-				weapon_ranged = { level = 5 },
+				weapon_tidak_ada_di_default = { level = 5 },
 			},
 		}
 		local data = DataSchema.reconcile(old, Config.DEFAULT_DATA :: any)
 		assert(
-			data.weapons.weapon_ranged.path == nil,
+			data.weapons.weapon_tidak_ada_di_default.path == nil,
 			"reconcile tidak punya default untuk kunci itu"
 		)
 	end,
