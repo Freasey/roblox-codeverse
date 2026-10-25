@@ -322,4 +322,265 @@ table.insert(cases, {
 	end,
 })
 
+-- Stat senjata dan alur upgrade ---------------------------------------------
+
+-- Senjata sintetis dengan angka alur yang NYATA, sementara `Weapons.luau` masih
+-- mengirim tingkat tanpa angka sama sekali (langkah 7 yang mengisinya). Tanpa
+-- fixture ini, penggabungan tingkat alur di `weaponStats` tidak teruji sampai
+-- angkanya diputuskan -- dan kerangka yang tidak teruji bukan kerangka, cuma
+-- kode yang kebetulan belum dipanggil.
+local function fakeWeapon()
+	return {
+		id = "weapon_uji",
+		name = "Senjata Uji",
+		kind = "ranged",
+		baseDamage = 100,
+		cooldown = 1,
+		range = 50,
+		projectiles = 1,
+		maxLevel = 10,
+		acquire = { method = "default" },
+		paths = {
+			{
+				id = "a",
+				name = "Alur A",
+				theme = "uji",
+				tiers = {
+					{
+						level = 4,
+						summary = "damage x2, cooldown x2, range 80",
+						damageMult = 2,
+						cooldownMult = 2,
+						range = 80,
+						effects = { slow = 0.3 },
+					},
+					{
+						level = 7,
+						summary = "range 120, tembus 2",
+						range = 120,
+						projectiles = 2,
+					},
+					{
+						level = 10,
+						summary = "cooldown x0.5, slow lebih berat",
+						cooldownMult = 0.5,
+						effects = { slow = 0.6 },
+					},
+				},
+			},
+			{ id = "b", name = "Alur B", theme = "uji", tiers = {} },
+		},
+	}
+end
+
+table.insert(cases, {
+	name = "tanpa alur, stat senjata sama dengan stat dasarnya",
+	run = function()
+		local def = fakeWeapon()
+		local stats = Balance.weaponStats(def, { level = 1, path = "none" })
+		assert(stats.damage == def.baseDamage, "damage " .. stats.damage)
+		assert(stats.cooldown == def.cooldown, "cooldown " .. stats.cooldown)
+		assert(stats.range == def.range, "range " .. stats.range)
+		assert(stats.projectiles == def.projectiles, "proyektil " .. stats.projectiles)
+		assert(next(stats.effects) == nil, "effects harus kosong")
+	end,
+})
+
+table.insert(cases, {
+	name = "alur yang dipilih tidak berlaku sebelum level tingkatnya",
+	run = function()
+		-- Level 1 sampai 3 itu masa percobaan: alur boleh tersimpan tapi tidak
+		-- boleh mengubah satu angka pun sampai level 4.
+		local def = fakeWeapon()
+		local stats = Balance.weaponStats(def, { level = 3, path = "a" })
+		assert(stats.damage == Balance.weaponDamage(def, 3), "damage " .. stats.damage)
+		assert(stats.cooldown == def.cooldown, "cooldown " .. stats.cooldown)
+		assert(stats.range == def.range, "range " .. stats.range)
+	end,
+})
+
+table.insert(cases, {
+	name = "tingkat alur berlaku tepat di levelnya",
+	run = function()
+		local def = fakeWeapon()
+		local stats = Balance.weaponStats(def, { level = 4, path = "a" })
+		assert(stats.damage == Balance.weaponDamage(def, 4) * 2, "damage " .. stats.damage)
+		assert(stats.cooldown == 2, "cooldown " .. stats.cooldown)
+		assert(stats.range == 80, "range " .. stats.range)
+		assert(stats.effects.slow == 0.3, "slow " .. tostring(stats.effects.slow))
+	end,
+})
+
+table.insert(cases, {
+	name = "tingkat yang lebih tinggi menumpuk pengali dan menimpa nilai absolut",
+	run = function()
+		-- Yang dipatok di sini bentuk penggabungannya, dan dua-duanya pernah
+		-- salah di implementasi yang naif: pengali yang DITIMPA alih-alih
+		-- ditumpuk (cooldown jadi 0.5 bukan 1), dan nilai absolut yang
+		-- DITUMPUK alih-alih ditimpa (range jadi 80*120).
+		local def = fakeWeapon()
+		local stats = Balance.weaponStats(def, { level = 10, path = "a" })
+		assert(stats.cooldown == 1, "cooldown harus 1 x2 x0.5 = 1, dapat " .. stats.cooldown)
+		assert(stats.range == 120, "range harus 120 (tingkat 2 menimpa 80)")
+		assert(stats.projectiles == 2, "proyektil " .. stats.projectiles)
+		assert(stats.effects.slow == 0.6, "tingkat 3 harus menimpa slow tingkat 1")
+	end,
+})
+
+table.insert(cases, {
+	name = "alur yang tidak dikenal diperlakukan seperti belum memilih",
+	run = function()
+		-- Data lama yang menyimpan id alur yang sudah dihapus. Yang TIDAK boleh
+		-- terjadi: jatuh ke alur pertama, karena pemain lalu mendapat alur yang
+		-- tidak pernah dia pilih tanpa satu pesan pun.
+		local def = fakeWeapon()
+		local stats = Balance.weaponStats(def, { level = 10, path = "alur_yang_dihapus" })
+		assert(stats.damage == Balance.weaponDamage(def, 10), "damage " .. stats.damage)
+		assert(stats.range == def.range, "range " .. stats.range)
+		assert(next(stats.effects) == nil, "effects harus kosong")
+	end,
+})
+
+table.insert(cases, {
+	name = "cooldown tidak pernah nol walau pengali alurnya rusak",
+	run = function()
+		-- Cooldown nol berarti serangan tanpa batas: gerbang di CombatService
+		-- memakai `now - last < cooldown`, dan itu selalu false untuk nol.
+		local def = fakeWeapon()
+		def.paths[1].tiers[1].cooldownMult = 0
+		local stats = Balance.weaponStats(def, { level = 4, path = "a" })
+		assert(stats.cooldown > 0, "cooldown " .. stats.cooldown)
+	end,
+})
+
+table.insert(cases, {
+	name = "level di luar rentang di-clamp sebelum alur diterapkan",
+	run = function()
+		local def = fakeWeapon()
+		local tinggi = Balance.weaponStats(def, { level = 999, path = "a" })
+		local maks = Balance.weaponStats(def, { level = def.maxLevel, path = "a" })
+		assert(tinggi.damage == maks.damage, "level 999 harus sama dengan level maks")
+
+		local rendah = Balance.weaponStats(def, { level = 0, path = "none" })
+		assert(rendah.damage == def.baseDamage, "level 0 harus diperlakukan level 1")
+	end,
+})
+
+table.insert(cases, {
+	name = "ketiga senjata nyata punya tiga alur dengan tingkat di level yang sama",
+	run = function()
+		-- Yang dijaga: menambah alur keempat ke satu senjata, atau menggeser
+		-- tingkat satu senjata ke level yang berbeda, tidak boleh lolos tanpa
+		-- disadari -- pemain tidak punya cara tahu kalau Fork Bomb bercabang di
+		-- level 5 sementara dua senjata lain di level 4.
+		for _, def in Weapons do
+			assert(#def.paths == 3, string.format("%s punya %d alur", def.id, #def.paths))
+			local ids: { [string]: boolean } = {}
+			for _, path in def.paths do
+				assert(not ids[path.id], string.format("%s punya alur %s dobel", def.id, path.id))
+				ids[path.id] = true
+				assert(
+					#path.tiers == 3,
+					string.format("%s/%s punya %d tingkat", def.id, path.id, #path.tiers)
+				)
+				assert(
+					path.tiers[1].level == Balance.PATH_BRANCH_LEVEL,
+					"tingkat 1 bukan di titik percabangan"
+				)
+				for index = 2, #path.tiers do
+					assert(
+						path.tiers[index].level > path.tiers[index - 1].level,
+						string.format("%s/%s tingkat %d tidak lebih tinggi", def.id, path.id, index)
+					)
+				end
+				for _, tier in path.tiers do
+					assert(
+						tier.summary ~= "",
+						"tingkat tanpa summary tidak bisa ditampilkan ke pemain"
+					)
+					assert(
+						tier.level <= def.maxLevel,
+						"tingkat di atas level maksimum tidak bisa dicapai"
+					)
+				end
+			end
+		end
+	end,
+})
+
+table.insert(cases, {
+	name = "cooldown absolut menimpa pengali, dan pengali tingkat lain tetap menumpuk",
+	run = function()
+		-- Bentuk yang dipakai alur "ayunan cepat": tingkat 1 menyebut target
+		-- 0.32, tingkat 3 menyebut 0.25. Dua-duanya absolut, jadi yang terakhir
+		-- yang berlaku -- bukan 0.32 x 0.25.
+		local def = fakeWeapon()
+		def.paths[1].tiers[1] = { level = 4, summary = "cooldown 0.32", cooldown = 0.32 }
+		def.paths[1].tiers[2] = { level = 7, summary = "damage x1.1", damageMult = 1.1 }
+		def.paths[1].tiers[3] = { level = 10, summary = "cooldown 0.25", cooldown = 0.25 }
+
+		local l4 = Balance.weaponStats(def, { level = 4, path = "a" })
+		assert(l4.cooldown == 0.32, "cooldown L4 " .. l4.cooldown)
+
+		local l10 = Balance.weaponStats(def, { level = 10, path = "a" })
+		assert(l10.cooldown == 0.25, "cooldown L10 harus 0.25, dapat " .. l10.cooldown)
+		assert(
+			math.abs(l10.damage - Balance.weaponDamage(def, 10) * 1.1) < 1e-9,
+			"pengali damage tingkat 2 harus tetap berlaku, dapat " .. l10.damage
+		)
+	end,
+})
+
+table.insert(cases, {
+	name = "di satu tingkat, cooldown absolut jadi kata terakhir atas pengalinya",
+	run = function()
+		-- Tingkat yang memakai dua-duanya sekaligus sebaiknya tidak ada, tapi
+		-- kalau ada, hasilnya harus angka yang tertulis -- bukan angka itu dikali
+		-- pengalinya, yang membuat "cooldown 0.4" jadi bukan 0.4.
+		local def = fakeWeapon()
+		def.paths[1].tiers[1] = {
+			level = 4,
+			summary = "dua-duanya",
+			cooldownMult = 3,
+			cooldown = 0.4,
+		}
+		local stats = Balance.weaponStats(def, { level = 4, path = "a" })
+		assert(stats.cooldown == 0.4, "cooldown " .. stats.cooldown)
+	end,
+})
+
+table.insert(cases, {
+	name = "setiap kunci effects yang dipakai alur ada di kosakata Balance",
+	run = function()
+		-- Kunci di tabel `{ [string]: number }` tidak dijaga type checker, jadi
+		-- `slowMult` yang salah tulis jadi `slowmult` akan diam-diam tidak pernah
+		-- terbaca -- dan gejalanya cuma "alur itu tidak terasa", yang mudah
+		-- disalahartikan sebagai soal balancing. Baris ini yang menangkapnya.
+		local known: { [string]: boolean } = {}
+		for _, key in Balance.PATH_EFFECT_KEYS do
+			assert(not known[key], "kunci " .. key .. " ditulis dobel di kosakata")
+			known[key] = true
+		end
+
+		for _, def in Weapons do
+			for _, path in def.paths do
+				for _, tier in path.tiers do
+					for key in tier.effects or {} do
+						assert(
+							known[key],
+							string.format(
+								"%s/%s L%d memakai kunci effects `%s` yang tidak ada di Balance.PATH_EFFECT_KEYS",
+								def.id,
+								path.id,
+								tier.level,
+								key
+							)
+						)
+					end
+				end
+			end
+		end
+	end,
+})
+
 return cases

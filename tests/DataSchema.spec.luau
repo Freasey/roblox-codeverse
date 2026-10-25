@@ -95,4 +95,95 @@ table.insert(cases, {
 	end,
 })
 
+-- Migrasi alur upgrade -------------------------------------------------------
+
+table.insert(cases, {
+	name = "reconcile sendiri TIDAK mengisi path untuk senjata non-default",
+	run = function()
+		-- Bukan bug yang dites, tapi batas `reconcile` yang harus tetap diketahui:
+		-- dia mengisi dari `DEFAULT_DATA`, dan satu-satunya senjata di sana
+		-- `weapon_starter`. Kalau baris ini mendadak gagal, berarti `reconcile`
+		-- jadi tahu soal senjata -- dan `migrate` di bawah tidak perlu lagi.
+		local old = {
+			weapons = {
+				weapon_starter = { level = 3 },
+				weapon_ranged = { level = 5 },
+			},
+		}
+		local data = DataSchema.reconcile(old, Config.DEFAULT_DATA :: any)
+		assert(
+			data.weapons.weapon_ranged.path == nil,
+			"reconcile tidak punya default untuk kunci itu"
+		)
+	end,
+})
+
+table.insert(cases, {
+	name = "migrate mengisi path untuk SEMUA senjata yang belum punya",
+	run = function()
+		-- Kegagalan yang dicegah: senjata yang dibeli sebelum alur upgrade ada
+		-- punya `{ level = n }` tanpa `path`, dan `Balance.weaponStats` tidak
+		-- menemukan alur apa pun untuk save seperti itu. Pemain level 10 lalu
+		-- menyerang seperti level 10 tanpa alur -- lebih lemah daripada yang dia
+		-- bayar, tanpa satu pesan pun.
+		local old = {
+			weapons = {
+				weapon_starter = { level = 3 },
+				weapon_ranged = { level = 5 },
+				weapon_boss_a = { level = 10 },
+			},
+		}
+		local data = DataSchema.migrate(old, Config.DEFAULT_DATA :: any)
+		for id, save in data.weapons do
+			assert(
+				save.path == DataSchema.NO_PATH,
+				string.format("%s: path = %s", id, tostring(save.path))
+			)
+		end
+		-- Levelnya tidak ikut berubah.
+		assert(data.weapons.weapon_boss_a.level == 10, "level tidak boleh disentuh")
+	end,
+})
+
+table.insert(cases, {
+	name = "migrate tidak menimpa alur yang sudah dipilih",
+	run = function()
+		local old = {
+			weapons = {
+				weapon_starter = { level = 7, path = "b" },
+				weapon_ranged = { level = 4 },
+			},
+		}
+		local data = DataSchema.migrate(old, Config.DEFAULT_DATA :: any)
+		assert(data.weapons.weapon_starter.path == "b", "alur yang sudah dipilih hilang")
+		assert(data.weapons.weapon_ranged.path == DataSchema.NO_PATH, "yang kosong harus diisi")
+	end,
+})
+
+table.insert(cases, {
+	name = "player baru lewat migrate punya path none, bukan nil",
+	run = function()
+		-- `nil` tidak bertahan di JSON DataStore, jadi "belum memilih" dan "data
+		-- lama" jadi tidak bisa dibedakan sesudah satu kali save.
+		local data = DataSchema.migrate({}, Config.DEFAULT_DATA :: any)
+		assert(
+			data.weapons.weapon_starter.path == DataSchema.NO_PATH,
+			"player baru harus punya none"
+		)
+	end,
+})
+
+table.insert(cases, {
+	name = "migrate tidak error untuk data yang weapons-nya bukan tabel",
+	run = function()
+		-- Data yang korup atau diedit tangan. Yang tidak boleh terjadi: error di
+		-- jalur login, yang berarti pemain di-kick dan tidak pernah tahu kenapa.
+		local rusak = DataSchema.fillWeaponPaths({ weapons = "bukan tabel" :: any })
+		assert(rusak ~= nil, "harus mengembalikan datanya")
+
+		local kosong = DataSchema.fillWeaponPaths({})
+		assert(kosong ~= nil, "data tanpa weapons harus lolos")
+	end,
+})
+
 return cases

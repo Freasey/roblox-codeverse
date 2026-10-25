@@ -20,6 +20,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Modules.Balance)
+local DataSchema = require(Shared.Modules.DataSchema)
 local ProgressionRules = require(Shared.Modules.ProgressionRules)
 local RateLimit = require(Shared.Modules.RateLimit)
 local Remotes = require(Shared.Remotes)
@@ -65,11 +66,18 @@ local function prepare(player: Player, action: string, rawId: unknown): (string?
 	return rawId :: string, data
 end
 
-local function onUpgrade(player: Player, rawId: unknown)
+local function onUpgrade(player: Player, rawId: unknown, rawPathId: unknown)
 	local weaponId, data = prepare(player, "UpgradeWeapon", rawId)
 	if weaponId == nil or data == nil then
 		return
 	end
+
+	-- `pathId` opsional, jadi argumen yang bukan string dibuang jadi nil alih-
+	-- alih membatalkan seluruh aksi: client lama yang cuma mengirim `weaponId`
+	-- harus tetap bisa meng-upgrade senjata di level yang tidak butuh pilihan
+	-- alur. Yang menolak kalau pilihannya memang wajib adalah `canUpgrade`,
+	-- dengan pesan yang menyebutkan apa yang kurang.
+	local pathId: string? = if type(rawPathId) == "string" then rawPathId else nil
 
 	local def = Weapons[weaponId]
 	local save = if def ~= nil then data.weapons[weaponId] else nil
@@ -81,12 +89,18 @@ local function onUpgrade(player: Player, rawId: unknown)
 	local ok, reason = ProgressionRules.canUpgrade(def, {
 		state = MatchService.getState(),
 		data = data,
-	}, price)
+	}, price, pathId)
 
-	if not ok or def == nil then
+	if not ok or def == nil or save == nil then
 		respond(player, "UpgradeWeapon", false, reason)
 		return
 	end
+
+	-- Dihitung SEBELUM `update`, dari save yang belum naik level: begitu
+	-- `entry.level` bertambah, `pathChoiceRequired` sudah tidak berlaku lagi
+	-- untuk level yang sama, dan menghitungnya di dalam callback berarti
+	-- jawabannya bergantung pada urutan dua baris di dalam satu fungsi.
+	local appliedPath = ProgressionRules.pathToApply(def, save, pathId)
 
 	PlayerDataService.update(player, function(d)
 		local entry = d.weapons[def.id]
@@ -95,9 +109,30 @@ local function onUpgrade(player: Player, rawId: unknown)
 		end
 		d.coins -= price
 		entry.level += 1
+		if appliedPath ~= nil then
+			entry.path = appliedPath
+		end
 	end)
 
 	respond(player, "UpgradeWeapon", true, nil)
+
+	-- Pilihan alur dicetak terpisah, dan sengaja disebut PERMANEN di log:
+	-- ini satu-satunya baris di Output yang menandai keputusan yang tidak bisa
+	-- dibatalkan, dan kalau ada pemain yang melaporkan alurnya salah, baris ini
+	-- yang menjawab apakah servernya menerima pilihan yang berbeda dari yang
+	-- dia tekan.
+	if appliedPath ~= nil then
+		local path = ProgressionRules.findPath(def, appliedPath)
+		print(
+			string.format(
+				"[ProgressionService] %s mengunci alur %s untuk %s -- permanen",
+				player.Name,
+				if path ~= nil then path.name else appliedPath,
+				def.id
+			)
+		)
+	end
+
 	print(
 		string.format(
 			"[ProgressionService] %s upgrade %s ke level %d (%d koin)",
@@ -132,7 +167,7 @@ local function onBuy(player: Player, rawId: unknown)
 		-- Senjata baru selalu mulai dari level 1. Tabel baru dibuat di sini,
 		-- bukan disalin dari mana pun, supaya tidak ada dua pemain yang
 		-- berbagi satu tabel level (bug deep copy bagian 3.2).
-		d.weapons[def.id] = { level = 1 }
+		d.weapons[def.id] = { level = 1, path = DataSchema.NO_PATH }
 	end)
 
 	respond(player, "BuyWeapon", true, nil)
@@ -161,7 +196,7 @@ local function onCraft(player: Player, rawId: unknown)
 		for materialId, amount in needed do
 			d.materials[materialId] = math.max(0, (d.materials[materialId] or 0) - amount)
 		end
-		d.weapons[def.id] = { level = 1 }
+		d.weapons[def.id] = { level = 1, path = DataSchema.NO_PATH }
 	end)
 
 	respond(player, "CraftWeapon", true, nil)

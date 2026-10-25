@@ -186,9 +186,152 @@ function Balance.upgradePrice(fromLevel: number): number
 	return math.floor(Balance.UPGRADE_BASE_PRICE * Balance.UPGRADE_PRICE_GROWTH ^ (fromLevel - 1))
 end
 
--- Damage senjata pada level tertentu.
+-- Kosakata kunci `effects` di `WeaponPathTier`, dan di mana tiap kunci harus
+-- dibaca supaya dia berarti apa-apa.
+--
+-- Ditulis di sini SEBELUM ada satu pun alur yang memakainya, karena kunci di
+-- tabel `{ [string]: number }` tidak dijaga type checker: `slowMult` yang
+-- ditulis `slowmult` di satu tempat akan diam-diam tidak pernah terbaca, dan
+-- gejalanya cuma "alur itu tidak terasa". Jadi daftarnya satu, di sini, dan
+-- langkah 7 memakai nama dari daftar ini -- bukan sebaliknya.
+--
+-- | kunci              | arti                                | dibaca di |
+-- |--------------------|-------------------------------------|-----------|
+-- | `coneMinCos`       | ganti `MELEE_MIN_COS` (kerucut lebar)| CombatService, saat HitTest.inCone |
+-- | `slowMult`         | pengali speed musuh yang kena        | EnemyService |
+-- | `slowSeconds`      | berapa lama slow itu bertahan        | EnemyService |
+-- | `damageTakenMult`  | pengali damage yang masuk ke PEMAIN  | EnemyService, di jalur TakeDamage |
+-- | `splashRadius`     | radius ledakan dari titik kena       | CombatService |
+-- | `splashMult`       | pengali damage untuk korban splash   | CombatService |
+-- | `markMult`         | pengali damage ke musuh yang ditandai| EnemyService.damage |
+-- | `markSeconds`      | berapa lama tanda itu bertahan       | EnemyService |
+-- | `markSpread`       | berapa musuh terdekat ikut ditandai  | EnemyService |
+-- | `zoneDps`          | damage per detik dari zona jebakan   | CombatService / EnemyService |
+--
+-- Empat di antaranya butuh mekanik yang belum ada sama sekali (slow, damage
+-- masuk yang dikurangi, splash, tanda) -- itu pekerjaan langkah 7, bukan
+-- langkah 6, dan daftar ini yang menjadi daftar pekerjaannya.
+--
+-- Kunci yang tidak ada di daftar ini TIDAK akan dibaca siapa pun. Itu bukan
+-- larangan yang ditegakkan kode, jadi menambah kunci baru berarti menambahnya
+-- di sini DAN di tempat yang membacanya, dalam satu perubahan yang sama.
+Balance.PATH_EFFECT_KEYS = {
+	"coneMinCos",
+	"slowMult",
+	"slowSeconds",
+	"damageTakenMult",
+	"splashRadius",
+	"splashMult",
+	"markMult",
+	"markSeconds",
+	"markSpread",
+	"zoneDps",
+}
+
+-- Level tempat pemain WAJIB memilih satu dari tiga alur upgrade, permanen.
+--
+-- Empat dan bukan satu karena pemain harus pernah MEMAKAI senjatanya sebelum
+-- dipaksa memilih selamanya; level 1 sampai 3 itu masa percobaannya
+-- (ARENA_REDESIGN.md bagian 3).
+Balance.PATH_BRANCH_LEVEL = 4
+
+-- Damage senjata pada level tertentu, tanpa alur. Dipakai `weaponStats` sebagai
+-- dasar, dan dipisah supaya kurva level bisa dites sendiri terpisah dari
+-- penggabungan efek alur.
 function Balance.weaponDamage(def: Types.WeaponDef, level: number): number
 	return def.baseDamage * (1 + Balance.DAMAGE_PER_LEVEL * (level - 1))
+end
+
+-- Alur yang dipilih pemain untuk satu senjata, atau nil kalau belum memilih.
+--
+-- `save.path` bisa memuat id yang tidak ada di `def.paths`: data lama dari
+-- sebelum nama alurnya diubah, atau data yang diedit tangan. Yang
+-- dikembalikan nil, bukan alur pertama -- memberi alur yang salah secara diam-
+-- diam lebih buruk daripada tidak memberi apa pun, karena pemain melihat stat
+-- dari alur yang tidak dia pilih dan tidak ada satu pun pesan soal itu.
+local function findPath(def: Types.WeaponDef, pathId: string): Types.WeaponPathDef?
+	for _, path in def.paths do
+		if path.id == pathId then
+			return path
+		end
+	end
+	return nil
+end
+
+-- Stat senjata yang sudah jadi: level, alur, dan tingkat alur yang sudah
+-- terbuka, digabung jadi satu tabel.
+--
+-- Kenapa satu fungsi dan bukan `weaponDamage` plus beberapa yang lain:
+-- `CombatService` butuh damage, cooldown, range, dan jumlah proyektil dalam
+-- satu tarikan napas tiap serangan, dan alur upgrade bisa mengubah keempatnya.
+-- Dengan fungsi terpisah, satu pemanggil yang lupa menerapkan alur pada SALAH
+-- SATU stat akan menghasilkan senjata yang damage-nya ikut alur tapi
+-- cooldown-nya tidak -- dan selisih seperti itu tidak terlihat sampai ada yang
+-- mengukurnya dengan stopwatch. Ini juga satu-satunya tempat efek alur
+-- dipasang, jadi langkah 7 tidak perlu mencari-cari.
+--
+-- Tingkat alur diterapkan BERURUTAN dari yang paling rendah: tingkat yang lebih
+-- tinggi menimpa `range` dan `projectiles` milik tingkat sebelumnya, dan
+-- pengali damage/cooldown-nya saling menumpuk. Itu yang membuat alur seperti
+-- "cooldown turun di tingkat 1, turun lagi di tingkat 3" bisa ditulis apa
+-- adanya.
+function Balance.weaponStats(def: Types.WeaponDef, save: Types.WeaponSave): Types.WeaponStats
+	local level = math.clamp(math.floor(save.level), 1, def.maxLevel)
+
+	local stats: Types.WeaponStats = {
+		damage = Balance.weaponDamage(def, level),
+		cooldown = def.cooldown,
+		range = def.range,
+		projectiles = def.projectiles,
+		effects = {},
+	}
+
+	-- Alurnya boleh nil (belum memilih, atau id yang tidak dikenal); yang tidak
+	-- boleh dilewati adalah batas-batas di bawah loop ini. Jadi `for` yang
+	-- berjalan nol kali, bukan `return` lebih awal.
+	local path = findPath(def, save.path)
+	local tiers: { Types.WeaponPathTier } = if path ~= nil then path.tiers else {}
+
+	for _, tier in tiers do
+		if tier.level > level then
+			continue
+		end
+		if tier.damageMult ~= nil then
+			stats.damage *= tier.damageMult
+		end
+		if tier.cooldownMult ~= nil then
+			stats.cooldown *= tier.cooldownMult
+		end
+		-- Sesudah pengali, bukan sebelum: `cooldown` itu target absolut, jadi
+		-- dia harus jadi kata terakhir di tingkat yang menyebutkannya. Urutan
+		-- sebaliknya membuat pengali tingkat yang sama mengalikan target itu,
+		-- dan "cooldown 0.32" jadi bukan 0.32.
+		if tier.cooldown ~= nil then
+			stats.cooldown = tier.cooldown
+		end
+		if tier.range ~= nil then
+			stats.range = tier.range
+		end
+		if tier.projectiles ~= nil then
+			stats.projectiles = tier.projectiles
+		end
+		if tier.effects ~= nil then
+			for key, value in tier.effects do
+				stats.effects[key] = value
+			end
+		end
+	end
+
+	-- Lantai, bukan pembulatan: cooldown nol atau negatif dari data alur yang
+	-- rusak berarti serangan tanpa batas, dan gerbang cooldown di
+	-- `CombatService` tidak akan menolaknya karena `now - last < 0` selalu
+	-- false. Jadi dibatasi di sini, di satu tempat, bukan di pemanggil.
+	stats.cooldown = math.max(0.05, stats.cooldown)
+	stats.damage = math.max(0, stats.damage)
+	stats.range = math.max(0, stats.range)
+	stats.projectiles = math.max(1, math.floor(stats.projectiles))
+
+	return stats
 end
 
 -- XP yang dibutuhkan untuk naik DARI level ini ke level berikutnya.

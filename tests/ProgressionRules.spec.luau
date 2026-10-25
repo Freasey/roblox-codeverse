@@ -23,7 +23,7 @@ local function newData(overrides)
 		playtimeSeconds = 0,
 		lastLogin = 0,
 		equippedWeapon = "weapon_starter",
-		weapons = { weapon_starter = { level = 1 } },
+		weapons = { weapon_starter = { level = 1, path = "none" } },
 		materials = {},
 		unlockedDifficulties = { normal = true },
 		clears = {},
@@ -77,7 +77,7 @@ table.insert(cases, {
 		local def = Weapons.weapon_starter
 		local data = newData({
 			coins = 99999,
-			weapons = { weapon_starter = { level = def.maxLevel } },
+			weapons = { weapon_starter = { level = def.maxLevel, path = "none" } },
 		})
 		local ok, reason = ProgressionRules.canUpgrade(def, context(data), 50)
 		assert(not ok, "level maksimum tidak boleh di-upgrade lagi")
@@ -132,7 +132,10 @@ table.insert(cases, {
 	run = function()
 		local data = newData({
 			coins = 99999,
-			weapons = { weapon_starter = { level = 1 }, weapon_ranged = { level = 1 } },
+			weapons = {
+				weapon_starter = { level = 1, path = "none" },
+				weapon_ranged = { level = 1, path = "none" },
+			},
 		})
 		local ok, reason = ProgressionRules.canBuy(Weapons.weapon_ranged, context(data))
 		assert(not ok, "senjata yang sudah dimiliki tidak boleh dibeli lagi")
@@ -246,7 +249,10 @@ table.insert(cases, {
 	run = function()
 		local data = newData({
 			materials = { material_a = 999 },
-			weapons = { weapon_starter = { level = 1 }, weapon_boss_a = { level = 1 } },
+			weapons = {
+				weapon_starter = { level = 1, path = "none" },
+				weapon_boss_a = { level = 1, path = "none" },
+			},
 		})
 		assert(
 			not ProgressionRules.canCraft(Weapons.weapon_boss_a, context(data)),
@@ -451,7 +457,7 @@ table.insert(cases, {
 	run = function()
 		-- Kegagalan yang dicegah: menyetel flag lalu melihat Patch Wrench level 8
 		-- jadi level 1 di panel lobby, dan damage-nya ikut turun di arena.
-		local data = newData({ weapons = { weapon_starter = { level = 8 } } })
+		local data = newData({ weapons = { weapon_starter = { level = 8, path = "none" } } })
 		local owned = ProgressionRules.ownedWeapons(data, Weapons, true)
 		assert(owned.weapon_starter.level == 8, "level asli harus menang")
 		assert(owned.weapon_ranged.level == 1, "yang dari flag tetap level 1")
@@ -465,7 +471,10 @@ table.insert(cases, {
 		-- Kalau id itu lolos, `equippedWeapon` bisa menunjuk senjata tanpa def
 		-- dan pemanggil mana pun yang membaca `.cooldown` akan error.
 		local data = newData({
-			weapons = { weapon_starter = { level = 1 }, weapon_sudah_dihapus = { level = 3 } },
+			weapons = {
+				weapon_starter = { level = 1, path = "none" },
+				weapon_sudah_dihapus = { level = 3, path = "none" },
+			},
 		})
 		local owned = ProgressionRules.ownedWeapons(data, Weapons, false)
 		assert(owned.weapon_sudah_dihapus == nil, "id tanpa def harus dibuang")
@@ -475,7 +484,7 @@ table.insert(cases, {
 table.insert(cases, {
 	name = "menulis ke hasil ownedWeapons tidak menyentuh data pemain",
 	run = function()
-		local data = newData({ weapons = { weapon_starter = { level = 4 } } })
+		local data = newData({ weapons = { weapon_starter = { level = 4, path = "none" } } })
 		local owned = ProgressionRules.ownedWeapons(data, Weapons, false)
 		owned.weapon_starter.level = 99
 		assert(data.weapons.weapon_starter.level == 4, "data pemain ikut berubah")
@@ -489,7 +498,10 @@ table.insert(cases, {
 	run = function()
 		local data = newData({
 			equippedWeapon = "weapon_ranged",
-			weapons = { weapon_starter = { level = 1 }, weapon_ranged = { level = 6 } },
+			weapons = {
+				weapon_starter = { level = 1, path = "none" },
+				weapon_ranged = { level = 6, path = "none" },
+			},
 		})
 		local def, level = ProgressionRules.equippedWeapon(data, Weapons, false)
 		assert(def.id == "weapon_ranged", "def salah: " .. def.id)
@@ -505,7 +517,7 @@ table.insert(cases, {
 		-- rusak tidak boleh mendadak menyerang seperti pemain baru.
 		local data = newData({
 			equippedWeapon = "weapon_ranged",
-			weapons = { weapon_starter = { level = 7 } },
+			weapons = { weapon_starter = { level = 7, path = "none" } },
 		})
 		local def, level = ProgressionRules.equippedWeapon(data, Weapons, false)
 		assert(def.id == "weapon_starter", "harus jatuh ke starter, dapat " .. def.id)
@@ -534,11 +546,11 @@ table.insert(cases, {
 table.insert(cases, {
 	name = "level di luar kurva di-clamp ke rentang senjatanya",
 	run = function()
-		local data = newData({ weapons = { weapon_starter = { level = 500 } } })
+		local data = newData({ weapons = { weapon_starter = { level = 500, path = "none" } } })
 		local def, level = ProgressionRules.equippedWeapon(data, Weapons, false)
 		assert(level == def.maxLevel, string.format("level %d, maks %d", level, def.maxLevel))
 
-		local rendah = newData({ weapons = { weapon_starter = { level = 0 } } })
+		local rendah = newData({ weapons = { weapon_starter = { level = 0, path = "none" } } })
 		local _, levelRendah = ProgressionRules.equippedWeapon(rendah, Weapons, false)
 		assert(levelRendah == 1, "level 0 harus jadi 1, dapat " .. levelRendah)
 	end,
@@ -565,6 +577,204 @@ table.insert(cases, {
 
 		local bolehCraft = ProgressionRules.canCraft(Weapons.weapon_boss_a, context(data))
 		assert(bolehCraft, "boss_a harus masih bisa di-craft")
+	end,
+})
+
+-- Alur upgrade: pilihan permanen ---------------------------------------------
+
+local starter = Weapons.weapon_starter
+
+-- Data pemain dengan satu senjata di level dan alur tertentu, koin berlimpah.
+-- Koinnya dibuat besar supaya penolakan yang muncul di test di bawah PASTI soal
+-- alur, bukan soal koin yang kurang.
+local function atLevel(level, path)
+	return newData({
+		coins = 999999,
+		weapons = { weapon_starter = { level = level, path = path or "none" } },
+	})
+end
+
+table.insert(cases, {
+	name = "pilihan alur ditagih tepat saat naik ke titik percabangan",
+	run = function()
+		local branch = Balance.PATH_BRANCH_LEVEL
+		for level = 1, branch - 2 do
+			local save = atLevel(level).weapons.weapon_starter
+			assert(
+				not ProgressionRules.pathChoiceRequired(save),
+				string.format("level %d belum boleh ditagih", level)
+			)
+		end
+		local save = atLevel(branch - 1).weapons.weapon_starter
+		assert(
+			ProgressionRules.pathChoiceRequired(save),
+			string.format("naik dari level %d ke %d harus ditagih", branch - 1, branch)
+		)
+
+		-- Sudah memilih: tidak ditagih lagi di level mana pun.
+		for level = 1, starter.maxLevel do
+			local chosen = atLevel(level, "a").weapons.weapon_starter
+			assert(
+				not ProgressionRules.pathChoiceRequired(chosen),
+				string.format("level %d sudah punya alur, tidak boleh ditagih", level)
+			)
+		end
+	end,
+})
+
+table.insert(cases, {
+	name = "upgrade ke titik percabangan tanpa pathId ditolak",
+	run = function()
+		local data = atLevel(Balance.PATH_BRANCH_LEVEL - 1)
+		local ok, reason = ProgressionRules.canUpgrade(starter, context(data), 1)
+		assert(not ok, "harus ditolak tanpa pilihan alur")
+		assert(
+			reason ~= nil and reason:find("alur") ~= nil,
+			"alasan harus menyebut alur: " .. tostring(reason)
+		)
+	end,
+})
+
+table.insert(cases, {
+	name = "upgrade ke titik percabangan dengan alur yang sah diterima",
+	run = function()
+		local data = atLevel(Balance.PATH_BRANCH_LEVEL - 1)
+		for _, path in starter.paths do
+			local ok = ProgressionRules.canUpgrade(starter, context(data), 1, path.id)
+			assert(ok, "alur " .. path.id .. " harus diterima")
+		end
+	end,
+})
+
+table.insert(cases, {
+	name = "alur yang bukan milik senjata itu ditolak",
+	run = function()
+		-- Dibaca dari definisi di server, bukan dari apa pun yang dikirim client.
+		local data = atLevel(Balance.PATH_BRANCH_LEVEL - 1)
+		local ok, reason = ProgressionRules.canUpgrade(starter, context(data), 1, "alur_karangan")
+		assert(not ok, "alur karangan harus ditolak")
+		assert(reason ~= nil and reason:find("tidak punya alur") ~= nil, tostring(reason))
+	end,
+})
+
+table.insert(cases, {
+	name = "alur yang sudah terpilih tidak bisa diganti",
+	run = function()
+		-- Satu-satunya tempat yang menegakkan "tidak bisa balik". Kalau baris ini
+		-- hijau sementara kodenya membolehkan, seluruh gunanya tiga alur hilang:
+		-- pemain akan menukar alur tiap wave sesuai musuh yang datang.
+		local data = atLevel(5, "a")
+		local ok, reason = ProgressionRules.canUpgrade(starter, context(data), 1, "b")
+		assert(not ok, "ganti alur harus ditolak")
+		assert(
+			reason ~= nil and reason:find("tidak bisa diganti") ~= nil,
+			"alasan harus menyebut alur yang sudah terpilih: " .. tostring(reason)
+		)
+
+		-- Mengirim ulang alur yang SAMA bukan percobaan ganti, jadi diterima.
+		assert(
+			ProgressionRules.canUpgrade(starter, context(data), 1, "a"),
+			"mengirim alur yang sama harus diterima"
+		)
+		-- Dan tidak mengirim apa pun juga diterima: level 5 ke 6 bukan titik
+		-- percabangan.
+		assert(
+			ProgressionRules.canUpgrade(starter, context(data), 1),
+			"upgrade biasa sesudah memilih harus diterima"
+		)
+	end,
+})
+
+table.insert(cases, {
+	name = "alur tidak bisa dikunci sebelum titik percabangan",
+	run = function()
+		-- Level 1 sampai 3 masa percobaan. `canUpgrade` MENGABAIKAN pathId di
+		-- situ, jadi yang menjaganya `pathToApply`: tanpa itu, client bisa
+		-- mengunci alur di upgrade pertama dan tidak ada yang menolaknya.
+		local save = atLevel(1).weapons.weapon_starter
+		assert(
+			ProgressionRules.canUpgrade(starter, context(atLevel(1)), 1, "a"),
+			"pathId di level 1 diabaikan, bukan ditolak"
+		)
+		assert(
+			ProgressionRules.pathToApply(starter, save, "a") == nil,
+			"alur tidak boleh tersimpan di level 1"
+		)
+	end,
+})
+
+table.insert(cases, {
+	name = "pathToApply mengembalikan alur hanya di titik percabangan",
+	run = function()
+		local save = atLevel(Balance.PATH_BRANCH_LEVEL - 1).weapons.weapon_starter
+		assert(ProgressionRules.pathToApply(starter, save, "a") == "a", "harus mengembalikan a")
+		assert(ProgressionRules.pathToApply(starter, save, nil) == nil, "nil tetap nil")
+		assert(ProgressionRules.pathToApply(starter, save, "none") == nil, '"none" bukan pilihan')
+		assert(
+			ProgressionRules.pathToApply(starter, save, "alur_karangan") == nil,
+			"alur karangan tidak boleh tersimpan"
+		)
+
+		-- Yang sudah punya alur tidak boleh ditulis ulang, berapa pun levelnya.
+		local sudah = atLevel(Balance.PATH_BRANCH_LEVEL, "a").weapons.weapon_starter
+		assert(ProgressionRules.pathToApply(starter, sudah, "b") == nil, "tidak boleh ditimpa")
+	end,
+})
+
+table.insert(cases, {
+	name = "data yang lewat titik percabangan tanpa alur masih bisa memilih",
+	run = function()
+		-- Save dari sebelum fitur ini ada: level 8, path "none". Dengan `==` di
+		-- pathChoiceRequired, pemain ini terjebak selamanya tanpa alur dan tanpa
+		-- satu pesan pun. Jadi dia harus ditagih di upgrade berikutnya.
+		local data = atLevel(8)
+		local save = data.weapons.weapon_starter
+		assert(ProgressionRules.pathChoiceRequired(save), "harus ditagih")
+
+		local ok = ProgressionRules.canUpgrade(starter, context(data), 1)
+		assert(not ok, "upgrade tanpa alur harus ditolak")
+		assert(
+			ProgressionRules.canUpgrade(starter, context(data), 1, "c"),
+			"dengan alur harus diterima"
+		)
+		assert(ProgressionRules.pathToApply(starter, save, "c") == "c", "alurnya harus tersimpan")
+	end,
+})
+
+table.insert(cases, {
+	name = "alur ditagih sebelum koin, bukan sesudahnya",
+	run = function()
+		-- Urutan pesan, bukan urutan kode: pemain yang belum memilih alur DAN
+		-- koinnya kurang harus tahu soal pilihan permanennya dulu. Dibalik, dia
+		-- menabung sampai cukup lalu baru menemukan ada keputusan yang menunggu.
+		local data = newData({
+			coins = 0,
+			weapons = {
+				weapon_starter = { level = Balance.PATH_BRANCH_LEVEL - 1, path = "none" },
+			},
+		})
+		local ok, reason = ProgressionRules.canUpgrade(starter, context(data), 9999)
+		assert(not ok, "harus ditolak")
+		assert(
+			reason ~= nil and reason:find("alur") ~= nil,
+			"alasannya harus soal alur, bukan koin: " .. tostring(reason)
+		)
+	end,
+})
+
+table.insert(cases, {
+	name = "level maksimum tetap ditolak lebih dulu daripada alur",
+	run = function()
+		-- Senjata level 10 tanpa alur: `pathChoiceRequired` benar, tapi tidak ada
+		-- upgrade lagi untuk ditagih. Yang salah adalah menjawab "pilih alur
+		-- dulu" untuk sesuatu yang tidak bisa di-upgrade sama sekali.
+		local data = atLevel(starter.maxLevel)
+		local ok, reason = ProgressionRules.canUpgrade(starter, context(data), 1)
+		assert(not ok, "harus ditolak")
+		assert(
+			reason ~= nil and reason:find("maksimum") ~= nil,
+			"alasannya harus level maksimum: " .. tostring(reason)
+		)
 	end,
 })
 

@@ -1,6 +1,20 @@
 --!strict
 -- LobbyController.luau — UI lobby: pilih senjata, pilih kesulitan, Ready,
--- panel upgrade dan craft.
+-- panel upgrade dan craft, dan panel pemilihan alur upgrade.
+--
+-- Soal panel pemilihan alur: upgrade ke level `Balance.PATH_BRANCH_LEVEL`
+-- mengunci satu dari tiga alur SELAMANYA, jadi tombol Upgrade di baris senjata
+-- tidak mengirim apa pun di level itu — dia membuka panel yang menampilkan
+-- ketiga alur sekaligus beserta ketiga tingkatnya, lalu tiap alur punya tombol
+-- konfirmasinya sendiri. Ketiganya ditampilkan berjajar dan bukan satu per satu
+-- karena itu syarat rancangan (ARENA_REDESIGN.md bagian 3, "Satu syarat UI yang
+-- bukan opsional"): pilihan permanen yang diambil tanpa melihat dua alur lain
+-- bukan keputusan, dan pemain yang merasa terjebak di level 10 berhenti main.
+--
+-- Kapan panel itu muncul diputuskan `ProgressionRules.pathChoiceRequired`, bukan
+-- oleh perbandingan level yang ditulis di file ini. Fungsi itu juga yang dipakai
+-- server untuk MENOLAK upgrade tanpa pilihan alur, jadi panel yang muncul dan
+-- penolakan yang menagihnya tidak bisa bergeser ke level yang berbeda.
 --
 -- Semua tombol di sini cuma mengirim NIAT (`SetReady`, `SelectLoadout`,
 -- `UpgradeWeapon`, `BuyWeapon`, `CraftWeapon`) dengan id saja. Harga, syarat,
@@ -35,6 +49,22 @@ local localPlayer = Players.LocalPlayer
 local PANEL_WIDTH = 340
 local ROW_HEIGHT = 66
 
+-- Panel pemilihan alur upgrade. Yang dipatok di sini ukuran SATU kartu, bukan
+-- ukuran panelnya: jumlah kartu dan jumlah baris tingkat dibaca dari definisi
+-- senjata (`pathPanelShape`), jadi panelnya yang dihitung dari kartunya, bukan
+-- sebaliknya.
+local PATH_CARD_WIDTH = 296
+local PATH_CARD_GAP = 12
+local PATH_PAD = 16
+-- Tinggi satu baris tingkat. Dua baris teks 12px plus sedikit jarak: `summary`
+-- di `Weapons.luau` panjangnya sampai dua baris pada lebar kartu ini, dan baris
+-- yang terpotong adalah janji yang tidak bisa dibaca pemain.
+local PATH_TIER_HEIGHT = 40
+local PATH_CONFIRM_HEIGHT = 28
+-- Judul, peringatan permanen, dan baris alasan. Kartu mulai di bawah ini.
+local PATH_HEADER_HEIGHT = 106
+local PATH_TIERS_TOP = 84
+
 -- Urutan tampil dipatok di sini, bukan dari iterasi tabel: urutan iterasi
 -- tabel Luau tidak dijamin, jadi tanpa daftar ini susunan tombol bisa berbeda
 -- tiap kali client dibuka.
@@ -47,6 +77,19 @@ type WeaponRow = {
 	detail: TextLabel,
 	action: TextButton,
 	equip: TextButton,
+}
+
+-- Satu kartu alur di panel pemilihan. Kartunya dibuat sekali di `build()` dan
+-- dipakai ulang untuk senjata mana pun, jadi `pathId` BUKAN konstanta kartu: dia
+-- diisi `renderPathPanel` tiap kali panel dibuka. Tombol konfirmasi membaca
+-- field ini saat diklik, bukan menangkap id saat kartunya dibuat.
+type PathCard = {
+	root: Frame,
+	name: TextLabel,
+	theme: TextLabel,
+	tiers: { TextLabel },
+	confirm: TextButton,
+	pathId: string?,
 }
 
 -- Aksi yang balasannya milik panel ini. `ActionResult` dipakai bersama panel
@@ -78,9 +121,212 @@ local statusLabel: TextLabel? = nil
 local weaponRows: { [string]: WeaponRow } = {}
 local difficultyButtons: { [string]: TextButton } = {}
 
+local pathPanel: Frame? = nil
+local pathTitleLabel: TextLabel? = nil
+local pathWarnLabel: TextLabel? = nil
+local pathNoticeLabel: TextLabel? = nil
+local pathCards: { PathCard } = {}
+
+-- Senjata yang panel pemilihan alurnya sedang terbuka; nil berarti tertutup.
+-- Satu variabel dan bukan sepasang (boolean "terbuka" + id senjata): panel yang
+-- terbuka tanpa senjata, dan panel yang punya senjata tapi tertutup, dua
+-- keadaan yang tidak punya arti dan cuma bisa jadi sumber bug.
+local pathWeaponId: string? = nil
+-- Alasan penolakan `UpgradeWeapon` terakhir, ditampilkan DI DALAM panel ini.
+-- Perlu salinannya sendiri karena panel ini menimpa panel lobby di layar 1280
+-- lebar: alasan yang cuma ditulis ke baris petunjuk di sana ada di belakang
+-- panel yang sedang dibaca pemain. Umurnya ikut `noticeUntil` yang sama, jadi
+-- tidak ada timer kedua yang bisa berbeda pendapat.
+local pathNoticeText: string? = nil
+
 local isReady = false
 local selectedDifficulty = "normal"
 local started = false
+
+-- Jumlah kartu dan jumlah baris tingkat yang harus DIBUAT, diambil dari seluruh
+-- definisi senjata yang ditampilkan panel ini.
+--
+-- Dihitung, bukan dipatok "3 dan 3", walau ketiga senjata di `Weapons.luau`
+-- sekarang memang 3 alur dengan 3 tingkat. Kartunya dibuat sekali lalu dipakai
+-- ulang, jadi angka yang dipatok akan DIAM-DIAM memotong alur keempat atau
+-- tingkat keempat yang ditambahkan nanti -- dan alur yang tidak pernah terlihat
+-- adalah alur yang tidak pernah dipilih, tanpa satu pun error yang menunjukkan
+-- kenapa. Senjata dengan alur lebih SEDIKIT diurus `renderPathPanel`, yang
+-- menyembunyikan kartu sisanya.
+local function pathPanelShape(): (number, number)
+	local cards = 0
+	local tiers = 0
+	for _, weaponId in WEAPON_ORDER do
+		local def = Weapons[weaponId]
+		if def == nil then
+			continue
+		end
+		cards = math.max(cards, #def.paths)
+		for _, path in def.paths do
+			tiers = math.max(tiers, #path.tiers)
+		end
+	end
+	return cards, tiers
+end
+
+-- Menutup panel tanpa mengirim apa pun. Dipakai tombol Batal, dan dipakai
+-- `renderPathPanel` saat syarat panelnya sudah tidak berlaku.
+--
+-- Variabelnya dibersihkan SEBELUM gerbang nil: `closePathPanel` bisa terpanggil
+-- sebelum `build()` jalan, dan keadaan "tertutup" tidak boleh bergantung pada
+-- ada atau tidaknya Instance-nya.
+local function closePathPanel()
+	pathWeaponId = nil
+	pathNoticeText = nil
+	local frame = pathPanel
+	if frame == nil then
+		return
+	end
+	frame.Visible = false
+end
+
+-- Mengisi dan memperlihatkan panel pemilihan alur, atau menutupnya kalau
+-- syaratnya sudah tidak berlaku lagi.
+--
+-- Satu gerbang yang menutup, dan sengaja `ProgressionRules.pathChoiceRequired`
+-- yang sama yang dipakai server untuk menagih pilihannya. Dua akibatnya yang
+-- diminta rancangan datang gratis dari situ: begitu upgrade-nya DITERIMA, alur
+-- tersimpan di `save.path`, fungsi itu jadi false, dan panelnya hilang tanpa
+-- perlu kode terpisah yang mengurus "sudah berhasil"; dan karena penolakan
+-- tidak menyentuh `save`, panelnya TETAP terbuka supaya pemain membaca
+-- alasannya dan bisa mencoba lagi.
+local function renderPathPanel()
+	local frame = pathPanel
+	local title = pathTitleLabel
+	local warning = pathWarnLabel
+	local notice = pathNoticeLabel
+	if frame == nil or title == nil or warning == nil or notice == nil then
+		return
+	end
+
+	local weaponId = pathWeaponId
+	if weaponId == nil then
+		frame.Visible = false
+		return
+	end
+
+	local def = Weapons[weaponId]
+	local save = ProfileStore.getWeaponSave(weaponId)
+	local data = ProfileStore.get()
+	local stateName = MatchStore.getStateName()
+	-- `ProgressionRules.ALLOWED_STATE`, bukan literal "Lobby": upgrade cuma
+	-- diterima di state itu, jadi panel yang menggantung di layar sepanjang
+	-- match cuma menawarkan tombol yang pasti ditolak.
+	if
+		def == nil
+		or save == nil
+		or data == nil
+		or stateName ~= ProgressionRules.ALLOWED_STATE
+		or not ProgressionRules.pathChoiceRequired(save)
+	then
+		closePathPanel()
+		return
+	end
+
+	-- `Balance.upgradePrice(save.level)`, persis yang dihitung
+	-- `ProgressionService.onUpgrade` dari level yang tersimpan di server. Harga
+	-- yang ditulis di panel keputusan permanen tidak boleh angka kedua.
+	local price = Balance.upgradePrice(save.level)
+	title.Text = string.format("%s — pilih alur upgrade", def.name)
+	warning.Text = string.format(
+		"Naik ke level %d mengunci SATU alur selamanya: tidak bisa diganti, tidak "
+			.. "bisa dibatalkan. Upgrade ini %d koin, kamu punya %d. Baca ketiganya "
+			.. "dulu.",
+		save.level + 1,
+		price,
+		math.floor(data.coins)
+	)
+
+	local context: ProgressionRules.Context = { state = stateName, data = data }
+	local blocked: string? = nil
+
+	for index, card in pathCards do
+		local path = def.paths[index]
+		if path == nil then
+			-- Senjata ini punya alur lebih sedikit daripada kartu yang dibuat.
+			-- Kartunya disembunyikan DAN `pathId`-nya dikosongkan: kartu tak
+			-- terlihat yang masih memegang id alur senjata sebelumnya adalah
+			-- tombol yang bisa mengirim alur yang salah.
+			card.root.Visible = false
+			card.pathId = nil
+			continue
+		end
+
+		card.root.Visible = true
+		card.pathId = path.id
+		card.name.Text = path.name
+		card.theme.Text = path.theme
+
+		for tierIndex, label in card.tiers do
+			local tier = path.tiers[tierIndex]
+			if tier == nil then
+				label.Visible = false
+				continue
+			end
+			label.Visible = true
+			-- Levelnya dari `tier.level`, bukan "L4/L7/L10" yang ditulis di
+			-- sini: kalau titik tingkatnya digeser di `Weapons.luau`, baris yang
+			-- dipatok akan menyebut level yang salah untuk efek yang benar, dan
+			-- pemain memilih berdasarkan level yang tidak pernah terjadi.
+			label.Text = string.format("L%d · %s", tier.level, tier.summary)
+		end
+
+		-- Tombolnya lewat `canUpgrade` dengan `path.id`, pintu yang sama yang
+		-- dipakai server: tombol yang hidup di sini tepat tombol yang akan
+		-- diterima. Yang mati HANYA tombolnya -- nama, tema, dan ketiga
+		-- ringkasan tetap terbaca, karena membaca pilihan permanen tidak boleh
+		-- butuh koin. Pemain yang menabung justru dia yang paling perlu tahu
+		-- dia menabung untuk apa.
+		local ok, reason = ProgressionRules.canUpgrade(def, context, price, path.id)
+		card.confirm.Text = "Kunci " .. path.name
+		UiKit.setButtonEnabled(card.confirm, ok)
+		if not ok and blocked == nil then
+			blocked = reason
+		end
+	end
+
+	-- Umurnya sama dengan baris petunjuk panel lobby, dan dibersihkan di sini
+	-- juga: `render()` yang dipicu `MatchState` tiap 0.2 detik memanggil fungsi
+	-- ini, jadi alasan lama tidak menempel di panel selamanya.
+	if pathNoticeText ~= nil and os.clock() >= noticeUntil then
+		pathNoticeText = nil
+	end
+
+	local rejected = pathNoticeText
+	if rejected ~= nil then
+		notice.Text = rejected
+		notice.TextColor3 = UiKit.COLOR_BAD
+	elseif blocked ~= nil then
+		-- Alasan dari `canUpgrade` yang sedang mematikan tombolnya. Ditampilkan
+		-- walau server belum pernah menolak apa pun: tiga tombol mati tanpa satu
+		-- baris yang menjelaskan kenapa terlihat seperti panel yang rusak.
+		notice.Text = blocked
+		notice.TextColor3 = UiKit.COLOR_WARN
+	else
+		notice.Text = "Pilihan ini cuma mengikat senjata ini; senjata lain masih "
+			.. "punya pilihannya sendiri."
+		notice.TextColor3 = UiKit.COLOR_MUTED
+	end
+
+	frame.Visible = true
+end
+
+-- Dibuka HANYA dari tombol aksi baris senjata. Tidak pernah dari `render()`:
+-- panel pilihan permanen yang muncul sendiri saat paket data masuk adalah panel
+-- yang menanyakan sesuatu yang tidak ditanyakan pemain.
+local function openPathPanel(weaponId: string)
+	pathWeaponId = weaponId
+	-- Alasan dari senjata sebelumnya tidak dibawa: "koin kurang" dari Fork Bomb
+	-- yang muncul di atas kartu Patch Wrench menjelaskan keadaan yang sudah
+	-- tidak ada.
+	pathNoticeText = nil
+	renderPathPanel()
+end
 
 local function build()
 	if gui ~= nil then
@@ -199,7 +445,18 @@ local function build()
 			-- Satu tombol, tiga aksi: remote mana yang dikirim ditentukan
 			-- status senjata dan `acquire.method`-nya, bukan oleh teks tombol.
 			if ProfileStore.owns(weaponId) then
-				Remotes.Events.UpgradeWeapon:FireServer(weaponId)
+				-- Senjata yang dimiliki punya DUA arti di tombol yang sama, dan
+				-- yang memutuskan `ProgressionRules.pathChoiceRequired` --
+				-- fungsi yang sama yang dipakai server untuk menolak upgrade
+				-- tanpa `pathId`. Mengirim langsung di titik percabangan berarti
+				-- remote yang pasti ditolak; panel yang muncul di level lain
+				-- berarti pemain memilih sesuatu yang belum ditagih siapa pun.
+				local save = ProfileStore.getWeaponSave(weaponId)
+				if save ~= nil and ProgressionRules.pathChoiceRequired(save) then
+					openPathPanel(weaponId)
+				else
+					Remotes.Events.UpgradeWeapon:FireServer(weaponId)
+				end
 			elseif def.acquire.method == "buy" then
 				Remotes.Events.BuyWeapon:FireServer(weaponId)
 			elseif def.acquire.method == "craft" then
@@ -238,6 +495,181 @@ local function build()
 		Remotes.Events.SetReady:FireServer(isReady)
 	end)
 
+	-- Panel pemilihan alur --------------------------------------------------
+	--
+	-- Frame di ScreenGui yang SUDAH ada, bukan ScreenGui sendiri: umurnya persis
+	-- umur panel lobby -- dibuat di `build()` yang sama, dimatikan di luar
+	-- `ProgressionRules.ALLOWED_STATE` yang sama -- jadi ScreenGui kedua cuma
+	-- menambah satu lifecycle dan satu DisplayOrder yang harus diurus tanpa
+	-- memberi apa pun. ZIndex-nya dinaikkan karena panel ini memang menimpa
+	-- panel lobby di lebar 1280, dan `ZIndexBehavior.Sibling` memutuskan urutan
+	-- gambar dari ZIndex, bukan dari urutan pembuatan Instance.
+	--
+	-- Ketiga kartu berjajar dalam satu baris, bukan satu kartu dengan panah atau
+	-- dropdown: syarat rancangan bagian 3 adalah pemain bisa melihat isi ketiga
+	-- alur SEBELUM menekan konfirmasi, dan pemilih yang menampilkan satu alur
+	-- pada satu waktu memaksa dia membandingkan dari ingatan.
+	local cardCount, tierCount = pathPanelShape()
+	local cardHeight = PATH_TIERS_TOP + tierCount * PATH_TIER_HEIGHT + 8 + PATH_CONFIRM_HEIGHT + 10
+	local pathWidth = PATH_PAD * 2
+		+ cardCount * PATH_CARD_WIDTH
+		+ math.max(cardCount - 1, 0) * PATH_CARD_GAP
+	local pathHeight = PATH_HEADER_HEIGHT
+		+ cardHeight
+		+ PATH_CARD_GAP
+		+ PATH_CONFIRM_HEIGHT
+		+ PATH_PAD
+
+	local pathFrame = UiKit.panel(
+		screen,
+		"PathChoice",
+		UDim2.new(0.5, -pathWidth // 2, 0.5, -pathHeight // 2),
+		UDim2.fromOffset(pathWidth, pathHeight)
+	)
+	pathFrame.BackgroundTransparency = 0.03
+	pathFrame.ZIndex = 2
+	pathFrame.Visible = false
+
+	local pathTitle = UiKit.label(
+		pathFrame,
+		"Title",
+		UDim2.fromOffset(PATH_PAD, 12),
+		UDim2.fromOffset(pathWidth - PATH_PAD * 2, 22),
+		""
+	)
+	pathTitle.Font = Enum.Font.GothamBold
+	pathTitle.TextSize = 18
+
+	local pathWarn = UiKit.label(
+		pathFrame,
+		"Warning",
+		UDim2.fromOffset(PATH_PAD, 38),
+		UDim2.fromOffset(pathWidth - PATH_PAD * 2, 32),
+		""
+	)
+	pathWarn.TextSize = 13
+	pathWarn.TextWrapped = true
+	pathWarn.TextYAlignment = Enum.TextYAlignment.Top
+	pathWarn.TextColor3 = UiKit.COLOR_WARN
+
+	local pathNotice = UiKit.label(
+		pathFrame,
+		"Notice",
+		UDim2.fromOffset(PATH_PAD, 74),
+		UDim2.fromOffset(pathWidth - PATH_PAD * 2, 28),
+		""
+	)
+	pathNotice.TextSize = 12
+	pathNotice.TextWrapped = true
+	pathNotice.TextYAlignment = Enum.TextYAlignment.Top
+	pathNotice.TextColor3 = UiKit.COLOR_MUTED
+
+	for index = 1, cardCount do
+		local card = UiKit.panel(
+			pathFrame,
+			"Path" .. index,
+			UDim2.fromOffset(
+				PATH_PAD + (index - 1) * (PATH_CARD_WIDTH + PATH_CARD_GAP),
+				PATH_HEADER_HEIGHT
+			),
+			UDim2.fromOffset(PATH_CARD_WIDTH, cardHeight)
+		)
+		card.BackgroundColor3 = Color3.fromRGB(26, 29, 36)
+		card.BackgroundTransparency = 0
+
+		local cardName = UiKit.label(
+			card,
+			"Name",
+			UDim2.fromOffset(10, 8),
+			UDim2.fromOffset(PATH_CARD_WIDTH - 20, 18),
+			""
+		)
+		cardName.Font = Enum.Font.GothamBold
+		cardName.TextSize = 15
+		cardName.TextColor3 = UiKit.COLOR_ACCENT
+
+		local theme = UiKit.label(
+			card,
+			"Theme",
+			UDim2.fromOffset(10, 28),
+			UDim2.fromOffset(PATH_CARD_WIDTH - 20, 52),
+			""
+		)
+		theme.TextSize = 12
+		theme.TextWrapped = true
+		theme.TextYAlignment = Enum.TextYAlignment.Top
+		theme.TextColor3 = UiKit.COLOR_MUTED
+
+		local tierLabels: { TextLabel } = {}
+		for tierIndex = 1, tierCount do
+			local tier = UiKit.label(
+				card,
+				"Tier" .. tierIndex,
+				UDim2.fromOffset(10, PATH_TIERS_TOP + (tierIndex - 1) * PATH_TIER_HEIGHT),
+				UDim2.fromOffset(PATH_CARD_WIDTH - 20, PATH_TIER_HEIGHT - 4),
+				""
+			)
+			tier.TextSize = 12
+			tier.TextWrapped = true
+			tier.TextYAlignment = Enum.TextYAlignment.Top
+			tierLabels[tierIndex] = tier
+		end
+
+		local confirm = UiKit.button(
+			card,
+			"Confirm",
+			UDim2.fromOffset(10, PATH_TIERS_TOP + tierCount * PATH_TIER_HEIGHT + 8),
+			UDim2.fromOffset(PATH_CARD_WIDTH - 20, PATH_CONFIRM_HEIGHT),
+			""
+		)
+		confirm.TextSize = 13
+
+		local entry: PathCard = {
+			root = card,
+			name = cardName,
+			theme = theme,
+			tiers = tierLabels,
+			confirm = confirm,
+			pathId = nil,
+		}
+
+		confirm.Activated:Connect(function()
+			if not confirm.Active then
+				return
+			end
+			-- Senjata dan alur dibaca saat KLIK, dari state panel, bukan
+			-- ditangkap saat kartunya dibuat: kartu yang sama dipakai ulang untuk
+			-- ketiga senjata, jadi id yang ditangkap sekali akan mengunci alur
+			-- senjata yang panelnya sudah lama tertutup.
+			local weaponId = pathWeaponId
+			local pathId = entry.pathId
+			if weaponId == nil or pathId == nil then
+				return
+			end
+			Remotes.Events.UpgradeWeapon:FireServer(weaponId, pathId)
+		end)
+
+		pathCards[index] = entry
+	end
+
+	-- Batal. Keputusan permanen harus punya jalan keluar yang tidak mengirim
+	-- apa pun: pemain yang membuka panel ini cuma untuk MEMBACA ketiga alur
+	-- tidak boleh dipaksa memilih salah satunya untuk menutupnya.
+	local cancel = UiKit.button(
+		pathFrame,
+		"Cancel",
+		UDim2.fromOffset((pathWidth - 200) // 2, PATH_HEADER_HEIGHT + cardHeight + PATH_CARD_GAP),
+		UDim2.fromOffset(200, PATH_CONFIRM_HEIGHT),
+		"Batal"
+	)
+	cancel.TextSize = 13
+	cancel.Activated:Connect(function()
+		if not cancel.Active then
+			return
+		end
+		closePathPanel()
+	end)
+
 	screen.Parent = localPlayer:WaitForChild("PlayerGui")
 
 	gui = screen
@@ -245,6 +677,10 @@ local function build()
 	readyButton = button
 	hintLabel = hint
 	statusLabel = status
+	pathPanel = pathFrame
+	pathTitleLabel = pathTitle
+	pathWarnLabel = pathWarn
+	pathNoticeLabel = pathNotice
 end
 
 local function describeWeapon(weaponId: string): string
@@ -279,12 +715,31 @@ local function describeWeapon(weaponId: string): string
 		return "Belum dimiliki"
 	end
 
+	-- Lewat `Balance.weaponStats`, bukan `weaponDamage`: angka di baris ini
+	-- harus angka yang sama dengan yang dipakai server saat menghitung damage,
+	-- dan sejak alur upgrade ada, alur bisa mengubahnya. Baris yang menulis
+	-- damage dasar sementara serangannya memberi damage alur adalah baris yang
+	-- bohong, dan pemain tidak punya cara lain mengeceknya.
+	local save = ProfileStore.getWeaponSave(weaponId)
+	local stats = Balance.weaponStats(def, save or { level = level, path = "none" })
+
+	local pathText = ""
+	if save ~= nil then
+		local path = ProgressionRules.findPath(def, save.path)
+		if path ~= nil then
+			pathText = " · alur " .. path.name
+		elseif ProgressionRules.pathChoiceRequired(save) then
+			pathText = " · pilih alur"
+		end
+	end
+
 	return string.format(
-		"Level %d/%d · damage %d · %s",
+		"Level %d/%d · damage %d · %s%s",
 		level,
 		def.maxLevel,
-		math.floor(Balance.weaponDamage(def, level) + 0.5),
-		if def.kind == "melee" then "jarak dekat" else "jarak jauh"
+		math.floor(stats.damage + 0.5),
+		if def.kind == "melee" then "jarak dekat" else "jarak jauh",
+		pathText
 	)
 end
 
@@ -309,6 +764,13 @@ local function render()
 	-- sisa fungsi -- lalu perbandingan dengan "Loadout" di baris petunjuk
 	-- ditolak type checker sebagai perbandingan yang tidak mungkin.
 	local inCountdown = stateName == "Countdown"
+	-- Dipanggil SEBELUM gerbang `return` di bawah: fungsi itu sendiri yang
+	-- menutup panel pemilihan alur saat state keluar dari Lobby, dan kalau
+	-- panggilannya ada di bawah gerbang, panel pilihan permanen akan menggantung
+	-- di layar sepanjang match -- state yang di situ tombol konfirmasinya pasti
+	-- ditolak server. Dia membaca sendiri dari MatchStore dan ProfileStore, jadi
+	-- tidak bergantung pada urutan baris sisa fungsi ini.
+	renderPathPanel()
 	-- Panel tetap terlihat sepanjang Loadout dan Countdown. Loadout adalah
 	-- satu-satunya fase yang gunanya memilih di panel ini, jadi panel yang
 	-- hilang di situ membuat fasenya tidak ada artinya.
@@ -384,12 +846,37 @@ local function render()
 		local context: ProgressionRules.Context = { state = stateName, data = data }
 		if owned then
 			local level = ProfileStore.getWeaponLevel(weaponId) or 1
+			local save = ProfileStore.getWeaponSave(weaponId)
 			local price = Balance.upgradePrice(level)
-			local canUpgrade = ProgressionRules.canUpgrade(def, context, price)
-			row.action.Text = if level >= def.maxLevel
-				then "Level maks"
-				else string.format("Upgrade %d", price)
-			UiKit.setButtonEnabled(row.action, canUpgrade)
+			-- Level maks diperiksa PALING DULU. `pathChoiceRequired` juga benar
+			-- untuk save level 10 yang `path`-nya masih "none" -- data dari
+			-- sebelum fitur ini ada -- dan senjata yang tidak bisa naik level
+			-- lagi tidak boleh menawarkan panel pemilihan yang tombol
+			-- konfirmasinya pasti ditolak `canUpgrade`.
+			if level >= def.maxLevel then
+				row.action.Text = "Level maks"
+				UiKit.setButtonEnabled(row.action, false)
+			elseif save ~= nil and ProgressionRules.pathChoiceRequired(save) then
+				-- Tombol ini MEMBUKA panel, jadi syaratnya bukan syarat upgrade:
+				-- `canUpgrade` di titik percabangan menolak selama `pathId`
+				-- belum ada, dan menolak lagi kalau koinnya kurang. Dua-duanya
+				-- akan mematikan tombol yang satu-satunya gunanya MEMBACA ketiga
+				-- alur, dan pemain yang koinnya belum cukup justru dia yang
+				-- paling perlu melihat dia menabung untuk apa.
+				--
+				-- Dibandingkan dengan `ProgressionRules.ALLOWED_STATE`, bukan
+				-- dengan literal "Lobby": literalnya akan menyempitkan tipe
+				-- `stateName` untuk sisa fungsi ini, persis jebakan yang sudah
+				-- dicatat di atas pada `inCountdown`.
+				row.action.Text = "Pilih alur"
+				UiKit.setButtonEnabled(row.action, stateName == ProgressionRules.ALLOWED_STATE)
+			else
+				row.action.Text = string.format("Upgrade %d", price)
+				UiKit.setButtonEnabled(
+					row.action,
+					(ProgressionRules.canUpgrade(def, context, price))
+				)
+			end
 		elseif def.acquire.method == "buy" then
 			row.action.Text = string.format("Beli %d", def.acquire.coinCost or 0)
 			UiKit.setButtonEnabled(row.action, (ProgressionRules.canBuy(def, context)))
@@ -472,6 +959,22 @@ function LobbyController.start()
 				else "Ditolak server."
 		end
 		noticeUntil = os.clock() + NOTICE_SECONDS
+
+		-- Panel pemilihan alur mengikuti balasan ini, bukan menunggu paket
+		-- `DataChanged` yang menyusul: kalau upgrade-nya diterima panelnya harus
+		-- hilang sekarang, dan kalau DITOLAK dia harus tetap terbuka dengan
+		-- alasannya terbaca DI DALAM panel -- baris petunjuk panel lobby ada di
+		-- belakangnya. Penolakan yang ikut menutup panel berarti pemain
+		-- kehilangan ketiga alur yang baru dia baca cuma karena koinnya kurang
+		-- beberapa, dan harus membukanya lagi untuk membaca hal yang sama.
+		if payload.action == "UpgradeWeapon" then
+			if noticeOk then
+				closePathPanel()
+			else
+				pathNoticeText = noticeText
+			end
+		end
+
 		render()
 
 		-- Dikembalikan ke teks biasa setelah beberapa detik supaya pesan

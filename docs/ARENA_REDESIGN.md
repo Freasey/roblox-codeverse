@@ -6,16 +6,28 @@
 >
 > Dibuat 2026-10-24, pada commit `0729cda`.
 
-> **Status: langkah 1 sampai 5 dari [bagian 8](#8-urutan-kerja-yang-diusulkan)
+> **Status: langkah 1 sampai 6 dari [bagian 8](#8-urutan-kerja-yang-diusulkan)
 > sudah mendarat di `main`.** Musuh sudah menyerang base dan player, respawn
 > sudah ada, hadiah koin per wave dan harga toko yang naik sudah jalan, fase
-> `Loadout` 20 detik beserta flag dev semua senjata terbuka sudah ada, dan
-> harness serta `docs/TEST_CASES.md` sudah diselaraskan. Langkah 6 dan 7 (tiga
-> alur upgrade, isi efek per alur) belum dikerjakan.
+> `Loadout` 20 detik beserta flag dev semua senjata terbuka sudah ada, kerangka
+> tiga alur upgrade sudah ada, dan harness serta `docs/TEST_CASES.md` sudah
+> diselaraskan.
 >
-> Yang perlu diperhatikan saat membaca sisa dokumen ini: bagian yang berjudul
-> "Mekanismenya sekarang" menggambarkan keadaan **sebelum** langkah 1 — itu
-> konteks yang membuat rancangannya bisa dibaca, bukan keadaan kode hari ini.
+> **Langkah 7 belum**, dan itu berarti lampiran A di bawah masih belum jadi
+> keputusan: `Weapons.luau` sekarang memuat sembilan alur dengan nama, tema, dan
+> tiga baris `summary` per alur, tapi tidak satu pun tingkat yang mengubah
+> damage, cooldown, range, atau jumlah proyektil. Jadi memilih alur sudah
+> mengunci keputusan permanen tanpa memberi apa pun. Yang perlu diisi langkah 7:
+> `damageMult`, `cooldownMult`, `range`, `projectiles`, dan `effects` di tiap
+> `WeaponPathTier`, sampai setiap baris `summary` yang dibaca pemain benar.
+>
+> Yang perlu diperhatikan saat membaca sisa dokumen ini: **seluruh kalimat
+> berbentuk "sekarang begini" dan "sebaiknya begitu" menggambarkan keadaan
+> sebelum langkah 1**, bukan keadaan kode hari ini — bukan cuma bagian yang
+> berjudul "Mekanismenya sekarang". Jadi `WeaponSave = { level: number }` di
+> bagian 3, dan "`Balance.weaponDamage` sebaiknya diganti", dua-duanya sudah
+> tidak berlaku: `WeaponSave` sudah punya `path` dan `Balance.weaponStats` sudah
+> ada. Itu konteks yang membuat rancangannya bisa dibaca.
 > Untuk keadaan sekarang, `docs/TEST_CASES.md` bagian 4.2 dan `docs/STATUS.md`
 > yang berlaku.
 
@@ -101,6 +113,17 @@ Dia mengembalikan gabungan senjata default dan isi `data.weapons`; saat
 `Config.DEV_ALL_WEAPONS = true` dia mengembalikan **semua** senjata, dengan level
 1 untuk yang belum dimiliki.
 
+> Yang benar-benar dikode: `ProgressionRules.ownedWeapons(data, defs,
+> devAllWeapons)`. `defs` dan flag-nya dikirim sebagai argumen, bukan di-require
+> di dalam modul, supaya modulnya tetap bisa di-require Lune dan test bisa
+> menguji kedua keadaan flag tanpa menyetel konstanta global. Ada juga
+> `ProgressionRules.equippedWeapon(data, defs, devAllWeapons)` yang memakainya
+> untuk jalur damage. Satu batas yang tidak disebut rancangan ini dan ternyata
+> penting: `canBuy`, `canCraft`, dan `canUpgrade` **tidak** lewat
+> `ownedWeapons`, karena ketiganya mengubah data permanen -- lewat sana, flag
+> dev akan membolehkan pemain membayar koin sungguhan untuk senjata yang tidak
+> dia miliki, dan hasilnya masuk DataStore.
+
 **Jangan** menulis ketiga senjata ke `data.weapons` lewat
 `PlayerDataService.update` sebagai jalan pintas. Itu masuk DataStore, dan setelah
 itu tidak ada cara membedakan senjata hasil flag dev dari senjata yang benar-benar
@@ -148,6 +171,14 @@ bukan `nil`.** `DataSchema.reconcile` mengisi field yang hilang dari
 hilang total saat disimpan, jadi "belum memilih" dan "data lama sebelum fitur ini
 ada" jadi tidak bisa dibedakan. String `"none"` bisa.
 
+> Dan `reconcile` sendiri ternyata **tidak cukup**, yang baru kelihatan saat
+> dikode: dia mengisi dari `Config.DEFAULT_DATA`, dan satu-satunya senjata di
+> sana `weapon_starter`. Senjata yang dibeli atau di-craft sebelum fitur ini ada
+> punya `{ level = n }` tanpa `path`, dan `reconcile` tidak punya default untuk
+> kunci yang tidak dia kenal. Jadi ada `DataSchema.fillWeaponPaths`, dan
+> `PlayerDataService` memanggil `DataSchema.migrate` -- reconcile lalu migrasi,
+> satu pintu -- di kedua jalur yang memuat data pemain.
+
 Menambah field baru tidak perlu menaikkan `Config.DATASTORE_NAME` — itu sudah
 dijelaskan di komentar `Config.DEFAULT_DATA`.
 
@@ -163,6 +194,18 @@ Semuanya di modul murni `ProgressionRules.luau` supaya bisa dites Lune:
 
 Signature remote berubah: `UpgradeWeapon(weaponId)` menjadi
 `UpgradeWeapon(weaponId, pathId?)`.
+
+> Satu penyimpangan dari aturan (1) yang muncul saat dikode:
+> `ProgressionRules.pathChoiceRequired` menagih pilihan saat level sesudah
+> upgrade **>= 4**, bukan **== 4**. Dengan `==`, save yang entah bagaimana sudah
+> lewat level 4 dengan `path` masih `"none"` -- data dari sebelum fitur ini ada,
+> atau data yang diedit tangan -- tidak akan pernah ditagih memilih, jadi
+> senjatanya berjalan tanpa alur sampai level 10 dan tidak ada satu pun pesan
+> yang memberitahu pemiliknya. Aturan (2) dan (3) dikode apa adanya, dan
+> `ProgressionRules.pathToApply` menambah satu lagi yang tidak tertulis di sini:
+> alur **tidak boleh tersimpan** sebelum titik percabangan, kalau tidak client
+> bisa mengunci alur di upgrade pertama dan masa percobaan level 1-3 hilang
+> tanpa jejak.
 
 ### Resolusi stat
 

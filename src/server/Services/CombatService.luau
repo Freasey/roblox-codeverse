@@ -19,9 +19,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Modules.Balance)
 local Config = require(Shared.Config)
+local DataSchema = require(Shared.Modules.DataSchema)
 local HitTest = require(Shared.Modules.HitTest)
 local ProgressionRules = require(Shared.Modules.ProgressionRules)
 local RateLimit = require(Shared.Modules.RateLimit)
+local Types = require(Shared.Modules.Types)
 local Remotes = require(Shared.Remotes)
 local Weapons = require(Shared.Modules.Weapons)
 
@@ -74,15 +76,29 @@ end
 -- sini DIAM-DIAM jatuh ke starter. Begitu `Config.DEV_ALL_WEAPONS` ada, selisih
 -- sekecil apa pun di antara keduanya berarti pemain memilih Packet Rifle lalu
 -- mengayunkan Patch Wrench tanpa satu pesan error pun.
-local function resolveWeapon(player: Player): (Weapons.WeaponDef, number)
+-- Mengembalikan `def` DAN stat yang sudah jadi, bukan `def` dan level.
+-- Menerjemahkan level jadi stat adalah pekerjaan `Balance.weaponStats`, dan
+-- pemanggil yang memegang level mentah pasti akan menghitung salah satu stat
+-- sendiri cepat atau lambat -- lalu melewatkan efek alur pada stat itu.
+local function resolveWeapon(player: Player): (Weapons.WeaponDef, Types.WeaponStats)
 	local data = PlayerDataService.get(player)
 	if data == nil then
-		-- Data belum termuat: starter level 1, bukan error. Dipanggil tiap
-		-- serangan, jadi tidak ada tempat untuk melapor di sini.
-		return Weapons.weapon_starter, 1
+		-- Data belum termuat: starter level 1 tanpa alur, bukan error.
+		-- Dipanggil tiap serangan, jadi tidak ada tempat untuk melapor di sini.
+		local starter = Weapons.weapon_starter
+		return starter, Balance.weaponStats(starter, { level = 1, path = DataSchema.NO_PATH })
 	end
 
-	return ProgressionRules.equippedWeapon(data, Weapons, Config.DEV_ALL_WEAPONS)
+	local def, level = ProgressionRules.equippedWeapon(data, Weapons, Config.DEV_ALL_WEAPONS)
+	-- Alur dibaca dari save senjata ITU, bukan dari `def`: `equippedWeapon`
+	-- bisa jatuh ke starter, dan memakai alur senjata yang gagal dipakai akan
+	-- memberi starter efek alur yang bukan miliknya.
+	local save = data.weapons[def.id]
+	return def,
+		Balance.weaponStats(def, {
+			level = level,
+			path = if save ~= nil then save.path else DataSchema.NO_PATH,
+		})
 end
 
 local function characterOrigin(player: Player): Vector3?
@@ -113,7 +129,16 @@ type Candidate = {
 }
 
 -- Kumpulkan musuh yang kena, paling dekat dulu, maksimal `projectiles` buah.
-local function collectTargets(def: Weapons.WeaponDef, origin: Vector3, aim: Vector3): { Candidate }
+-- `stats` dan bukan `def` untuk range dan jumlah proyektil: alur upgrade bisa
+-- mengubah keduanya, dan membaca `def` di sini berarti senjata yang
+-- jangkauannya dinaikkan alur tetap menguji kena di jangkauan dasarnya. `def`
+-- tetap dibutuhkan untuk `kind`, yang bukan stat dan tidak pernah berubah.
+local function collectTargets(
+	def: Weapons.WeaponDef,
+	stats: Types.WeaponStats,
+	origin: Vector3,
+	aim: Vector3
+): { Candidate }
 	local originVec = toVec(origin)
 	local aimVec = toVec(aim)
 	local candidates: { Candidate } = {}
@@ -125,7 +150,7 @@ local function collectTargets(def: Weapons.WeaponDef, origin: Vector3, aim: Vect
 		local targetVec = toVec(enemy.position)
 
 		if def.kind == "melee" then
-			local reach = def.range + Balance.MELEE_RADIUS_BONUS
+			local reach = stats.range + Balance.MELEE_RADIUS_BONUS
 			if HitTest.inCone(originVec, aimVec, targetVec, reach, Balance.MELEE_MIN_COS) then
 				table.insert(candidates, {
 					id = id,
@@ -134,7 +159,7 @@ local function collectTargets(def: Weapons.WeaponDef, origin: Vector3, aim: Vect
 			end
 		else
 			local lateral, along =
-				HitTest.distanceToAimSegment(originVec, aimVec, targetVec, def.range)
+				HitTest.distanceToAimSegment(originVec, aimVec, targetVec, stats.range)
 			if lateral <= Balance.RANGED_RADIUS then
 				-- Diurutkan berdasarkan jarak SEPANJANG garis bidik, bukan jarak
 				-- ke pemain: musuh yang pertama dilewati proyektil yang kena
@@ -148,7 +173,7 @@ local function collectTargets(def: Weapons.WeaponDef, origin: Vector3, aim: Vect
 		return a.distance < b.distance
 	end)
 
-	local limit = math.max(1, def.projectiles)
+	local limit = math.max(1, stats.projectiles)
 	while #candidates > limit do
 		table.remove(candidates)
 	end
@@ -183,10 +208,10 @@ local function onAttack(player: Player, rawDirection: unknown)
 		return
 	end
 
-	local def, level = resolveWeapon(player)
+	local def, stats = resolveWeapon(player)
 	local mods = modifiers()
 
-	local cooldown = def.cooldown * math.max(0.1, mods.cooldownMult)
+	local cooldown = stats.cooldown * math.max(0.1, mods.cooldownMult)
 	local last = lastAttackAt[player.UserId]
 	-- Toleransi 50 ms: client yang jujur pun bisa mengirim sedikit lebih cepat
 	-- karena jitter jaringan, dan menolaknya terasa seperti serangan hilang.
@@ -195,12 +220,12 @@ local function onAttack(player: Player, rawDirection: unknown)
 	end
 	lastAttackAt[player.UserId] = now
 
-	local damage = Balance.weaponDamage(def, level) * math.max(0, mods.damageMult)
+	local damage = stats.damage * math.max(0, mods.damageMult)
 	if damage <= 0 then
 		return
 	end
 
-	for _, candidate in collectTargets(def, origin, direction.Unit) do
+	for _, candidate in collectTargets(def, stats, origin, direction.Unit) do
 		EnemyService.damage(candidate.id, damage, player)
 	end
 end

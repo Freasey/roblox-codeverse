@@ -41,7 +41,10 @@ local EVENT_NAMES = {
 	"ShowInfoCard", -- S -> C: bossId
 
 	-- Progres permanen (lobby)
-	"UpgradeWeapon", -- C -> S: weaponId
+	-- `pathId` cuma dipakai saat naik KE level 4, titik percabangan alur
+	-- upgrade; di level lain dia diabaikan. Opsional di remote, wajib di level
+	-- 4 -- dan yang menegakkannya `ProgressionRules.canUpgrade`, bukan di sini.
+	"UpgradeWeapon", -- C -> S: weaponId, pathId?
 	"BuyWeapon", -- C -> S: weaponId
 	"CraftWeapon", -- C -> S: weaponId
 	"ActionResult", -- S -> C: { action, ok, reason } — lihat catatan di bawah

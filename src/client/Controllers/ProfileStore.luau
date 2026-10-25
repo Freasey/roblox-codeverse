@@ -16,6 +16,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Signal = require(ReplicatedStorage.Shared.Modules.Signal)
+local Types = require(ReplicatedStorage.Shared.Modules.Types)
 
 local ProfileStore = {}
 
@@ -89,6 +90,17 @@ function ProfileStore.getWeaponLevel(weaponId: string): number?
 	end
 	local save = data.weapons[weaponId]
 	return if save ~= nil then save.level else nil
+end
+
+-- Save lengkap satu senjata, bukan cuma levelnya: panel lobby butuh `path`
+-- juga untuk menampilkan alur yang terpilih dan untuk memanggil
+-- `Balance.weaponStats` dengan input yang sama dengan server.
+function ProfileStore.getWeaponSave(weaponId: string): Types.WeaponSave?
+	local data = profile
+	if data == nil then
+		return nil
+	end
+	return data.weapons[weaponId]
 end
 
 function ProfileStore.owns(weaponId: string): boolean

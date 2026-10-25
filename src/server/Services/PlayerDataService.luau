@@ -109,7 +109,7 @@ local function loadWithoutDataStore(player: Player): PlayerData?
 		return nil
 	end
 
-	local data = DataSchema.reconcile({}, Config.DEFAULT_DATA :: any)
+	local data = DataSchema.migrate({}, Config.DEFAULT_DATA :: any)
 	cache[player.UserId] = data
 	loaded[player.UserId] = false
 	PlayerDataService.onLoaded:Fire(player, data)
@@ -136,8 +136,7 @@ function PlayerDataService.load(player: Player): PlayerData?
 	for attempt = 1, LOCK_RETRY_LIMIT do
 		local ok, result = retry("UpdateAsync(load)", function()
 			return dataStore:UpdateAsync(key, function(old: any): any?
-				local data =
-					DataSchema.reconcile(old and old.data or {}, Config.DEFAULT_DATA :: any)
+				local data = DataSchema.migrate(old and old.data or {}, Config.DEFAULT_DATA :: any)
 				local lock = old and old.lock
 
 				-- Ada lock milik server lain yang masih hidup -> tolak.

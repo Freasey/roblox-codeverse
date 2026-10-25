@@ -54,8 +54,10 @@ Config.DEFAULT_DATA = {
 	lastLogin = 0,
 
 	equippedWeapon = "weapon_starter",
-	weapons = { -- [weaponId] = { level = number }
-		weapon_starter = { level = 1 },
+	weapons = { -- [weaponId] = { level = number, path = string }
+		-- `path = "none"` eksplisit, bukan dibiarkan kosong: nil tidak bertahan
+		-- di JSON DataStore. Lihat `Types.WeaponSave`.
+		weapon_starter = { level = 1, path = "none" },
 	},
 	materials = {}, -- [materialId] = jumlah
 	unlockedDifficulties = { normal = true },

@@ -9,7 +9,7 @@ informasinya ikut hilang.
 **kenyataan**. Kalau keduanya berbeda, dokumen ini yang benar — perbarui dia
 tiap kali ada milestone tutup atau ada hasil playtest.
 
-Terakhir diperbarui: 2026-10-24, pada commit `15a7da4`.
+Terakhir diperbarui: 2026-10-25, pada commit `fe49484`.
 
 ## 1. Ringkasan satu paragraf
 
@@ -19,12 +19,21 @@ progres permanen plus lobby. M6 sampai M8 belum disentuh. Sebagian besar
 perilaku game belum pernah dijalankan oleh seorang pemain.
 
 **Rancangan ulang arena sedang dikerjakan**, dan itu yang menentukan kapan
-playtest masuk akal dijalankan. Langkah 1 sampai 5 dari
+playtest masuk akal dijalankan. Langkah 1 sampai 6 dari
 `docs/ARENA_REDESIGN.md` bagian 8 sudah mendarat: musuh yang mencapai base
 berhenti dan memukul sampai dibunuh, pemain bisa mati, hadiah koin per wave
-jalan, harga Toko Match naik tiap pembelian, dan ada fase `Loadout` 20 detik
-sebelum hitung mundur tempat senjata dipilih untuk terakhir kalinya. Langkah 6
-dan 7 (tiga alur upgrade senjata, isi efek per alur) belum.
+jalan, harga Toko Match naik tiap pembelian, ada fase `Loadout` 20 detik
+sebelum hitung mundur, dan tiap senjata bercabang jadi tiga alur upgrade
+permanen di level 4.
+
+Satu hal soal langkah 6 yang harus dibaca sebagai batas, bukan sebagai bug:
+**kerangkanya lengkap tapi efeknya masih kosong.** Pemain bisa memilih alur,
+pilihannya tersimpan dan tidak bisa diganti, dan panel pemilihannya menyebut apa
+yang akan terbuka di level 4, 7, dan 10 — tapi tidak satu pun tingkat alur di
+`Weapons.luau` yang mengubah damage, cooldown, range, atau jumlah proyektil.
+Jadi memilih alur sekarang mengunci keputusan tanpa memberi apa pun. Itu
+langkah 7, dan sampai itu selesai dua senjata di alur berbeda bertarung
+identik.
 
 **Playtest ditunda sampai langkah 6 dan 7 selesai**, atas permintaan Daffa
 (2026-10-25): fokus menyelesaikan rancangannya dulu. Itu juga yang paling
@@ -40,7 +49,7 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 
 | Lapis | Cakupan | Status |
 | --- | --- | --- |
-| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit | **195 test lulus** |
+| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit | **221 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
 | Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave | **222 assertion lulus, 0 gagal, 17 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
@@ -100,7 +109,7 @@ ditukar, dan alasannya ditulis di tempatnya masing-masing.
 ```bash
 cd "C:\Web Program
 oblox-codeverse"
-lune run tests/run          # 149 unit test, beberapa detik
+lune run tests/run          # 221 unit test, beberapa detik
 lune run tests/studio/run   # harness Studio, ~110 detik
 ```
 
@@ -241,6 +250,19 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
   berlaku. `lockDifficulty()` dipindah ke akhir fase justru untuk itu, dan kalau
   pemindahannya salah, gejalanya adalah tingkat yang dipilih diabaikan tanpa
   pesan apa pun sementara senjatanya diterima.
+
+- **Tiga alur upgrade per senjata.** Seluruh aturannya dipatok unit test
+  (`pathChoiceRequired`, `canUpgrade` dengan `pathId`, `pathToApply`,
+  `Balance.weaponStats` lintas tiga tingkat), termasuk yang paling mahal kalau
+  salah: **alur yang sudah terpilih tidak bisa diganti**, dan alur **tidak bisa
+  dikunci sebelum level 4**. Yang belum pernah dilihat manusia: panel
+  pemilihannya di layar, dan `data.weapons[id].path` yang benar-benar bertahan
+  setelah keluar dan join lagi — yang terakhir butuh place yang sudah
+  di-publish, jadi dia terkunci di belakang bagian 5.1.
+
+  Dan satu yang tidak bisa diuji sama sekali sampai langkah 7: apakah alur yang
+  dipilih **terasa** berbeda. Sekarang tidak, karena tingkatnya belum mengubah
+  stat apa pun.
 
 - **`Config.DEV_ALL_WEAPONS`.** Default `false`, jadi jalur ini tidak pernah
   aktif di CI maupun di harness. Unit test memastikan `ownedWeapons` dan
