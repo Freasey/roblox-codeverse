@@ -23,7 +23,11 @@ local EVENT_NAMES = {
 
 	-- Match (bagian 3.6)
 	"MatchState", -- S -> C: { state, wave, timer, coreHp, coreMaxHp }
-	"MatchCoins", -- S -> C: number (cash tim; nama remote tetap Coins, lihat ShopService)
+	-- S -> C, PER PEMAIN: saldo cash pemain itu sendiri. Nama remote tetap
+	-- memakai kata "Coins" karena tabel bagian 3.6 memakunya; yang dibaca
+	-- pemain di layar "cash". Dikirim FireClient, bukan FireAllClients --
+	-- lihat ShopService.
+	"MatchCoins",
 	"MatchResult", -- S -> C: { won, waveReached, coins, xp, materials, unlocked }
 	-- S -> C, PER PEMAIN: { weaponId, level, path } yang berlaku di match ini.
 	-- Terpisah dari `ShopState` karena isinya milik satu pemain sementara
@@ -35,6 +39,14 @@ local EVENT_NAMES = {
 
 	-- Combat (bagian 3.7)
 	"Attack", -- C -> S: Vector3 arah bidik
+	-- C -> S: boolean, mau jongkok atau berdiri.
+	--
+	-- Jongkok tidak punya efek gameplay (CrouchService menjelaskan kenapa),
+	-- jadi remote ini tidak membawa keputusan apa pun -- dia ada supaya
+	-- SERVER yang menulis HipHeight dan WalkSpeed. Properti yang ditulis
+	-- script client cuma berlaku di layar client itu, jadi tanpa remote ini
+	-- pemain melihat dirinya jongkok sementara yang lain melihatnya berdiri.
+	"SetCrouch",
 	"EnemyHit", -- S -> C: { id, damage, position } — untuk efek saja
 
 	-- Toko Match

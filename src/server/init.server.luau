@@ -26,6 +26,7 @@ local Services = script.Services
 local BossService = require(Services.BossService)
 local CombatService = require(Services.CombatService)
 local CoreService = require(Services.CoreService)
+local CrouchService = require(Services.CrouchService)
 local EnemyService = require(Services.EnemyService)
 local LeaderboardService = require(Services.LeaderboardService)
 local MapService = require(Services.MapService)
@@ -213,6 +214,10 @@ WaveService.start()
 ShopService.start()
 BossService.start()
 ProgressionService.start()
+-- Jongkok tidak menyentuh match sama sekali: boleh di lobby, boleh di
+-- tengah wave, dan tidak ada state yang menggerbangnya. Jadi dia tidak
+-- disambungkan ke apa pun -- cuma dinyalakan.
+CrouchService.start()
 
 -- Boss mati bisa berarti wave sudah bersih (kalau musuh biasanya sudah habis
 -- lebih dulu). Diperiksa lewat jalur yang sama dengan musuh terakhir mati.

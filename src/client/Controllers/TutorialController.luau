@@ -39,7 +39,7 @@ local STEPS: { [string]: Step } = {
 	lobby = {
 		id = "lobby",
 		text = "Selamat datang di CodeVerse. Kamu tim IT yang menjaga Core Server. "
-			.. "Upgrade senjata di panel kiri — cuma bisa di sini — lalu tekan Ready.",
+			.. "Pilih senjata di panel kiri, lalu tekan Ready.",
 	},
 	loadout = {
 		id = "loadout",
@@ -48,7 +48,8 @@ local STEPS: { [string]: Step } = {
 	},
 	countdown = {
 		id = "countdown",
-		text = "Match dimulai. Berdirilah di antara jalur musuh dan Core Server.",
+		text = "Match dimulai. Berdirilah di antara jalur musuh dan Core Server. "
+			.. "Tekan C untuk jongkok; jalanmu jadi setengah kecepatan.",
 	},
 	wave1 = {
 		id = "wave1",
@@ -61,8 +62,8 @@ local STEPS: { [string]: Step } = {
 	},
 	intermission = {
 		id = "intermission",
-		text = "Jeda 20 detik. Toko Match buka di kanan — cash-nya milik tim, "
-			.. "dan habis saat match selesai. Pakai, jangan ditabung.",
+		text = "Jeda 20 detik. Toko Match buka di kanan: di situ senjatamu naik "
+			.. "level, dibayar cash. Cash-mu sendiri, dan habis saat match selesai.",
 	},
 	boss = {
 		id = "boss",
@@ -71,8 +72,8 @@ local STEPS: { [string]: Step } = {
 	},
 	ended = {
 		id = "ended",
-		text = "Koin dan XP dari match ini tersimpan permanen. Pakai di lobby untuk "
-			.. "upgrade senjata.",
+		text = "Koin dan XP dari match ini tersimpan permanen. Level senjata tidak: "
+			.. "tiap match dimulai lagi dari level 1.",
 	},
 }
 

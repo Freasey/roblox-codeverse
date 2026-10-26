@@ -131,7 +131,9 @@ local function renderCoins()
 	if coins == nil then
 		return
 	end
-	coins.Text = string.format("%d cash tim", MatchStore.getCoins())
+	-- Tanpa kata "tim": saldo ini milik pemain yang melihatnya sendiri, dan
+	-- "cash tim" menjanjikan satu kolam bersama yang sudah tidak ada.
+	coins.Text = string.format("%d cash", MatchStore.getCoins())
 end
 
 local function renderBoss()

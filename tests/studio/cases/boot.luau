@@ -42,6 +42,7 @@ local EXPECTED_LINES = {
 	"[BossService] siap",
 	"[ProgressionService] siap",
 	"[LeaderboardService] siap",
+	"[CrouchService] siap",
 }
 
 -- Berapa KALI sebuah baris muncul di log, bukan cuma apakah dia ada.

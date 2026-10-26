@@ -17,7 +17,9 @@ Kode untuk **M0 sampai M5 sudah ada di `main` dan CI-nya hijau**: fondasi,
 pertarungan, state machine match dengan 10 wave, Toko Match, dua boss, dan
 progres permanen plus lobby. **Isi Toko Match sejak itu berganti seluruhnya**:
 dia tidak lagi menjual lima item berefek tim melainkan upgrade senjata per
-pemain, dan upgrade senjata pindah ke sana dari lobby (bagian 4). M7 dan M8 belum disentuh. Sebagian besar
+pemain, dan upgrade senjata pindah ke sana dari lobby (bagian 4). Satu
+tambahan di luar milestone mana pun: **jongkok**, tombol C, permintaan Daffa
+2026-10-26. M7 dan M8 belum disentuh. Sebagian besar
 perilaku game belum pernah dijalankan oleh seorang pemain.
 
 **M6 kodenya sudah lengkap, buktinya belum.** Lima item M6 di
@@ -62,9 +64,9 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 
 | Lapis | Cakupan | Status |
 | --- | --- | --- |
-| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit, papan wave tertinggi, upgrade dalam match | **277 test lulus** |
+| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit, papan wave tertinggi, upgrade dalam match, jongkok | **285 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
-| Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave, slow dan zona dan tanda alur upgrade, pendaftaran remote papan | **257 assertion lulus, 0 gagal, 22 di-skip** |
+| Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave, slow dan zona dan tanda alur upgrade, pendaftaran remote papan | **258 assertion lulus, 0 gagal, 22 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
 
 ### Kenapa CI hijau tidak cukup
@@ -121,7 +123,7 @@ ditukar, dan alasannya ditulis di tempatnya masing-masing.
 
 ```bash
 cd "C:\Web Program\roblox-codeverse"
-lune run tests/run          # 277 unit test, beberapa detik
+lune run tests/run          # 285 unit test, beberapa detik
 lune run tests/studio/run   # harness Studio, ~130 detik
 ```
 
@@ -218,6 +220,39 @@ desain yang disengaja, bukan kelalaian.
 ## 4. Yang ter-ship tapi belum pernah terbukti jalan
 
 Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
+
+- **Jongkok (tombol C atau Ctrl kiri).** Permintaan Daffa, 2026-10-26, dan
+  sengaja tanpa efek gameplay apa pun: badan turun, jalan jadi setengah
+  kecepatan, selesai. Tidak mengurangi damage yang masuk, tidak menambah
+  jangkauan, tidak menyembunyikan pemain dari musuh.
+
+  Itu bukan kemalasan. Jongkok dipicu client, dan client yang dimodifikasi
+  bisa mengirim "aku jongkok" tanpa pernah melambat -- jadi keuntungan apa pun
+  yang digantungkan padanya gratis untuk yang mencurangi dan berharga untuk
+  yang tidak. Selama jongkok cuma memperlambat diri sendiri, tidak ada yang
+  bisa dicurangi darinya. Kalau nanti dia memang perlu memberi keuntungan,
+  yang harus diperiksa server bukan klaim jongkoknya melainkan **perpindahan
+  posisi pemain selama satu detik terakhir** -- itu yang dilihat server
+  sendiri, dan itu tidak bisa dipalsukan tanpa benar-benar melambat.
+
+  Yang menulis `WalkSpeed` dan `HipHeight` **server**, lewat remote `SetCrouch`,
+  supaya ketiga pemain lain ikut melihatnya: properti yang ditulis script
+  client cuma berlaku di layar client itu. Client menuliskannya juga untuk
+  dirinya sendiri, supaya tombolnya tidak menunggu satu perjalanan jaringan,
+  dan kedua tulisan membaca angka dari `CrouchRules` yang sama.
+
+  Dua kekurangan yang akan langsung terlihat saat dimainkan, dan keduanya
+  diketahui. Pertama, **lututnya tidak menekuk**: Roblox tidak punya state
+  jongkok bawaan dan animasinya butuh aset animasi yang belum ada di proyek
+  ini, jadi yang terjadi badan turun 1.2 stud sementara kakinya tetap lurus --
+  dan di avatar tertentu kaki itu akan sedikit menembus lantai. Kedua, **tidak
+  ada tombolnya di layar sentuh**: yang ada cuma keyboard, jadi pemain mobile
+  tidak bisa jongkok sama sekali.
+
+  Harness tidak bisa membuktikan apa pun soal ini selain bahwa service-nya
+  hidup (`[CrouchService] siap`): jongkok butuh Player beserta karakternya, dan
+  harness tidak bisa membuat Player. Angkanya dipatok delapan unit test di
+  `tests/CrouchRules.spec.luau`; sisanya menunggu dimainkan.
 
 - **Mekanik sandera boss Locker (opsi A).** Locker menonaktifkan efek upgrade
   tim yang sudah dibeli selama dia hidup; `purchases` tetap utuh, cuma efeknya
@@ -572,7 +607,7 @@ kebiasaan itu akan menelan kegagalan yang sungguhan juga.
   dihitung sebelum `STUDIO_CHECKLIST.md` dilebur ke `TEST_CASES.md`; sekarang
   dokumennya memuat 160 case. Pembilangnya juga sudah lewat: dia ditulis untuk
   tiga case harness dengan 82 assertion, sementara sekarang ada lima case
-  dengan 257 dan tiga baris M1 yang naik jadi `OK`. Rasio maupun pembilangnya
+  dengan 258 dan tiga baris M1 yang naik jadi `OK`. Rasio maupun pembilangnya
   belum dihitung ulang; `docs/TEST_CASES.md` bagian 3.2 adalah sumber yang
   benar untuk cakupan harness.
 
