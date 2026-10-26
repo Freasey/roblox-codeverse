@@ -12,7 +12,7 @@ keputusan implementasi — pindah ke sini.
 >
 > **Tidak satu baris pun kode M1 sampai M5 pernah dimainkan sebagai game di
 > Roblox Studio.** Yang sudah hijau: `stylua --check`, `selene`,
-> `luau-lsp analyze`, 285 unit test Lune, `rojo build`, dan — sejak harness
+> `luau-lsp analyze`, 277 unit test Lune, `rojo build`, dan — sejak harness
 > `tests/studio` ada — sisi server yang dijalankan engine sungguhan dalam mode
 > Run (lihat [bagian 3.2](#32-cakupan-harness-studio)). Lolos type check bukan
 > berarti jalan di engine, dan jalan di mode Run bukan berarti bisa dimainkan:
@@ -82,7 +82,7 @@ Ringkasan apa yang bisa dikerjakan hari ini:
 | MP | ready check, cash **per pemain**, 4 player | semua rejoin | — |
 | DATA | DATA-01, DATA-09a, DATA-11, DATA-12 | sisanya | — |
 | SEC | semuanya, SEC-08 termasuk | — | — |
-| MOVE | semuanya — jongkok tidak butuh prasyarat apa pun, dan MOVE-07 yang membuktikan pemain lain ikut melihatnya butuh `2P`. Kelompoknya ada di [bagian 21](#21-gerak-pemain-move), sesudah kedua bagian meta | — | — |
+| MOVE | semuanya — gerak tidak butuh prasyarat apa pun, dan MOVE-07 yang membuktikan pemain lain ikut melihat sikap badan butuh `2P`. Kelompoknya ada di [bagian 21](#21-gerak-pemain-move), sesudah kedua bagian meta | — | — |
 | LB | LB-00 | LB-01 sampai LB-05 (`PUB`) — OrderedDataStore butuh place yang sudah di-publish | — |
 
 Kolom terakhir **kosong seluruhnya** sejak M6 bagian leaderboard mendarat: LB
@@ -195,25 +195,22 @@ walaupun aksinya gagal.
 `assets/Arena.rbxmx` **sudah ada di repo**, sudah ter-mount ke `Workspace.Arena`,
 dan strukturnya sudah diverifikasi terhadap kontrak penanda DEVELOPMENT_PLAN.md
 bagian 3.4: `CoreServer` adalah Model dengan `PrimaryPart` bernama `Core`,
-`Lanes` berisi `Lane1` dan `Lane2` yang masing-masing punya tujuh waypoint
-bernama `1` sampai `7` berurutan, dan `PlayerSpawn` adalah SpawnLocation.
-Tidak perlu dibuat lagi.
+`Lanes` berisi `Lane1`, `Lane2`, dan `Lane3` yang masing-masing punya tujuh
+waypoint bernama `1` sampai `7` berurutan, dan `PlayerSpawn` adalah
+SpawnLocation. Kontrak itu sama persis dengan yang dipenuhi `ArenaBuilder`
+sekarang — yang berubah siapa yang merakitnya, bukan bentuk yang dibaca
+`MapService`.
 
-`assets/Lobby.rbxmx` **belum ada** dan harus dibuat sekali — itu BOOT-04:
+`assets/Lobby.rbxmx` **tidak perlu dibuat lagi**, dan prosedur enam langkah
+yang dulu ada di sini sudah dihapus seluruhnya. Sejak 2026-10-26 lobby dibangun
+`ArenaBuilder` saat server start, bersama arena dan latar belakangnya, dari
+`ArenaLayout`. Tidak ada file yang perlu disimpan dari Studio.
 
-1. View → **Command Bar**.
-2. Tempel seluruh isi `scripts/build_lobby.luau`, Enter.
-3. Script memilih `Workspace.Lobby` otomatis. Klik kanan → **Save to File** →
-   simpan sebagai `assets/Lobby.rbxmx` di root repo.
-4. **Pastikan tipe filenya `.rbxmx`, bukan `.rbxm`.** Studio sering memilih
-   `.rbxm` (binary) sebagai default, dan kalau itu yang kepilih dua hal gagal
-   tanpa satu pun peringatan: file-nya kena aturan `*.rbxm` di `.gitignore` jadi
-   tidak akan pernah ter-commit, dan mapping Rojo mencari `.rbxmx` jadi lobby-nya
-   tidak akan pernah muncul. Ini sudah pernah kejadian sekali di project ini.
-5. Commit filenya. **Tidak perlu menyentuh `default.project.json`** — mapping
-   `Lobby` sudah ada di sana dalam bentuk
-   `"$path": { "optional": "assets/Lobby.rbxmx" }`.
-6. Restart `rojo serve`, Connect lagi, F5.
+Hal yang sama berlaku untuk arena: `assets/Arena.rbxmx` masih ada di repo dan
+masih ter-mount, tapi dia **bukan lagi arena yang kamu mainkan** — builder
+merakit arena baru di luar Workspace lalu menukarnya. File itu sengaja
+dibiarkan sebagai jaring pengaman: kalau builder gagal di tengah jalan, yang
+tersisa arena graybox lama alih-alih place tanpa lantai sama sekali.
 
 Perlu **mengubah** layout arena (jumlah waypoint, jaraknya, ukuran lantai)? Setel
 konstanta di bagian atas `scripts/build_arena.luau`, jalankan di command bar
@@ -245,7 +242,7 @@ regresi.
 
 | Yang sudah terverifikasi | Di mana | Catatan |
 |---|---|---|
-| Lint, format, type check, 285 unit test Lune, `rojo build` | CI (`.github/workflows/ci.yml`) | Modul murni di `src/shared/Modules` sudah punya test: pembagian musuh per wave jumlahnya persis `Balance.enemyCount`, ambang boss cuma terpicu sekali, seluruh daftar penolakan toko dan progres, kurva level yang aman terhadap XP inf/NaN, material drop boss cocok dengan bahan craft, daftar state yang membolehkan loadout diganti (`MatchRules.canSelectLoadout`), kedua keadaan flag `DEV_ALL_WEAPONS` di `ProgressionRules.ownedWeapons` / `.equippedWeapon`, seluruh aturan alur upgrade — kapan pilihan ditagih (`pathChoiceRequired`), urutan pemeriksaan `canUpgrade` (alur sebelum koin, level maksimum sebelum keduanya), alur yang tidak bisa diganti, dan alur yang **tidak** tersimpan sebelum titik percabangan (`pathToApply`) — dan sejak langkah 7, aritmetika efek alur yang punya umur di `tests/CombatEffects.spec.luau`: terkuat-menang di `CombatEffects.merge`, slow zona yang diambil terkuat sementara dps-nya dijumlahkan, pemilihan korban splash yang mengecualikan target utama (`withinRadius`), dan urutan deterministik `nearest` untuk penularan tanda. Plus dua test yang menjaga kosakata `effects` dari **dua arah**: kunci di `Weapons.luau` yang tidak ada di `Balance.PATH_EFFECT_KEYS` ditolak, dan kunci di `PATH_EFFECT_KEYS` yang tidak dipakai satu alur pun juga ditolak — yang pertama menangkap salah tulis yang diam-diam tidak pernah terbaca, yang kedua menangkap kosakata mati yang tetap terbaca sebagai janji. Sejak M6 bagian leaderboard, ditambah tiga belas test `tests/LeaderboardRules.spec.luau` untuk aturan papan wave tertinggi: catatan yang tidak pernah turun dan yang menolak wave 0, negatif, serta NaN (`isRecord`), pemecah seri `userId` yang membuat urutan papan deterministik walau dua pemain punya wave sama, `rank` yang mengembalikan daftar baru dan **tidak** mengurutkan daftar masukan di tempat, dan satu test yang mengikat `merge` ke `isRecord` supaya keduanya tidak bisa berbeda pendapat — kalau berbeda, papan di layar menunjukkan angka yang tidak pernah tersimpan, dan selisihnya baru ketahuan setelah server restart. Dua test terakhir, dan keduanya datang bersama ketiga senjata yang terbuka sejak awal di `Config.DEFAULT_DATA.weapons`: bahwa tiap id di tabel itu benar-benar ada di `Weapons.luau` — id yang salah tulis **tidak** menghasilkan error, dia cuma disaring diam-diam oleh `ownedWeapons` dan senjata yang dijanjikan tidak pernah muncul di lobby — dan bahwa ketiganya bisa **di-upgrade**, bukan cuma dipakai, yaitu persis hal yang `Config.DEV_ALL_WEAPONS` tidak bisa berikan. Terakhir, delapan test `tests/CrouchRules.spec.luau` untuk angka jongkok: setengah kecepatan sebagai **pengali**, HipHeight yang dijepit supaya pinggul tidak pernah di bawah lantai, nilai berdiri yang rusak (nol dari Humanoid yang belum selesai dirakit, NaN, inf) yang jatuh ke default alih-alih diteruskan — WalkSpeed nol berarti pemain tidak bisa bergerak sampai dia mati — dan satu test yang memaku penurunan kamera sama dengan penurunan badan, karena kamera yang turun lebih sedikit membuat pemain melihat punggung karakternya sendiri. |
+| Lint, format, type check, 277 unit test Lune, `rojo build` | CI (`.github/workflows/ci.yml`) | Modul murni di `src/shared/Modules` sudah punya test: pembagian musuh per wave jumlahnya persis `Balance.enemyCount`, ambang boss cuma terpicu sekali, seluruh daftar penolakan toko dan progres, kurva level yang aman terhadap XP inf/NaN, material drop boss cocok dengan bahan craft, daftar state yang membolehkan loadout diganti (`MatchRules.canSelectLoadout`), kedua keadaan flag `DEV_ALL_WEAPONS` di `ProgressionRules.ownedWeapons` / `.equippedWeapon`, seluruh aturan alur upgrade — kapan pilihan ditagih (`pathChoiceRequired`), urutan pemeriksaan `canUpgrade` (alur sebelum koin, level maksimum sebelum keduanya), alur yang tidak bisa diganti, dan alur yang **tidak** tersimpan sebelum titik percabangan (`pathToApply`) — dan sejak langkah 7, aritmetika efek alur yang punya umur di `tests/CombatEffects.spec.luau`: terkuat-menang di `CombatEffects.merge`, slow zona yang diambil terkuat sementara dps-nya dijumlahkan, pemilihan korban splash yang mengecualikan target utama (`withinRadius`), dan urutan deterministik `nearest` untuk penularan tanda. Plus dua test yang menjaga kosakata `effects` dari **dua arah**: kunci di `Weapons.luau` yang tidak ada di `Balance.PATH_EFFECT_KEYS` ditolak, dan kunci di `PATH_EFFECT_KEYS` yang tidak dipakai satu alur pun juga ditolak — yang pertama menangkap salah tulis yang diam-diam tidak pernah terbaca, yang kedua menangkap kosakata mati yang tetap terbaca sebagai janji. Sejak M6 bagian leaderboard, ditambah tiga belas test `tests/LeaderboardRules.spec.luau` untuk aturan papan wave tertinggi: catatan yang tidak pernah turun dan yang menolak wave 0, negatif, serta NaN (`isRecord`), pemecah seri `userId` yang membuat urutan papan deterministik walau dua pemain punya wave sama, `rank` yang mengembalikan daftar baru dan **tidak** mengurutkan daftar masukan di tempat, dan satu test yang mengikat `merge` ke `isRecord` supaya keduanya tidak bisa berbeda pendapat — kalau berbeda, papan di layar menunjukkan angka yang tidak pernah tersimpan, dan selisihnya baru ketahuan setelah server restart. Dua test terakhir, dan keduanya datang bersama ketiga senjata yang terbuka sejak awal di `Config.DEFAULT_DATA.weapons`: bahwa tiap id di tabel itu benar-benar ada di `Weapons.luau` — id yang salah tulis **tidak** menghasilkan error, dia cuma disaring diam-diam oleh `ownedWeapons` dan senjata yang dijanjikan tidak pernah muncul di lobby — dan bahwa ketiganya bisa **di-upgrade**, bukan cuma dipakai, yaitu persis hal yang `Config.DEV_ALL_WEAPONS` tidak bisa berikan. Yang **tidak** ada di daftar ini dan perlu disadari: enam modul murni yang masuk bersama lapisan tampilan pada 2026-10-26 — `ArenaLayout`, `CharacterDesign`, `EnemyVisuals`, `MoveRules`, `Poses`, `WeaponVisuals` — belum punya satu unit test pun. `MoveRules` yang paling pantas dapat lebih dulu: aturan staminanya dibaca dua sisi jaringan, dan selisih antara keduanya berarti bar di layar berbohong tentang apa yang server izinkan. |
 | **Relative require jalan di engine Roblox** (DEVELOPMENT_PLAN.md bagian 1.5) | Playtest Studio pertama, lalu tiap run harness (`boot.log: [CodeVerse] relative require OK`) | Place lokal dijalankan dan eksekusi sampai masuk ke `PlayerDataService`, artinya seluruh rantai require di atasnya sukses — termasuk `require(Shared.Config)`, dan `Config.luau` baris 5 adalah `require("./Modules/Types")`. Rencana cadangan di bagian 1.5 **tidak** dipakai. |
 | **API web Roblox tidak boleh dipanggil di module scope** | Playtest Studio pertama | `GetDataStore` dulu dipanggil di module scope `PlayerDataService`; di place yang belum pernah di-publish, Roblox melempar error tepat di baris itu, require-nya gagal, dan SELURUH script server mati sebelum satu baris pun jalan — dengan pesan "Requested module experienced an error while loading" yang tidak menunjuk ke penyebabnya. Sudah diperbaiki jadi lazy + `pcall`. **Aturan ini berlaku untuk semua kode berikutnya:** `DataStoreService`, `OrderedDataStore`, `MessagingService`, `HttpService`, `MarketplaceService`, dan sejenisnya hanya dipanggil di dalam fungsi. |
 
@@ -322,13 +319,23 @@ normal tidak tersedia` dan `papan hard tidak tersedia` — karena
 OrderedDataStore tidak ada di place yang belum di-publish; teksnya menyebut
 tingkatnya, jadi keduanya tidak terbaca sebagai warn identik yang berulang.
 
-Satu assertion lagi masuk bersama jongkok, dan dia satu-satunya yang bisa:
-`[CrouchService] siap` di jejak log boot. Jongkok butuh Player beserta
-karakternya untuk diuji lebih jauh, dan harness tidak bisa membuat Player
-(`CreateLocalPlayer` -> *lacking capability LocalUser*), jadi yang dibuktikan di
-sini cuma bahwa handler `SetCrouch` memang terpasang -- bukan bahwa jongkoknya
-bekerja. Angkanya dipatok delapan unit test `tests/CrouchRules.spec.luau`;
-perilakunya menunggu MOVE-01 sampai MOVE-09.
+Satu assertion lagi masuk bersama arena baru: **lane ketiga**. Harness dulu
+mematok dua lane di empat tempat, dan arena yang dibangun `ArenaBuilder` punya
+tiga. Yang berubah bukan cuma angkanya -- `lane.musuhBerjalanDiLaneNyaSendiri`
+ikut berubah CARA mengukurnya, dari jarak ke garis lurus antara waypoint
+pertama dan terakhir, jadi jarak ke rantai segmen. Versi garis lurus benar
+selama `build_arena.luau` yang menaruh waypoint pada satu heading; `ArenaLayout`
+membelokkan lane, dan garis lurus memotong tikungannya -- musuh yang berjalan
+tepat di jalurnya terbaca puluhan stud melenceng.
+
+**Seluruh lapisan tampilan tidak bisa dibuktikan harness sama sekali**, dan
+bukan karena harness-nya kurang: pose karakter, rancangan senjata, efek, dan
+sikap badan semuanya butuh Player beserta karakternya, dan harness tidak bisa
+membuat Player (`CreateLocalPlayer` -> *lacking capability LocalUser*). Enam
+modul murni yang masuk bersamanya (`ArenaLayout`, `CharacterDesign`,
+`EnemyVisuals`, `MoveRules`, `Poses`, `WeaponVisuals`) juga **belum punya unit
+test**. Jadi untuk semua itu, playtest bukan lapisan terakhir -- dia
+satu-satunya.
 
 Dua hal soal papan yang **tidak** bisa dibuktikan harness, dan keduanya bukan
 karena harness-nya kurang. `InvokeServer` butuh client, jadi separuh LB-00 —
@@ -367,7 +374,7 @@ berdiri sendiri, supaya kerja tangannya lebih pendek dan bukan diulang dari nol.
 
 | ID | Sudah dibuktikan harness | Masih butuh tangan |
 |---|---|---|
-| BOOT-02 | Baris `[MapService] Arena siap` isinya persis `2 lane, waypoint di-cache (Lane1=7, Lane2=7)` (`boot.arena.2lane`, `boot.arena.waypointTerCache`), dan sekarang juga **dihitung**: baris itu muncul tepat sekali (`boot.arena.barisSiapTepatSatu`), `[CodeVerse] server booting` tepat sekali — dua baris berarti rantai boot jalan dua kali (`boot.initServerJalanSekali`), warn `MapService` soal Arena nol kali (`boot.mapService.warnArenaTidakPernah`), dan tidak ada warn milik game yang teksnya identik muncul lebih dari sekali (`boot.tidakAdaWarnIdentikBerulang`) | Cuma satu hal: karakter muncul di `Arena/PlayerSpawn`. Bagian "tepat satu baris" sudah tidak perlu dihitung dengan mata |
+| BOOT-02 | Baris `[MapService] Arena siap` isinya persis `3 lane, waypoint di-cache (Lane1=7, Lane2=7, Lane3=7)` (`boot.arena.3lane`, `boot.arena.waypointTerCache`), dan sekarang juga **dihitung**: baris itu muncul tepat sekali (`boot.arena.barisSiapTepatSatu`), `[CodeVerse] server booting` tepat sekali — dua baris berarti rantai boot jalan dua kali (`boot.initServerJalanSekali`), warn `MapService` soal Arena nol kali (`boot.mapService.warnArenaTidakPernah`), dan tidak ada warn milik game yang teksnya identik muncul lebih dari sekali (`boot.tidakAdaWarnIdentikBerulang`) | Cuma satu hal: karakter muncul di `Arena/PlayerSpawn`. Bagian "tepat satu baris" sudah tidak perlu dihitung dengan mata |
 | BOOT-06 | Jalur lane 1 **utuh dan berurutan**: satu musuh diikuti 100 sampel dari awal lane sampai Core, jarak terdekat ke tiap waypoint 1–7 di bawah 1.2 stud, dan nomor sampel saat kedekatan itu terjadi naik rapi `@1 @16 @33 @49 @66 @83 @99` (`waypoint.urutan1Sampai7`). Urutan nama waypoint datang dari sort **angka**, diuji dengan nama yang memuat "10" supaya sort string memberi hasil berbeda (`waypoint.urutanDariSortAngkaBukanString`) | Lane 2 tidak disentuh, dan flag `DEBUG_VISIBLE_WAYPOINTS` memang untuk dilihat mata. Nomor sampel yang naik sudah menutup lompat-balik dan zig-zag besar; yang tersisa untuk mata cuma kehalusan geraknya |
 | WAVE-03 | Musuh `basic` berjalan mengikuti lane mendekat ke Core (`gerak.*`, sama dengan BOOT-06), dan HP-nya dipatok per wave: 100 / 115 / 160 / 235 di wave 1 / 2 / 5 / 10, dengan `maxHp == hp` (`skalaHp.*`) | Angka 8 stud/detik — harness jalan sekitar 8 Hz, jadi durasi absolut dari sana tidak bisa dibandingkan dengan playtest. Dan jumlah serangan sampai mati: menyerang butuh karakter |
 | WAVE-07 | HP `basic` dipatok di empat wave sekaligus — 100 / 115 / 160 / 235 di wave 1 / 2 / 5 / 10, naik monoton, dan rasio wave 5 berbanding wave 1 tepat 1.600 (`skalaHp.*`). Patokannya dirangkai ulang dari `Enemies.basic.baseHp` dan `Balance.HP_PER_WAVE`, bukan dari `Balance.enemyHp` yang dipakai kode spawn itu sendiri — kalau patokannya fungsi yang sama, yang terbukti cuma 1 == 1 | Jumlah serangan sampai mati (4 di wave 1, 7 di wave 5): menyerang butuh karakter. Angka HP-nya sendiri tidak perlu dihitung lagi |
@@ -415,7 +422,7 @@ tapi tabel itu tidak menyediakan jalurnya (alasan lengkap di
 | `SetReady` | C → S | `boolean` | 2/detik | Hanya state `Lobby`, `Loadout`, dan `Countdown` (dua yang terakhir khusus untuk **membatalkan**: cuma `Lobby` yang bisa memulai fase `Loadout`) |
 | `SelectLoadout` | C → S | `weaponId, difficultyId` | 2/detik | Hanya state `Lobby` dan `Loadout`, dari daftar `MatchRules.LOADOUT_STATES`; senjata dimiliki **menurut `ProgressionRules.ownedWeapons`**, jadi `Config.DEV_ALL_WEAPONS` ikut berlaku di sini kalau dinyalakan — hari ini flag itu `false` dan ketiga senjata sudah dimiliki lewat `Config.DEFAULT_DATA.weapons` ([bagian 4.2](#42-angka-patokan)), jadi penolakan "Senjata itu belum kamu miliki." tidak punya id yang bisa memicunya (SEC-02); tingkat terbuka. Di luar dua state itu ditolak dengan `ActionResult` "Loadout sudah terkunci sampai match selesai." |
 | `Attack` | C → S | `Vector3` arah bidik | **20/detik** | `Vector3` yang bukan nol / NaN / inf; state `WaveActive`; pemain ada di `participants`; Core belum hancur; karakter hidup; cooldown senjata |
-| `SetCrouch` | C → S | `boolean` | 6/detik | Jongkok atau berdiri. **Tidak membawa keputusan gameplay apa pun** — tidak ada state yang menggerbangnya, boleh di lobby maupun di tengah wave, dan yang ditolak cuma payload yang bukan boolean serta pemain yang karakternya tidak ada atau sudah mati (tanpa `ActionResult`: karakter berikutnya lahir berdiri sendiri). Ada supaya **server** yang menulis `WalkSpeed`, `HipHeight`, dan `CameraOffset`, karena properti yang ditulis script client cuma berlaku di layar client itu — tanpa remote ini pemain melihat dirinya jongkok sementara tiga pemain lain melihatnya berdiri. Client menuliskannya **juga**, untuk dirinya sendiri, supaya tombolnya tidak menunggu satu perjalanan jaringan; kedua tulisan membaca `CrouchRules` yang sama |
+| `MoveIntent` | C → S | sikap badan yang diminta (`walk` / `sprint` / `crouch`) dan permintaan dash | lihat `MovementService` | Sikap badan yang **diminta** client; yang memutuskan server. `MoveRules.resolveStance` yang menolak sprint saat stamina habis, dan `MovementService` yang menulis `WalkSpeed` dan `JumpHeight` — jadi client yang mengirim `sprint` terus-menerus tidak lari lebih lama daripada staminanya mengizinkan. Nama sikap yang tidak dikenal jatuh ke `walk`, bukan ditolak. **Menggantikan `SetCrouch`**, yang dicabut bersama `CrouchService` pada 2026-10-26 |
 | `EnemyHit` | S → C | `{ id, damage, position }` | — | Untuk efek saja — **belum ada yang memakainya**, lihat [bagian 5](#5-yang-sudah-diketahui-sebelum-playtest) |
 | `BuyShopItem` | C → S | `itemId` | 2/detik | **Dimatikan.** Pemain ada di `participants` diperiksa **lebih dulu**, lalu `Config.MATCH_SHOP_ITEMS_ENABLED` — yang `false`, jadi peserta mana pun dibalas "Toko item sudah tidak ada. Yang dijual sekarang upgrade senjata." dan seluruh gerbang di bawahnya tidak pernah tersentuh. Gerbang itu masih utuh dan masih punya unit test-nya: state `Intermission`; toko tidak terkunci; item ada; jatah belum habis (**cuma `shop_barrier` yang masih punya jatah**); cash cukup untuk **harga sekarang**, bukan harga dasar |
 | `ShopState` ★ | S → C | `{ open, locked, purchases, suspended }` | — | `suspended` = upgrade tim disandera Locker: pembeliannya masih tercatat di `purchases`, tapi pengalinya kembali ke dasar sampai boss mati. **Selama item toko dimatikan, `purchases` selalu kosong dan `suspended` tidak menyandera apa pun** — lihat catatan di [bagian 11](#11-toko-match-shop) |
@@ -1229,8 +1236,11 @@ sebelum menilai: Roblox **tidak punya state jongkok bawaan** -- `Humanoid` punya
 Running, Jumping, Freefall, Seated, dan tidak ada Crouching -- jadi jongkok di
 sini dirakit dari properti, bukan dipanggil. Lutut yang menekuk butuh aset
 animasi yang belum ada di proyek ini, jadi yang terjadi badan turun sementara
-kaki tetap lurus. Itu T20. Dan tombolnya cuma keyboard, jadi pemain di layar
-sentuh tidak bisa jongkok sama sekali: T21.
+kaki tetap lurus — sampai sistem gerak yang sekarang masuk dan menggantikannya
+seluruhnya. Pose jongkoknya **dihitung** seperti pose lain, jadi lututnya
+benar-benar menekuk; T20 ditutup sebelum sempat dilihat siapa pun. Yang tersisa
+T21: Shift, C, dan Q semuanya keyboard, jadi pemain di layar sentuh tidak bisa
+lari, jongkok, maupun dash.
 
 Angka untuk keenamnya ada di [bagian 4.2](#42-angka-patokan), yang sejak
 langkah 7 memuat tabel sembilan alur x tiga tingkat beserta damage, cooldown,
@@ -1252,8 +1262,8 @@ run penuh.
 | T17 | **Saldo cash berbeda di tiap layar, dan pemain yang tidak membunuh apa-apa tertinggal jauh.** Di tim berempat, pemain yang membunuh paling banyak bisa punya 1.200 cash sementara yang menjaga Core punya 900 — angka di HUD keempat client **tidak lagi sama**, dan tombol upgrade mati di satu layar sementara hidup di layar sebelahnya. Panel toko satu pemain juga bisa menampilkan level 5 sementara pemain lain masih level 3. | Cash sekarang **per pemain**, bukan satu kolam tim: `MatchCoins` dikirim `FireClient` dan `MatchUpgradeState` juga ([bagian 4.1](#41-remote-yang-benar-benar-terdaftar)). Yang dibeli dengan cash sekarang **upgrade senjata milik satu orang**, dan kolam bersama untuk barang pribadi berarti tiap orang cuma kebagian seperempat sambil yang tercepat menekan tombol memakai uang bersama untuk dirinya sendiri. Hadiah per wave tetap **sama rata** — tiap peserta menerima angka penuh — jadi selisih antar pemain cuma datang dari cash membunuh, dan itu memang yang seharusnya membedakan mereka. **Yang bukan bug:** empat angka berbeda di empat client; pemain yang mati berkali-kali tertinggal level senjatanya; dan musuh yang mati karena zona, turret, atau mekanik boss memberi cash ke **semua** peserta sekaligus (tidak ada pembunuh yang bisa ditunjuk). **Yang GAGAL:** saldo yang **sama persis** di keempat client — itu `FireAllClients` yang kembali, dan gejalanya tiap client menampilkan saldo pemain yang terakhir berubah; cash dari musuh yang masuk ke orang yang tidak membunuhnya; dan hadiah per wave yang **dibagi** jumlah peserta alih-alih dibayarkan penuh ke tiap orang. Dites MP-04, MP-15, SHOP-23, dan SHOP-24. |
 | T18 | **Senjata kembali ke level 1 tiap match, dan alur yang dipilih match lalu hilang.** Pemain yang menutup match di level 9 alur Sniper memulai match berikutnya di level 1 tanpa alur, dengan panel toko yang kembali menawarkan upgrade pertama seharga 150. Panel lobby juga **tidak lagi menampilkan level sama sekali** — barisnya cuma `damage 25 · jarak dekat · 3 alur`. | Level dan alur hidup di `matchWeapons` milik ShopService, yang dibuang `ShopService.reset()` saat kembali ke `Lobby`, dan `data.weapons[id].level` yang permanen **tidak dibaca `CombatService` lagi**. Itu bukan efek samping dari cash yang habis, itu intinya: alur yang terkunci selamanya cuma pernah dialami **sekali** per senjata, sementara alur yang dipilih ulang tiap match adalah keputusan yang diambil berkali-kali dengan keadaan yang berbeda — yang pertama progres, yang kedua gameplay. **Yang bukan bug:** level 1 di awal tiap match; alur yang bisa berbeda dari match sebelumnya; panel lobby tanpa angka level; dan `GetProfile` yang `weapons[...]`-nya tidak pernah bergerak lagi. **Yang GAGAL:** level yang **terbawa** ke match berikutnya — itu `reset()` yang tidak dipanggil, dan gejalanya musuh wave 1 yang mati jauh lebih cepat dari biasanya; alur yang masih bisa diganti **di dalam satu match yang sama**; dan `data.weapons[id].level` yang ikut naik saat upgrade diterima. Dites SHOP-29 dan SHOP-30. |
 | T19 | **Mekanik andalan boss wave 10 tidak melakukan apa-apa yang bisa diukur.** Locker tetap mengunci toko dan Output tetap mencetak `[Locker] boss mati, upgrade tim dipulihkan`, tapi damage pemain **tidak turun sedikit pun** selama dia hidup, dan tidak ada angka mana pun yang berubah saat dia mati. | Sandera Locker menyandera **upgrade TIM yang dibeli dari kelima item toko** — `ShopService.getModifiers()` mengoper tabel pembelian kosong selama `suspended`. Tanpa item, `purchases` selalu kosong, jadi pengali yang disandera memang sudah pengali dasar: **tidak ada yang bisa disandera**. Upgrade senjata dalam match **tidak** ikut disandera, dan itu disengaja — dia milik satu pemain, bukan tim. Jadi mekanik yang dulu paling menggigit sekarang hampa sampai dia diarahkan ke sesuatu yang lain, dan ini **kekurangan yang diketahui, bukan bug yang baru ditemukan**. **Yang bukan bug:** damage yang tidak berubah saat Locker hidup; baris "upgrade tim disandera" di HUD yang tidak diikuti perubahan angka apa pun; dan kedua baris log Locker yang tetap muncul. **Yang GAGAL:** toko yang **tidak** terkunci saat Locker hidup (kuncinya masih berlaku dan masih menolak upgrade senjata, dengan pesan "Toko dikunci. Kalahkan boss-nya dulu."), dan sandera yang **terbawa** ke match berikutnya. Akibatnya untuk kolom Status: SHOP-16 dan bagian BOSS-07/BOSS-08 yang menilai sanderanya **tidak bisa membuktikan apa pun** dan berstatus `BLOK` sampai item toko dinyalakan lagi atau mekaniknya diarahkan ulang. |
-| T20 | **Jongkok tidak menekuk lutut, dan di avatar tertentu kakinya sedikit menembus lantai.** Badan turun 1.2 stud, kecepatan jalan jadi setengah, tapi pose karakternya tetap pose berdiri -- jadi yang terlihat seperti karakter yang tenggelam, bukan karakter yang jongkok. | Roblox tidak punya state jongkok bawaan, dan animasi lutut menekuk butuh aset animasi yang di-upload ke Roblox -- proyek ini belum punya satu pun asset id ([bagian 5.2](#52-yang-kelihatan-salah-tapi-disengaja) soal publish). `HipHeight` adalah satu-satunya cara menurunkan badan tanpa aset, dan dia menurunkan pinggul tanpa memberi tahu kaki. Dijepit di `CrouchRules.MIN_HIP_HEIGHT` supaya pinggulnya tidak pernah di bawah lantai, tapi kaki yang lurus tetap kaki yang lurus. **Bukan GAGAL** -- catat saja seberapa buruk kelihatannya, karena itu yang menentukan apakah aset animasi layak dibuat |
-| T21 | **Tidak ada cara jongkok di layar sentuh.** Pemain mobile bisa menyerang (tap) tapi tidak bisa jongkok sama sekali. | Yang dipasang cuma `Enum.KeyCode.C` dan `LeftControl`; tombol di layar belum ada. Diminta sebagai hotkey, jadi dikerjakan sebagai hotkey. **Bukan GAGAL**, tapi juga bukan keadaan akhir: kalau mobile termasuk yang didukung, dia butuh tombol sendiri di HUD |
+| T20 | ~~**Jongkok tidak menekuk lutut.**~~ **Ditutup 2026-10-26 tanpa pernah dilihat siapa pun**, karena sistem gerak yang menggantikannya menghitung pose jongkok seperti pose lain. Baris ini disimpan supaya yang membaca riwayatnya tahu bahwa keterbatasan itu nyata dan bagaimana dia hilang, bukan karena masih perlu dicek. | — |
+| T21 | **Tidak ada cara bergerak selain jalan di layar sentuh.** Pemain mobile bisa menyerang (tap) tapi tidak bisa lari, jongkok, maupun dash. | Shift, C, dan Q semuanya keyboard; tombol di layar belum ada. Diminta sebagai hotkey, jadi dikerjakan sebagai hotkey. **Bukan GAGAL**, tapi juga bukan keadaan akhir: kalau mobile termasuk yang didukung, dia butuh tiga tombol sendiri di HUD |
 
 ### 5.4 Teks client: ketiganya sudah diperbarui
 
@@ -1283,9 +1293,9 @@ dulu** — kalau BOOT gagal, tidak ada gunanya menjalankan yang lain.
 | ID | Prakondisi | Langkah | Hasil yang diharapkan | Milestone | Jalankan? | Status |
 |---|---|---|---|---|---|---|
 | BOOT-01 | Rojo connected, place baru | F5, lihat Output server | `[CodeVerse] server booting (place N)` lalu `[CodeVerse] relative require OK — 10 wave tervalidasi`. Lalu baris siap: `[RewardService] siap`, `[MapService] Arena siap: ...`, `[MatchService] siap, 10 wave, countdown 10s, intermission 20s`, `[BossService] siap, 2 boss dengan mekanik yang dikenal`, `[ProgressionService] siap`. Tidak ada error | M0 | solo | - |
-| BOOT-02 | `assets/Arena.rbxmx` ada dan ter-sync | F5, lihat Output server | `[MapService] Arena siap: 2 lane, waypoint di-cache (Lane1=7, Lane2=7)` — tepat satu baris, tanpa warn dari `MapService` soal Arena. Karakter muncul di `Arena/PlayerSpawn`, bukan di tengah lane | M1 | solo | - |
+| BOOT-02 | Repo ter-sync; arena dibangun `ArenaBuilder` saat server start, jadi tidak ada prasyarat file | F5, lihat Output server | `[MapService] Arena siap: 3 lane, waypoint di-cache (Lane1=7, Lane2=7, Lane3=7)` — tepat satu baris, tanpa warn dari `MapService` soal Arena. Karakter muncul di `Arena/PlayerSpawn`, bukan di tengah lane | M1 | solo | - |
 | BOOT-03 | Rename `assets/Arena.rbxmx` sementara supaya map tidak ada, restart `rojo serve`, F5 | Lihat Output server dan HUD | **Tepat satu** warn `[MapService] Arena tidak bisa dipakai: Workspace.Arena tidak ada. Gameplay tidak dijalankan. ...`. Tidak ada warn kedua dan tidak ada warn yang berulang tiap frame. HUD tetap muncul dengan "Wave 0 / 10", "Di lobby", bar Core penuh. Menekan Ready tidak memulai apa pun. **Balikkan nama filenya setelah test** | M1 | solo+EDIT | - |
-| BOOT-04 | `assets/Lobby.rbxmx` belum ada | F5, lihat Output server | Satu warn `[MapService] Lobby tidak lengkap: Workspace.Lobby tidak ada. ...`. Gameplay tetap jalan; pemain muncul di spawn arena | M5 | solo | - |
+| BOOT-04 | **Harapannya TERBALIK sejak 2026-10-26.** Lobby dibangun `ArenaBuilder` saat server start, jadi tidak ada lagi keadaan "lobby belum ada" | F5, lihat Output server | **Tidak ada** warn `[MapService] Lobby tidak lengkap`, dan `Workspace.Lobby` berisi `ReadyPad` beserta `SpawnLocation`. Warn itu kalau muncul sekarang **temuan sungguhan**: builder-nya gagal, dan sebabnya ada di warn `[ArenaBuilder]` di atasnya. Dulu baris ini menuntut warn-nya ADA; pemain muncul di spawn arena | M5 | solo | - |
 | BOOT-05 | Buat `assets/Lobby.rbxmx` lewat `scripts/build_lobby.luau` (prosedur di [2.6](#26-map-arena-sudah-ada-lobby-belum)), sync, F5 | Lihat Output server | **Tidak ada** warn `[MapService] Lobby tidak lengkap`. Kalau masih ada, nama instance-nya tidak persis `SpawnLocation` dan `ReadyPad`. Lobby ada di Z = 400, jauh di belakang arena (lantai arena berakhir di Z = 120), dan dari lobby musuh di arena tidak terlihat | M5 | solo | - |
 | BOOT-06 | Lobby sudah ada | Ubah `DEBUG_VISIBLE_WAYPOINTS = true` di `scripts/build_arena.luau`, jalankan di command bar, Save to File, sync, F5. Perhatikan jalur satu musuh dari spawn sampai Core | Musuh lewat waypoint **1 → 2 → 3 → ... → 7** dalam satu garis mulus menuju Core. **Tidak** zig-zag, tidak melompat, tidak berputar di satu waypoint. Balikkan flag debug-nya setelah test | M1 | solo+EDIT | - |
 
@@ -1355,7 +1365,7 @@ Acuan: DEVELOPMENT_PLAN.md bagian 1.3, 3.4, 3.5.
 
 | ID | Prakondisi | Langkah | Hasil yang diharapkan | Milestone | Jalankan? | Status |
 |---|---|---|---|---|---|---|
-| WAVE-01 | Match baru mulai, solo | Amati musuh wave 1 | **Hanya `basic`** (kubus oranye) — itu seluruh komposisi wave 1 di `Waves.luau` — sebanyak 8 buah. Output server mencetak `[WaveService] wave 1: 8 musuh biasa di 2 lane, 1 player` | M2 | solo | - |
+| WAVE-01 | Match baru mulai, solo | Amati musuh wave 1 | **Hanya `basic`** (kubus oranye) — itu seluruh komposisi wave 1 di `Waves.luau` — sebanyak 8 buah. Output server mencetak `[WaveService] wave 1: 8 musuh biasa di 3 lane, 1 player` | M2 | solo | - |
 | WAVE-02 | Match solo, kesulitan `normal` | Mainkan dari wave 1 sampai match berakhir | Nomor wave jalan 1 → 2 → ... → 10 tanpa lompat atau mengulang. Wave 5 dan 10 adalah boss wave | M2 | solo | - |
 | WAVE-03 | Match wave 1 | Ikuti satu musuh `basic` dari spawn sampai Core, dan hitung serangan untuk membunuh satu | Bergerak lambat (8 stud/detik) mengikuti lane sampai Core. Mati **tepat setelah 4 serangan** `weapon_starter` level 1 (100 HP / 25 damage) | M1 | solo | - |
 | WAVE-04 | Wave 2 atau lebih (komposisinya berisi `fast`) | Bandingkan `fast` (balok hijau) dengan `basic` di wave yang sama | `fast` jelas lebih cepat sampai ke Core (16 vs 8 stud/detik) dan HP-nya lebih kecil — di wave 2, `fast` mati dalam 3 serangan, `basic` dalam 5 | M2 | solo | - |
@@ -1366,7 +1376,7 @@ Acuan: DEVELOPMENT_PLAN.md bagian 1.3, 3.4, 3.5.
 | WAVE-09 | `hard` sudah terbuka; dua playtest solo wave 1, `normal` dan `hard` | Bandingkan serangan untuk membunuh satu `basic` | `normal` = 4 serangan (HP 100), `hard` = **8** serangan (HP 180, pengali 1.8) | M5 | solo | - |
 | WAVE-10 | Playtest **4 player** sampai **wave 10** — satu-satunya wave yang jumlah musuhnya (41) melewati batas 40 | Amati jumlah musuh aktif di arena selama wave 10 berjalan | Musuh aktif tidak pernah lebih dari 40 sekaligus; musuh dari antrian menyusul spawn setelah musuh lain mati; wave tetap bisa diselesaikan. Kalau wave tidak pernah bersih, **periksa dulu apakah ada musuh yang berdiri menempel di Core** — wave yang tertunda karena kebocoran adalah hal yang benar (WAVE-20), dan cuma kalau arena sudah benar-benar kosong itu berarti antrian bocor. Alternatif tanpa 4 client: naikkan `Balance.COUNT_BASE` sementara | M2 | 4P (atau solo+EDIT) | - |
 | WAVE-11 | Match berjalan | Ikuti satu musuh dari titik spawn sampai Core | Musuh melewati waypoint 1 sampai 7 berurutan; tidak memotong jalur dan tidak melompat balik. Sampai di waypoint terakhir dia **berhenti dan tetap ada**: tidak hilang, bar HP-nya masih di atasnya, dia bergeser ke satu titik di cincin sekitar Core dan menghadap Core. Satu-satunya yang menghapusnya adalah pemain yang membunuhnya. Jalurnya dicakup lebih detail oleh BOOT-06, apa yang dia lakukan di base oleh WAVE-17 dan CORE-02 | M1 | solo | - |
-| WAVE-12 | Arena 2 lane | Amati spawn selama satu wave | Musuh datang dari kedua lane **bergantian satu-satu** (lane dibagikan round-robin, bukan acak), bukan menumpuk di satu lane | M1 | solo | OK |
+| WAVE-12 | Arena 3 lane | Amati spawn selama satu wave | Musuh datang dari ketiga lane **bergantian satu-satu** (lane dibagikan round-robin, bukan acak), bukan menumpuk di satu lane. Delapan musuh wave 1 karena itu terbagi **3-3-2**, bukan rata | M1 | solo | OK |
 | WAVE-13 | Match berjalan | Pukul satu musuh sekali, jangan sampai mati | Bar HP kecil (BillboardGui) di atas musuh ikut turun dan panjangnya sesuai sisa HP. Warnanya hijau di atas 50%, kuning di atas 25%, merah di bawahnya | M1 | solo | - |
 | WAVE-14 | Wave selesai, state `Intermission` | Amati arena selama jeda | Tidak ada musuh yang masih berjalan dan tidak ada sisa antrian spawn dari wave sebelumnya — state ini baru bisa masuk kalau musuh aktif **dan** antrian dua-duanya nol | M2 | solo | - |
 | WAVE-15 | Match berjalan, ada musuh jauh di ujung lane | Menjauh dari musuh sampai lebih dari ~140 stud | Bar HP musuh **hilang dari pandangan** di luar jarak itu (`MaxDistance` 140), lalu muncul lagi saat didekati. Ini bukan bug: tanpa batas jarak, 40 BillboardGui tetap dirender walaupun cuma beberapa piksel | M1 | solo | - |
@@ -2014,67 +2024,68 @@ yang sama dan hasil yang sama.
 | Harga upgrade dalam match | `Balance.matchUpgradePrice`, base **150** tumbuh **1.35** — sembilan langkah totalnya **5.951** melawan anggaran 6.694 solo dan 5.813 berempat | Dipilih terhadap anggaran yang benar-benar masuk, bukan dikarang: level 10 **bisa** dicapai dalam satu run, tapi cuma kalau hampir seluruh cash ditumpahkan ke satu senjata dan nyaris tidak ada yang tersisa — dan di tim berempat bahkan itu kurang beberapa ratus. Itu yang membuat tiap jeda jadi pilihan, bukan formalitas. Ada sembilan jeda dan sembilan upgrade, jadi "satu upgrade tiap wave" memang bentuk yang dituju. Ini **tebakan pertama yang menunggu playtest**; yang digeser nanti dua konstantanya, bukan rumusnya |
 | Upgrade ikut disandera Locker? | **Tidak.** Yang disandera cuma pengali tim dari item toko | Sandera itu analogi ransomware terhadap milik **tim**; upgrade senjata milik satu orang, dan menyandera milik pribadi satu pemain di wave terakhir berarti dia kehilangan seluruh belanjaan satu match tanpa cara mengembalikannya. Akibat yang harus diterima dan dicatat: selama item toko dimatikan, mekanik itu tidak menyandera apa pun sama sekali (T19) |
 
-### 20.9 Keputusan jongkok
+### 20.9 Keputusan gerak pemain
 
-Jongkok diminta Daffa pada 2026-10-26 dengan satu kalimat: sesederhana
-mungkin, crouch lalu jalan jadi agak pelan, seperti game lain. Tidak ada
-kriteria "Selesai kalau" yang memintanya, jadi seluruh isi tabel ini pilihan --
-dan yang paling penting di antaranya justru keputusan untuk **tidak**
-menambahkan apa pun ke atasnya.
+Jongkok diminta Daffa pada 2026-10-26, dan **dikerjakan dua kali**. Versi
+pertama mendarat hari itu juga: jongkok saja, tanpa efek gameplay, tombol C.
+Versi kedua datang beberapa jam kemudian dari `Gameplay.rbxl` — sikap badan
+dengan stamina — dan keduanya mengikat tombol yang sama serta menulis
+`WalkSpeed` yang sama, jadi yang pertama dicabut. Tabel ini mencatat keputusan
+yang BERLAKU; baris terakhir mencatat yang dicabut, supaya alasan versi
+pertama tidak diambil lagi dari awal oleh orang berikutnya.
 
 | Keputusan | Yang dipilih | Alasan |
 |---|---|---|
-| Jongkok memberi keuntungan gameplay? | **Tidak satu pun.** Tidak mengurangi damage masuk, tidak menambah jangkauan, tidak menyembunyikan pemain | Jongkok dipicu client, dan client yang dimodifikasi bisa mengirim "aku jongkok" tanpa pernah melambat. Keuntungan apa pun yang digantungkan padanya karena itu gratis bagi yang mencurangi dan berharga bagi yang tidak -- kebalikan dari yang dimaui. Selama jongkok cuma memperlambat diri sendiri, tidak ada yang bisa dicurangi darinya. Kalau nanti dia memang perlu memberi keuntungan, yang diperiksa server bukan klaimnya melainkan **perpindahan posisi pemain selama satu detik terakhir**: itu yang dilihat server sendiri, dan tidak bisa dipalsukan tanpa benar-benar melambat |
-| Yang menulis `WalkSpeed` dan `HipHeight`: client atau server | **Server**, lewat remote `SetCrouch` -- dan client menuliskannya juga untuk dirinya sendiri | Properti yang ditulis script client cuma berlaku di layar client itu. Ditulis di client saja, pemain melihat dirinya jongkok sementara tiga pemain lain melihatnya berdiri. Ditulis di server saja, tombolnya menunggu satu perjalanan jaringan sebelum terasa. Keduanya membaca `CrouchRules`, jadi dua tulisan itu tidak bisa berbeda angka |
-| Keadaan jongkok disimpan di tabel server? | **Tidak.** Server cuma menyimpan kecepatan dan HipHeight **berdiri** | Yang menyimpan "sedang jongkok atau tidak" Humanoid pemain itu sendiri. Tabel kedua yang mencatat hal yang sama cuma menunggu sampai keduanya berbeda, dan yang membacanya nanti akan mempercayai yang salah |
-| Kecepatan berdiri: dicatat saat karakter muncul atau dibaca saat jongkok | **Dicatat saat `CharacterAdded`** | Dibaca saat jongkok, yang terbaca adalah angka yang **sudah separuh** kalau pemain sudah jongkok. Jongkok kedua jadi seperempat, dan berdiri mengembalikan ke setengah. Gejalanya karakter yang makin lama makin berat -- dan tidak ada satu momen pun yang terlihat salah, jadi tidak akan dilaporkan sebagai bug. Dipatok MOVE-02 dan dua unit test |
-| Setengah kecepatan: pengali atau angka mutlak | **Pengali `SPEED_MULT = 0.5`** | Angka mutlak 8 akan tetap 8 kalau nanti ada efek yang mengubah kecepatan dasar pemain, dan jongkok jadi lebih cepat daripada berdiri di kasus itu |
-| Tombol: toggle atau tahan | **Toggle** | Menahan tombol sudah dipakai menyerang (klik kiri ditahan = serang terus). Jongkok yang harus ditahan berarti pemain menahan Ctrl dan klik kiri bersamaan selama satu wave |
-| Tombolnya apa | **C dan Ctrl kiri**, keduanya | Dua tombol jongkok yang paling umum di game lain. Keduanya dipasang karena mana yang dicari pemain lebih dulu tidak bisa ditebak, dan memasang dua tidak memakan apa pun |
-| Lompat sambil jongkok | **Berdiri dulu, lalu lompat** -- dan `JumpPower` tidak disentuh | Mematikan lompat saat jongkok berarti satu keadaan yang tidak sinkron membuat pemain tidak bisa lompat **selamanya**, dan dia tidak akan tahu kenapa. Tombol lompat yang diam juga dibaca sebagai input yang hilang. Berdiri-lalu-lompat selalu melakukan sesuatu. Dites MOVE-05 |
-| Animasi lutut menekuk | **Tidak ada**, dan dicatat sebagai kekurangan (T20) | Butuh aset animasi yang di-upload ke Roblox, dan proyek ini belum punya satu pun asset id. `HipHeight` adalah satu-satunya cara menurunkan badan tanpa aset |
-| Tombol jongkok di layar sentuh | **Belum ada** (T21) | Diminta sebagai hotkey, jadi dikerjakan sebagai hotkey. Ditambahkan kalau mobile memang termasuk yang didukung -- itu keputusan yang belum diambil |
-| Jongkok digerbangi state match? | **Tidak.** Boleh di lobby, boleh di tengah wave | Tidak ada alasannya. Gerbang yang tidak melindungi apa pun cuma menambah satu cara jongkok terasa rusak |
+| Berapa sikap badan | **Tiga**: walk, sprint, crouch — plus dash sebagai tindakan sesaat | Soal yang mendasarinya minta empat tindakan: idle, run, jump, crouch. Empat tombol yang bisa ditekan kapan saja memenuhi soal tapi tidak pernah jadi KEPUTUSAN: lari terus selalu lebih baik daripada berjalan, dan jongkok tidak pernah ada alasannya sama sekali |
+| Apa yang mengikat ketiganya | **Stamina.** Sprint menguras 18/detik dan cuma saat benar-benar bergerak, walk memulihkan 14, jongkok memulihkan 26 | Itu yang membuat jongkok punya alasan: dia cara tercepat memulihkan tenaga. Pemain yang terjepit harus memilih — mundur sambil jongkok memulihkan, atau membakar sisa stamina untuk dash menembus |
+| Ambang mulai sprint vs ambang berhenti | **Berbeda** (mulai di 18, berhenti di 0) | Kalau sama, pemain yang staminanya habis berganti sprint/walk puluhan kali per detik: satu frame regen menaikkannya di atas ambang, satu frame drain menjatuhkannya. Kecepatan berkedip, dan animasi ikut berkedip bersamanya |
+| Siapa yang menegakkannya | **Server** (`MovementService` membaca `MoveRules`); client cuma mengirim niat lewat `MoveIntent` | `Humanoid.WalkSpeed` yang disetel client memang berlaku, jadi gerak tidak bisa dibuat anti-curang sepenuhnya. Yang bisa: satu sumber angka, server yang menulis, dan bar stamina di layar dihitung dari modul yang sama supaya dia tidak pernah bercerita berbeda dari yang server izinkan |
+| Lompat sambil jongkok | **Tidak bisa** — `JUMP_HEIGHTS.crouch` nol, bukan angka kecil | Lompatan kecil saat jongkok terbaca sebagai lompatan yang GAGAL, dan pemain akan terus mencobanya. Nol setidaknya jelas |
+| Animasi lutut menekuk | **Dihitung**, bukan diputar dari klip (`Poses`) | Klip butuh aset animasi yang di-upload ke Roblox, dan proyek ini belum punya satu pun asset id. Pose yang dihitung tidak butuh aset apa pun, dan dia juga yang membuat jongkok terlihat seperti jongkok |
+| Tombol gerak di layar sentuh | **Belum ada** (T21) | Diminta sebagai hotkey, jadi dikerjakan sebagai hotkey |
+| ~~Jongkok tanpa efek gameplay sama sekali~~ | **Dicabut 2026-10-26** bersama `CrouchService`, `CrouchRules`, remote `SetCrouch`, dan delapan unit test-nya | Alasannya masih benar dan masih layak dibaca: jongkok dipicu client, jadi keuntungan apa pun yang digantungkan padanya gratis bagi yang mencurangi. Yang menjawabnya di sistem baru bukan "tidak ada keuntungan" melainkan **stamina**: keuntungan jongkok cuma pemulihan tenaga, dan tenaga yang dipulihkan tanpa benar-benar melambat tetap harus dibelanjakan lewat server |
 
 ## 21. Gerak pemain (MOVE)
 
-Acuan: tidak ada. Jongkok diminta Daffa pada 2026-10-26 dan bukan bagian dari
-milestone mana pun, jadi kelompok ini tidak punya baris di
+Acuan: tidak ada. Gerak pemain diminta Daffa pada 2026-10-26 dan bukan bagian
+dari milestone mana pun, jadi kelompok ini tidak punya baris di
 [bagian 19](#19-pemetaan-ke-kriteria-selesai-kalau) dan tidak menggerbangkan
 apa-apa. Ditaruh paling belakang, sesudah kedua bagian meta, supaya penomoran
 bagian 19 dan 20 beserta seluruh tautan ke dalamnya tidak bergeser.
 
 Mekanismenya dulu, karena dia menentukan apa yang masuk akal diuji di sini.
-**Roblox tidak punya jongkok bawaan**: `Humanoid` punya Running, Jumping,
-Freefall, dan Seated, dan tidak ada Crouching. Jadi jongkok di sini dirakit
-dari tiga properti -- `WalkSpeed` jadi setengah, `HipHeight` turun 1.2 stud,
-`CameraOffset` turun sebanyak itu juga -- dan angka ketiganya datang dari satu
-modul murni, `CrouchRules`, yang dipatok delapan unit test.
+**Roblox tidak punya sikap badan bawaan**: `Humanoid` punya Running, Jumping,
+Freefall, dan Seated, dan tidak ada Crouching maupun Sprinting. Jadi ketiganya
+dirakit — `WalkSpeed` dan `JumpHeight` disetel server per sikap, dan pose
+badannya **dihitung tiap frame** oleh `Poses` lalu dituliskan ke Motor6D oleh
+`CharacterAnimatorController`. Angkanya satu tempat, `MoveRules`.
 
-Dua hal yang perlu dibaca sebelum menilai barisnya:
+Tiga hal yang perlu dibaca sebelum menilai barisnya:
 
-- **Jongkok tidak punya efek gameplay, dan itu disengaja.** Tidak mengurangi
-  damage yang masuk, tidak menambah jangkauan, tidak menyembunyikan pemain dari
-  musuh. Alasannya di [bagian 20.9](#209-keputusan-jongkok): jongkok dipicu
-  client, dan client yang dimodifikasi bisa mengirim "aku jongkok" tanpa pernah
-  melambat. Jadi MOVE-08 adalah baris yang menguji bahwa **tidak ada yang
-  berubah**, dan dia tetap penting -- keuntungan yang masuk diam-diam ke
-  jongkok adalah keuntungan gratis bagi yang mencurangi.
-- **Yang menulis ketiga properti itu server.** Itu yang membuat MOVE-07 jadi
-  baris paling penting di kelompok ini: dia satu-satunya yang membuktikan
-  pemain lain ikut melihatnya. Kalau jongkok ternyata cuma terlihat di layar
-  sendiri, yang salah bukan angkanya melainkan remote `SetCrouch` yang tidak
-  sampai -- lihat `[CrouchService] siap` di Output server lebih dulu.
+- **Stamina yang mengikat ketiganya.** Sprint menguras 18 per detik dan cuma
+  saat benar-benar bergerak; walk memulihkan 14; jongkok memulihkan 26. Dash
+  membayar 25 di muka. Jadi jongkok bukan hiasan: dia cara tercepat memulihkan
+  tenaga, dan itu satu-satunya alasan seseorang mau berjalan lebih lambat.
+- **Ambang mulai sprint (18) berbeda dari ambang berhenti (0),** dan itu
+  disengaja. Kalau kamu melihat kecepatan berkedip cepat saat stamina habis,
+  histeresisnya tidak bekerja — itu temuan, bukan selera.
+- **Server yang menulis `WalkSpeed`.** Client cuma mengirim niat lewat
+  `MoveIntent`. Itu yang membuat MOVE-07 jadi baris paling penting di kelompok
+  ini: dia satu-satunya yang membuktikan pemain lain melihat sikap badan yang
+  sama.
 
 | ID | Prakondisi | Langkah | Hasil yang diharapkan | Milestone | Jalankan? | Status |
 |---|---|---|---|---|---|---|
-| MOVE-01 | State `Lobby`, karakter hidup | Tekan **C** sekali, lalu jalan | Badan **turun terlihat** ke arah lantai, dan jalannya **jelas lebih lambat** -- setengah kecepatan berdiri. Jongkoknya bertahan selama pemain jalan, bukan sekejap lalu kembali berdiri | — | solo | - |
-| MOVE-02 | Lanjutan MOVE-01, sedang jongkok | Tekan **C** sekali lagi, lalu jalan | Badan kembali ke tinggi semula dan kecepatannya kembali **seperti sebelum jongkok pertama** -- bukan sedikit lebih lambat. Ini yang menangkap kecepatan berdiri yang dibaca dari nilai yang sudah separuh: gejalanya karakter yang makin lama makin berat tiap kali jongkok-berdiri diulang, jadi ulangi lima kali sebelum menilai | — | solo | - |
-| MOVE-03 | Karakter hidup, state apa pun | Tekan **Ctrl kiri** | Jongkok, persis sama dengan C. Dua tombol untuk satu aksi, karena keduanya tombol jongkok yang biasa dipakai orang | — | solo | - |
-| MOVE-04 | Karakter hidup | Buka chat Roblox, ketik huruf **c** di dalamnya, kirim | Karakter **tidak jongkok**. Yang menjaganya `gameProcessedEvent` di `InputBegan` -- tanpa itu setiap kata yang memuat huruf c akan membuat karakter berjongkok-berdiri sendiri saat pemain mengobrol | — | solo | - |
-| MOVE-05 | Sedang jongkok | Tekan **Space** | Berdiri, dan lompat di saat yang sama. **Bukan** diam: tombol lompat yang tidak melakukan apa-apa akan dibaca sebagai input yang hilang, dan pemain akan menekannya berkali-kali | — | solo | - |
-| MOVE-06 | Match `WaveActive`, sedang jongkok, dan biarkan musuh membunuh karakternya | Mati sambil jongkok; tunggu respawn 5 detik; lalu tekan **C** satu kali | Karakter respawn **berdiri** dengan kecepatan normal, dan tekanan C berikutnya **langsung jongkok** -- bukan harus ditekan dua kali. Dua kali berarti ada sisi yang masih mencatat pemain ini jongkok padahal karakternya sudah berganti | — | solo | - |
-| MOVE-07 | Sesi **2 client**, keduanya karakternya hidup dan saling terlihat | Pemain A tekan C, lalu jalan. Amati dari **layar pemain B** | Di layar B, karakter A ikut **turun dan melambat**. Ini yang membuktikan server yang menulis propertinya; kalau A jongkok cuma di layarnya sendiri, remote `SetCrouch` tidak sampai | — | 2P | - |
-| MOVE-08 | Match `WaveActive`, sebagai peserta, dengan satu jenis musuh saja di arena | Serang satu musuh **berdiri** dan catat damage-nya dari print `[CombatService]`; jongkok, serang musuh sejenis, catat lagi | **Angka damage-nya sama persis.** Begitu juga jeda serangan dan jangkauannya. Jongkok tidak menyentuh apa pun yang dihitung CombatService, dan baris ini yang menjaganya tetap begitu | — | solo | - |
-| MOVE-09 | Match `WaveActive`, musuh sedang memukul pemain | Jongkok di sebelah musuh yang sedang memukul | Musuh **tetap memukul dengan damage yang sama**. Jongkok bukan mekanik menghindar, dan HP pemain tetap turun seperti biasa | — | solo | - |
-| MOVE-10 | Sesi di emulator layar sentuh Studio (atau perangkat sungguhan) | Cari cara jongkok | **Tidak ada.** Tombolnya cuma keyboard; ini kekurangan yang diketahui, bukan GAGAL. Lihat T21 | — | solo | N/A |
+| MOVE-01 | Karakter hidup, stamina penuh | Tahan **Shift** sambil berjalan, amati bar stamina | Jalan jelas lebih cepat (25 vs 16 stud/detik) dan bar stamina **turun** selama benar-benar bergerak | — | solo | - |
+| MOVE-02 | Lanjutan MOVE-01 | Berdiri **diam** sambil tetap menahan Shift | Bar stamina **tidak turun**. Menguras saat diam berarti pemain yang lupa melepas tombol kehilangan tenaga tanpa pernah tahu sebabnya | — | solo | - |
+| MOVE-03 | Stamina sengaja dihabiskan sampai nol dengan sprint | Tetap tahan Shift dan terus bergerak selama 10 detik | Sikap turun ke walk, lalu **tidak berkedip bolak-balik** antara lari dan jalan. Pemulihan mengangkatnya kembali ke sprint hanya setelah stamina melewati 18, bukan begitu menyentuh angka di atas nol | — | solo | - |
+| MOVE-04 | Karakter hidup | Tekan **C**, lalu jalan; amati karakter dari kamera orang ketiga | Jongkok: badan turun, **lutut benar-benar menekuk**, dan jalannya paling lambat (7 stud/detik). Kalau badannya turun tapi kakinya tetap lurus, `Poses` tidak terpasang — lihat Output untuk `[CharacterAnimatorController]` | — | solo | - |
+| MOVE-05 | Sedang jongkok | Tekan **Space** | **Tidak melompat sama sekali.** Lompatan kecil saat jongkok terbaca sebagai lompatan yang gagal, jadi nol disengaja | — | solo | - |
+| MOVE-06 | Sedang jongkok, stamina di bawah separuh | Diam jongkok selama 3 detik, amati bar stamina | Bar naik **lebih cepat** daripada saat berdiri diam (26 vs 14 per detik). Ini satu-satunya hal yang membuat jongkok berguna; kalau lajunya sama, jongkok tidak punya alasan | — | solo | - |
+| MOVE-07 | Sesi **2 client**, keduanya karakternya hidup dan saling terlihat | Pemain A jongkok lalu lari. Amati dari **layar pemain B** | Di layar B, karakter A ikut jongkok dan ikut lari — pose DAN kecepatannya. Pose dihitung di tiap client dari sikap yang direplikasi, jadi kalau A terlihat berdiri di layar B, yang putus replikasi sikapnya, bukan animasinya | — | 2P | - |
+| MOVE-08 | Stamina penuh, karakter hidup | Tekan **Q** | Dash: lonjakan cepat ke arah hadap selama ~0.22 detik, dan stamina **langsung berkurang 25** di awal, bukan bertahap | — | solo | - |
+| MOVE-09 | Stamina di bawah 25 | Tekan **Q** | **Tidak ada dash**, dan stamina tidak berkurang. Dash yang terpicu tapi tidak bergerak jauh lebih buruk daripada dash yang jelas ditolak | — | solo | - |
+| MOVE-10 | Match `WaveActive`, sebagai peserta, satu jenis musuh di arena | Serang satu musuh sambil **berdiri** dan catat damage dari print `[CombatService]`; ulangi sambil **jongkok** dan sambil **lari** | **Angka damage-nya sama di ketiganya.** Sikap badan tidak menyentuh apa pun yang dihitung CombatService, dan baris ini yang menjaganya tetap begitu | — | solo | - |
+| MOVE-11 | Match `WaveActive`, musuh sedang memukul pemain | Jongkok di sebelah musuh yang sedang memukul | Musuh **tetap memukul dengan damage yang sama**. Jongkok bukan mekanik menghindar | — | solo | - |
+| MOVE-12 | Sedang jongkok atau lari, lalu biarkan musuh membunuh karakternya | Mati; tunggu respawn 5 detik | Karakter respawn **berdiri dengan stamina penuh**, dan sikapnya kembali walk tanpa perlu menekan apa pun | — | solo | - |
+| MOVE-13 | Sesi di emulator layar sentuh Studio (atau perangkat sungguhan) | Cari cara lari, jongkok, atau dash | **Tidak ada.** Ketiganya keyboard; ini kekurangan yang diketahui, bukan GAGAL. Lihat T21 | — | solo | N/A |

@@ -18,8 +18,14 @@ pertarungan, state machine match dengan 10 wave, Toko Match, dua boss, dan
 progres permanen plus lobby. **Isi Toko Match sejak itu berganti seluruhnya**:
 dia tidak lagi menjual lima item berefek tim melainkan upgrade senjata per
 pemain, dan upgrade senjata pindah ke sana dari lobby (bagian 4). Satu
-tambahan di luar milestone mana pun: **jongkok**, tombol C, permintaan Daffa
-2026-10-26. M7 dan M8 belum disentuh. Sebagian besar
+tambahan besar di luar milestone mana pun mendarat 2026-10-26, diangkat dari
+`Gameplay.rbxl` yang dikerjakan Daffa terpisah: **tampilan dan gerak**. Arena,
+lobby, latar belakang, dan pencahayaan tidak lagi datang dari file `.rbxmx`
+melainkan **dibangun saat runtime dari kode**; arenanya punya **tiga lane**,
+bukan dua; karakter, senjata, dan musuh punya rancangan visual yang dirakit
+server; animasinya **dihitung tiap frame**, bukan diputar dari klip; dan gerak
+pemain jadi tiga sikap badan -- jalan, lari, jongkok -- yang diikat stamina.
+M7 dan M8 belum disentuh. Sebagian besar
 perilaku game belum pernah dijalankan oleh seorang pemain.
 
 **M6 kodenya sudah lengkap, buktinya belum.** Lima item M6 di
@@ -64,7 +70,7 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 
 | Lapis | Cakupan | Status |
 | --- | --- | --- |
-| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit, papan wave tertinggi, upgrade dalam match, jongkok | **285 test lulus** |
+| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit, papan wave tertinggi, upgrade dalam match | **277 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
 | Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave, slow dan zona dan tanda alur upgrade, pendaftaran remote papan | **258 assertion lulus, 0 gagal, 22 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
@@ -123,7 +129,7 @@ ditukar, dan alasannya ditulis di tempatnya masing-masing.
 
 ```bash
 cd "C:\Web Program\roblox-codeverse"
-lune run tests/run          # 285 unit test, beberapa detik
+lune run tests/run          # 277 unit test, beberapa detik
 lune run tests/studio/run   # harness Studio, ~130 detik
 ```
 
@@ -204,8 +210,10 @@ akan menenggelamkan yang sungguhan:
 
 - Warn `[PlayerDataService] ... jalan dengan data default di memori` — place
   belum di-publish. Lihat bagian 5.
-- Warn `[MapService] Lobby tidak lengkap` — `assets/Lobby.rbxmx` belum dibuat.
-  Itu justru hasil yang diharapkan `BOOT-04`.
+- ~~Warn `[MapService] Lobby tidak lengkap`~~ — **tidak muncul lagi** sejak
+  `ArenaBuilder` membangun lobbynya sendiri. Kalau warn ini tetap keluar,
+  dia sekarang temuan sungguhan: builder-nya gagal. `BOOT-04` berubah
+  harapannya karena itu.
 
 Isi kolom **Status** di `docs/TEST_CASES.md` sambil jalan: `OK`, `GAGAL` (tulis
 apa yang terjadi), `BLOK` (prasyarat belum ada), `N/A`. Sebagian sesuai **bukan**
@@ -221,38 +229,57 @@ desain yang disengaja, bukan kelalaian.
 
 Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
 
-- **Jongkok (tombol C atau Ctrl kiri).** Permintaan Daffa, 2026-10-26, dan
-  sengaja tanpa efek gameplay apa pun: badan turun, jalan jadi setengah
-  kecepatan, selesai. Tidak mengurangi damage yang masuk, tidak menambah
-  jangkauan, tidak menyembunyikan pemain dari musuh.
+- **Seluruh lapisan tampilan dan gerak, dan belum satu baris pun dimainkan.**
+  Diangkat dari `Gameplay.rbxl` pada 2026-10-26: enam belas file baru
+  sekaligus, sekitar lima ribu baris. Tidak ada satu pun yang pernah dilihat
+  manusia di dalam game ini, dan sifatnya membuat unit test tidak banyak
+  menolong -- yang dinilai di sini "apakah kelihatan benar", dan itu cuma bisa
+  dijawab dengan melihat.
 
-  Itu bukan kemalasan. Jongkok dipicu client, dan client yang dimodifikasi
-  bisa mengirim "aku jongkok" tanpa pernah melambat -- jadi keuntungan apa pun
-  yang digantungkan padanya gratis untuk yang mencurangi dan berharga untuk
-  yang tidak. Selama jongkok cuma memperlambat diri sendiri, tidak ada yang
-  bisa dicurangi darinya. Kalau nanti dia memang perlu memberi keuntungan,
-  yang harus diperiksa server bukan klaim jongkoknya melainkan **perpindahan
-  posisi pemain selama satu detik terakhir** -- itu yang dilihat server
-  sendiri, dan itu tidak bisa dipalsukan tanpa benar-benar melambat.
+  Yang masuk, dikelompokkan menurut apa yang akan terlihat kalau dia salah:
 
-  Yang menulis `WalkSpeed` dan `HipHeight` **server**, lewat remote `SetCrouch`,
-  supaya ketiga pemain lain ikut melihatnya: properti yang ditulis script
-  client cuma berlaku di layar client itu. Client menuliskannya juga untuk
-  dirinya sendiri, supaya tombolnya tidak menunggu satu perjalanan jaringan,
-  dan kedua tulisan membaca angka dari `CrouchRules` yang sama.
+  **Arena dibangun dari kode, bukan dari file.** `ArenaBuilder` merakit arena,
+  lobby, dan latar belakang dari `ArenaLayout` saat server start;
+  `SceneryService` menyetel pencahayaan, kabut, dan atmosphere. `assets/Arena.rbxmx`
+  sengaja TIDAK dihapus: builder merakit yang baru di luar Workspace lalu
+  menukarnya, jadi kalau dia gagal di tengah jalan yang tersisa arena lama,
+  bukan place tanpa lantai. Kalau arena yang muncul terlihat seperti graybox
+  lama, itu bukan selera -- itu builder yang gagal, dan warn-nya ada di Output.
 
-  Dua kekurangan yang akan langsung terlihat saat dimainkan, dan keduanya
-  diketahui. Pertama, **lututnya tidak menekuk**: Roblox tidak punya state
-  jongkok bawaan dan animasinya butuh aset animasi yang belum ada di proyek
-  ini, jadi yang terjadi badan turun 1.2 stud sementara kakinya tetap lurus --
-  dan di avatar tertentu kaki itu akan sedikit menembus lantai. Kedua, **tidak
-  ada tombolnya di layar sentuh**: yang ada cuma keyboard, jadi pemain mobile
-  tidak bisa jongkok sama sekali.
+  **Arena barunya punya TIGA lane.** Kode tidak pernah mematok dua; yang
+  mematok cuma harness, dan patokannya sudah diperbarui. Yang perlu dilihat
+  saat playtest: delapan musuh wave 1 sekarang terbagi 3-3-2, bukan 4-4.
 
-  Harness tidak bisa membuktikan apa pun soal ini selain bahwa service-nya
-  hidup (`[CrouchService] siap`): jongkok butuh Player beserta karakternya, dan
-  harness tidak bisa membuat Player. Angkanya dipatok delapan unit test di
-  `tests/CrouchRules.spec.luau`; sisanya menunggu dimainkan.
+  **Animasi dihitung, bukan diputar.** `Poses` menghasilkan pose tiap frame dan
+  `CharacterAnimatorController` menuliskannya ke Motor6D.
+  `StarterCharacterScripts/Animate` sengaja kosong untuk menahan Animate
+  bawaan Roblox: dua penulis pada satu sendi tidak menghasilkan salah satu
+  menang, melainkan karakter yang berkedip bergantian. **Kalau karakternya
+  bergetar, itu gejala pertama yang harus dicari.**
+
+  **Gerak pemain jadi tiga sikap badan.** Shift lari, C jongkok, Q dash, dan
+  ketiganya memakai stamina: sprint menguras, jongkok memulihkan paling cepat.
+  Server yang menegakkannya (`MovementService` membaca `MoveRules`), client
+  cuma mengirim niat lewat `MoveIntent` dan menggambar bar staminanya dari
+  modul yang sama.
+
+  **Ini menggantikan jongkok yang mendarat sehari sebelumnya**, dan bukan
+  karena yang lama jelek: keduanya mengikat tombol C dan menulis `WalkSpeed`
+  yang sama, jadi mereka tidak bisa hidup berdampingan. `CrouchService`,
+  `CrouchRules`, remote `SetCrouch`, dan kedelapan unit test-nya dicabut. Yang
+  menggantikan lebih lengkap di satu hal yang kemarin dicatat sebagai
+  kekurangan: **lututnya benar-benar menekuk**, karena pose jongkoknya dihitung
+  seperti pose lain.
+
+  Yang BELUM ada dan tetap jadi kekurangan: **tidak ada tombol gerak di layar
+  sentuh**. Shift, C, dan Q semuanya keyboard, jadi pemain mobile tidak bisa
+  lari, jongkok, maupun dash.
+
+  Enam modul murni yang masuk -- `ArenaLayout`, `CharacterDesign`,
+  `EnemyVisuals`, `MoveRules`, `Poses`, `WeaponVisuals` -- **belum punya satu
+  unit test pun**. `MoveRules` yang paling pantas dapat: aturan staminanya
+  dibaca dua sisi jaringan, dan selisih antara keduanya berarti bar di layar
+  berbohong tentang apa yang server izinkan.
 
 - **Mekanik sandera boss Locker (opsi A).** Locker menonaktifkan efek upgrade
   tim yang sudah dibeli selama dia hidup; `purchases` tetap utuh, cuma efeknya
@@ -472,11 +499,12 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
 Dua hal ini tidak bisa dikerjakan dari command line dan menghalangi sebagian
 test:
 
-- **`assets/Lobby.rbxmx` belum ada.** Generatornya sudah ada di
-  `scripts/build_lobby.luau`; jalankan dari command bar Studio, lalu simpan
-  hasilnya sebagai `.rbxmx` (**bukan** `.rbxm` — `.gitignore` punya `*.rbxm`
-  dan akan menelan bentuk binernya tanpa bilang apa-apa). `assets/Arena.rbxmx`
-  sudah ada dan sudah divalidasi terhadap kontrak marker bagian 3.4.
+- ~~**`assets/Lobby.rbxmx` belum ada.**~~ **Tidak berlaku lagi sejak
+  2026-10-26**: `ArenaBuilder` membangun lobby beserta `ReadyPad` dan
+  `SpawnLocation`-nya saat server start, jadi tidak ada file yang perlu
+  dibuat di Studio. `scripts/build_lobby.luau` dan `scripts/build_arena.luau`
+  ikut jadi tidak terpakai -- keduanya masih di repo dan masih jalan, tapi yang
+  mereka hasilkan bentuk lama. Jangan dijalankan untuk "memperbaiki" arena.
 - **Place harus di-publish sekali** sebelum test DataStore atau persistensi apa
   pun (M5.7). DataStore tidak jalan di place yang belum pernah di-publish.
   Prosedurnya di bagian 5.1. Sejak M6 ini menghalangi satu hal lagi: papan
