@@ -172,6 +172,27 @@ function MoveRules.validate(): (boolean, string?)
 		return false, "ambang mulai sprint harus di atas nol (lihat catatan histeresis)"
 	end
 
+	-- Dua pemeriksaan berikut menangkap jenis kesalahan yang sama: angka yang
+	-- sah sendiri-sendiri, tapi menjadikan satu tombol MUSTAHIL ditekan.
+	-- Gejalanya tidak terbaca sebagai angka yang salah, melainkan sebagai
+	-- tombol yang rusak, dan yang dicari orang pertama kali adalah input-nya.
+	if MoveRules.SPRINT_START_STAMINA > MoveRules.MAX_STAMINA then
+		return false,
+			string.format(
+				"ambang mulai sprint %d di atas stamina penuh %d, sprint tidak akan pernah menyala",
+				MoveRules.SPRINT_START_STAMINA,
+				MoveRules.MAX_STAMINA
+			)
+	end
+	if MoveRules.DASH_COST > MoveRules.MAX_STAMINA then
+		return false,
+			string.format(
+				"dash berharga %d dari stamina penuh %d, dash tidak akan pernah bisa dibayar",
+				MoveRules.DASH_COST,
+				MoveRules.MAX_STAMINA
+			)
+	end
+
 	return true, nil
 end
 

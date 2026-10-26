@@ -79,11 +79,12 @@ RewardService.start()
 
 PlayerDataService.start()
 
--- Rancangan karakter (Soal 1). Dijalankan DI SINI, di atas gerbang arena, dan
--- itu disengaja: tampilan karakter tidak ada hubungannya dengan ada atau
--- tidaknya map. Kalau dipasang di bawah gerbang, place yang belum punya
--- assets/Arena.rbxmx akan menampilkan pemain sebagai avatar bawaan di lobby,
--- yaitu justru keadaan yang paling sering dipakai saat mengambil screenshot.
+-- Pemulihan avatar akun pemain. Dijalankan DI SINI, di atas gerbang arena,
+-- dan itu disengaja: `StarterPlayer.LoadCharacterAppearance` harus sudah
+-- `true` SEBELUM pemain pertama spawn, dan di Studio pemain spawn beberapa
+-- saat setelah server mulai, bukan setelah map selesai dibangun. Kalau baris
+-- ini dipasang di bawah gerbang, place yang gagal membangun arena akan
+-- memunculkan pemain pertama tanpa baju dan rambutnya sendiri.
 CharacterService.start()
 
 -- Senjata yang terlihat di tangan. Dijalankan SETELAH PlayerDataService.start()

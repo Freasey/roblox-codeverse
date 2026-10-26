@@ -22,9 +22,12 @@ tambahan besar di luar milestone mana pun mendarat 2026-10-26, diangkat dari
 `Gameplay.rbxl` yang dikerjakan Daffa terpisah: **tampilan dan gerak**. Arena,
 lobby, latar belakang, dan pencahayaan tidak lagi datang dari file `.rbxmx`
 melainkan **dibangun saat runtime dari kode**; arenanya punya **tiga lane**,
-bukan dua; karakter, senjata, dan musuh punya rancangan visual yang dirakit
-server; animasinya **dihitung tiap frame**, bukan diputar dari klip; dan gerak
-pemain jadi tiga sikap badan -- jalan, lari, jongkok -- yang diikat stamina.
+bukan dua; senjata dan musuh punya rancangan visual yang dirakit server;
+animasinya **dihitung tiap frame**, bukan diputar dari klip; dan gerak pemain
+jadi tiga sikap badan -- jalan, lari, jongkok -- yang diikat stamina. Satu
+bagian dari tambahan itu **dicabut lagi pada hari yang sama**: rancangan
+karakter pemain. Yang spawn sekarang **avatar Roblox milik akun pemain**, apa
+adanya (bagian 4).
 M7 dan M8 belum disentuh. Sebagian besar
 perilaku game belum pernah dijalankan oleh seorang pemain.
 
@@ -70,7 +73,7 @@ Penting dibedakan, karena ketiga lapis ini membuktikan hal yang berbeda:
 
 | Lapis | Cakupan | Status |
 | --- | --- | --- |
-| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit, papan wave tertinggi, upgrade dalam match | **277 test lulus** |
+| Unit test murni (`lune run tests/run`) | Modul murni di `src/shared/Modules/`: aturan toko, balance, boss, hit test, lane, match, progresi, rate limit, papan wave tertinggi, upgrade dalam match, sikap badan dan stamina | **303 test lulus** |
 | CI (lint, type check, build, test) | Seluruh repo tiap push | **hijau di `main`** |
 | Harness Studio (`lune run tests/studio/run`) | Boot server, spawn musuh, penolakan remote, HP dan warna Core, urutan waypoint, pembagian lane, serangan berulang ke base per tipe musuh, slot cincin, skala HP per wave, slow dan zona dan tanda alur upgrade, pendaftaran remote papan | **258 assertion lulus, 0 gagal, 22 di-skip** |
 | Playtest manusia (`docs/TEST_CASES.md`) | Semua yang butuh pemain sungguhan | **belum dijalankan** |
@@ -129,7 +132,7 @@ ditukar, dan alasannya ditulis di tempatnya masing-masing.
 
 ```bash
 cd "C:\Web Program\roblox-codeverse"
-lune run tests/run          # 277 unit test, beberapa detik
+lune run tests/run          # 303 unit test, beberapa detik
 lune run tests/studio/run   # harness Studio, ~130 detik
 ```
 
@@ -238,6 +241,25 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
 
   Yang masuk, dikelompokkan menurut apa yang akan terlihat kalau dia salah:
 
+  **Karakter pemain TIDAK termasuk, dan itu perubahan di hari yang sama.**
+  Yang diangkat dari `Gameplay.rbxl` juga membawa rancangan karakter "Teknisi
+  IT": seragam, rompi, visor, dan ransel dari Part, di atas badan yang
+  warnanya ditimpa per bagian tubuh. Rancangan itu **dicabut atas permintaan**
+  -- yang spawn sekarang avatar Roblox milik akun pemain sendiri.
+  `CharacterDesign.luau` dihapus dan `CharacterService` tinggal menjaga tiga
+  hal: `LoadCharacterAppearance` kembali `true` (sebelumnya sengaja `false`,
+  dan itu PROPERTI PLACE, bukan file, jadi menghapus rancangan dari disk saja
+  tidak akan mengembalikan avatar siapa pun), cuma ada satu `Animate` di dalam
+  karakter, dan aksesori akun disetel `CanQuery = false` supaya topi atau
+  sayap rekan setim tidak menghentikan raycast bidikan orang lain.
+
+  Yang hilang bersamanya dan perlu dilihat saat playtest: pemain dan musuh
+  dulu dibedakan lewat warna -- pemain sisi dingin, musuh sisi panas. Avatar
+  akun bisa berwarna apa saja, termasuk merah menyala, jadi sekarang yang
+  membedakan **tinggal siluet**. Kalau di layar ramai ternyata masih tertukar,
+  yang perlu ditambah penanda di sisi pemain (outline atau nameplate), bukan
+  warna musuh digelapkan.
+
   **Arena dibangun dari kode, bukan dari file.** `ArenaBuilder` merakit arena,
   lobby, dan latar belakang dari `ArenaLayout` saat server start;
   `SceneryService` menyetel pencahayaan, kabut, dan atmosphere. `assets/Arena.rbxmx`
@@ -275,11 +297,18 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
   sentuh**. Shift, C, dan Q semuanya keyboard, jadi pemain mobile tidak bisa
   lari, jongkok, maupun dash.
 
-  Enam modul murni yang masuk -- `ArenaLayout`, `CharacterDesign`,
-  `EnemyVisuals`, `MoveRules`, `Poses`, `WeaponVisuals` -- **belum punya satu
-  unit test pun**. `MoveRules` yang paling pantas dapat: aturan staminanya
-  dibaca dua sisi jaringan, dan selisih antara keduanya berarti bar di layar
-  berbohong tentang apa yang server izinkan.
+  `MoveRules` kini punya 26 test di `tests/MoveRules.spec.luau`, dan dia yang
+  didahulukan karena satu-satunya modul di kelompok itu yang di-require DUA
+  SISI jaringan: histeresis sprint dibuktikan dari kedua arahnya, sprint di
+  tempat yang memulihkan alih-alih menguras, clamp stamina di kedua ujung, dan
+  satu test yang menyapu seluruh kombinasi masukan `resolveStance` untuk
+  membuktikan nilai baliknya selalu punya kecepatan dan tinggi lompat, yaitu
+  yang mengikat atribut `Stance` yang ditulis server ke animator yang
+  membacanya di tiap client.
+
+  Empat modul murni sisanya -- `ArenaLayout`, `EnemyVisuals`, `Poses`,
+  `WeaponVisuals` -- **masih belum punya satu unit test pun**, dan keempatnya
+  memang lebih sulit: yang dinilai di sana "apakah kelihatan benar".
 
 - **Mekanik sandera boss Locker (opsi A).** Locker menonaktifkan efek upgrade
   tim yang sudah dibeli selama dia hidup; `purchases` tetap utuh, cuma efeknya

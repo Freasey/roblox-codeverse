@@ -1,7 +1,7 @@
 --!strict
 -- WeaponVisuals.luau: bentuk senjata yang dipegang pemain.
 --
--- Modul murni, pola yang sama dengan CharacterDesign dan EnemyVisuals: angka
+-- Modul murni, pola yang sama dengan EnemyVisuals: angka
 -- dan warna saja, `shape`/`material` sebagai string, dirakit jadi Part oleh
 -- WeaponService di server.
 --

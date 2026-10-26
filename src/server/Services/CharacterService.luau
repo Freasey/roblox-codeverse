@@ -1,143 +1,69 @@
 --!strict
--- CharacterService.luau: memasang rancangan karakter "Teknisi IT" ke tiap
--- pemain yang spawn.
+-- CharacterService.luau: menjaga agar yang spawn adalah AVATAR ROBLOX MILIK
+-- PEMAIN SENDIRI, dan agar di dalam karakter itu cuma ada satu penulis
+-- animasi.
 --
--- Dijalankan di SERVER, bukan di client, dan itu bukan pilihan gaya. Part yang
--- dibuat client cuma ada di layar client itu sendiri: pemain akan melihat
--- dirinya memakai rompi, dan tiga rekan setimnya telanjang. Dibuat di server,
--- Part-nya ikut replikasi dan semua orang melihat hal yang sama, termasuk
--- saat screenshot diambil untuk laporan.
+-- File ini dulunya memasang rancangan karakter "Teknisi IT": seragam, rompi,
+-- visor, dan ransel yang dirakit dari Part, di atas badan yang warnanya
+-- ditimpa per bagian tubuh. Rancangan itu dicabut pada 2026-10-26 atas
+-- permintaan: avatar yang dipakai adalah milik akun pemain, apa adanya.
 --
--- Rancangannya sendiri tidak ada di sini; dia ada di
--- `Shared.Modules.CharacterDesign`. Yang ada di file ini cuma cara
--- memasangnya: menunggu rig siap, menerjemahkan string jadi Enum, dan mengelas
--- Part ke bagian tubuh.
+-- Menghapus rancangannya saja TIDAK mengembalikan avatar pemain, dan itu yang
+-- membuat file ini masih ada. Tiga hal tersisa:
 --
--- CATATAN SOAL `LoadCharacterAppearance`
+--   1. `StarterPlayer.LoadCharacterAppearance` harus kembali `true`.
+--   2. Hanya boleh ada satu script `Animate` di dalam karakter.
+--   3. Aksesori milik akun pemain tidak boleh menghentikan raycast bidikan.
 --
--- Supaya seragam ini benar-benar terlihat, `StarterPlayer.LoadCharacterAppearance`
--- disetel `false` di place-nya. Tanpa itu, Roblox memuat avatar milik akun tiap
--- pemain lebih dulu, lengkap dengan topi, rambut, dan baju mereka sendiri,
--- dan rompi yang dipasang di sini cuma jadi lapisan di atas kekacauan yang
--- berbeda-beda tiap orang. Soal 1 meminta KARAKTER YANG DIRANCANG, jadi yang
--- dirancang itulah yang harus muncul, bukan avatar pemain.
+-- Ketiganya dijelaskan di tempatnya masing-masing di bawah.
 
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local Shared = ReplicatedStorage.Shared
-local CharacterDesign = require(Shared.Modules.CharacterDesign)
-local Config = require(Shared.Config)
+local StarterPlayer = game:GetService("StarterPlayer")
 
 local CharacterService = {}
 
 local started = false
 
--- Satu warn saja kalau rig-nya ternyata bukan R15, bukan satu per spawn.
--- Pemain respawn berkali-kali dalam satu match; peringatan yang sama tercetak
--- dua puluh kali membuat Output tidak bisa dibaca lagi untuk hal lain.
-local warnedAboutRig = false
-
-local SHAPES: { [string]: Enum.PartType } = {
-	Block = Enum.PartType.Block,
-	Cylinder = Enum.PartType.Cylinder,
-	Ball = Enum.PartType.Ball,
-}
-
--- Ukuran Part terkecil yang masih diterima engine. Ukuran hasil perkalian
--- pecahan bisa jatuh di bawah ini pada avatar yang diperkecil, dan Part dengan
--- salah satu sisi nol tidak error, dia cuma hilang dari layar.
-local MIN_PART_SIZE = 0.05
-
-local function resolveMaterial(name: string): Enum.Material
-	local material = (Enum.Material :: any)[name]
-	if typeof(material) == "EnumItem" then
-		return material :: Enum.Material
-	end
-	-- Nama material salah ketik tidak boleh menggagalkan seluruh karakter;
-	-- yang hilang cukup tampilannya, dan warn-nya menyebut nama yang salah.
-	warn(string.format("[%s] material tidak dikenal: %s", Config.GAME_NAME, name))
-	return Enum.Material.SmoothPlastic
+-- (1) MENGEMBALIKAN TAMPILAN AKUN PEMAIN.
+--
+-- Saat karakter spawn, Roblox memuat tampilan akun pemain, yaitu badan,
+-- warna kulit, baju, rambut, dan topi, hanya kalau
+-- `StarterPlayer.LoadCharacterAppearance` bernilai `true`. Selama rancangan
+-- "Teknisi IT" masih dipakai, properti itu sengaja disetel `false`: tanpa itu
+-- seragam yang dipasang cuma jadi lapisan di atas rambut dan topi yang
+-- berbeda-beda tiap orang.
+--
+-- Masalahnya, properti itu tinggal di PROPERTI PLACE, bukan di file mana pun
+-- di repo ini. Jadi menghapus rancangan dari disk tidak menyentuhnya sama
+-- sekali: place yang sudah terlanjur disetel akan tetap menelanjangi avatar
+-- setiap pemain, dan tidak ada satu baris kode pun yang bisa ditunjuk sebagai
+-- sebabnya saat dicari.
+--
+-- Baris di bawah yang menutup lubang itu, dan dia sengaja berjalan sekali di
+-- `start()`, sebelum pemain pertama sempat spawn. `default.project.json` juga
+-- menyetel properti yang sama, supaya place yang dibangun `rojo build` dari
+-- nol sudah benar sejak spawn pertama; baris ini yang menolong place LAMA,
+-- yang sudah terlanjur menyimpan `false` di dalam dirinya.
+local function restoreAppearanceLoading()
+	StarterPlayer.LoadCharacterAppearance = true
 end
 
--- Menunggu seluruh bagian tubuh yang dipakai rancangan benar-benar ada.
+-- (2) MEMASTIKAN HANYA ADA SATU `Animate`.
 --
--- Rig R15 dirakit bertahap: `CharacterAdded` menyala saat Model-nya masuk
--- Workspace, dan sebagian Part menyusul beberapa frame kemudian. Memasang
--- aksesori saat itu menghasilkan Part yang menempel di tempat yang salah, dan
--- itu tidak muncul sebagai error, cuma terlihat jelek dan sulit dilacak.
+-- Roblox menyisipkan LocalScript bernama `Animate` ke dalam setiap karakter
+-- saat spawn, dan script itulah yang memutar klip idle/walk/run/jump bawaan.
+-- Penyisipan itu dilewati kalau karakternya sudah punya anak bernama
+-- `Animate`, dan `src/character/Animate.client.luau` yang kosong itulah yang
+-- menempati tempatnya.
 --
--- Batas waktunya ada supaya karakter yang gagal dirakit (pemain keluar tepat
--- saat spawn) tidak meninggalkan thread yang menunggu selamanya.
-local function waitForRig(character: Model, timeout: number): boolean
-	local deadline = os.clock() + timeout
-	for _, partName in CharacterDesign.REQUIRED_PARTS do
-		local remaining = deadline - os.clock()
-		if remaining <= 0 then
-			return false
-		end
-		if character:FindFirstChild(partName) == nil then
-			local found = character:WaitForChild(partName, remaining)
-			if found == nil then
-				return false
-			end
-		end
-	end
-	return true
-end
-
--- Warna badan disetel per Part, dan `BodyColors` bawaan DIHAPUS lebih dulu.
+-- Kalau keduanya sampai ikut, Animator bawaan dan
+-- `CharacterAnimatorController` menulis ke Motor6D yang sama setiap frame.
+-- Gejalanya bukan salah satu menang, melainkan karakter yang BERGETAR, dan
+-- getaran itu tidak muncul sebagai error di mana pun.
 --
--- Alasannya bukan kerapian: `BodyColors` cuma punya enam kelompok warna
--- (kepala, torso, dua lengan, dua kaki), sedangkan rancangan ini memberi warna
--- berbeda untuk bagian-bagian di dalam satu kelompok yang sama, lengan atas
--- memakai warna seragam sementara telapak tangan memakai warna kulit. Selama
--- `BodyColors` masih ada, dia akan menimpa warna per-Part itu setiap kali
--- propertinya tersentuh, dan telapak tangan kembali ikut warna lengan.
-local function applyBodyColors(character: Model)
-	local bodyColors = character:FindFirstChildOfClass("BodyColors")
-	if bodyColors ~= nil then
-		bodyColors:Destroy()
-	end
-
-	for partName, color in CharacterDesign.BODY_COLORS do
-		local part = character:FindFirstChild(partName)
-		if part ~= nil and part:IsA("BasePart") then
-			part.Color = color
-		end
-	end
-end
-
--- Pakaian dan aksesori bawaan akun dibersihkan kalau masih sempat termuat.
--- `LoadCharacterAppearance = false` seharusnya sudah mencegahnya, tapi setelan
--- itu ada di properti place, bukan di file ini, dan setelan place adalah
--- hal yang paling mudah ikut hilang saat seseorang membuat place baru lalu
--- menyalin isinya. Pembersihan ini yang membuat kehilangan itu tidak membuat
--- rancangan karakternya ikut hilang.
-local function stripDefaultAppearance(character: Model)
-	for _, child in character:GetChildren() do
-		if
-			child:IsA("Accessory")
-			or child:IsA("Shirt")
-			or child:IsA("Pants")
-			or child:IsA("ShirtGraphic")
-		then
-			child:Destroy()
-		end
-	end
-end
-
--- Memastikan hanya ADA SATU script `Animate` di karakter, yaitu milik kita.
---
--- StarterCharacterScripts/Animate seharusnya sudah menggusur yang bawaan, tapi
--- "seharusnya" tidak cukup untuk sesuatu yang gagalnya tidak terlihat sebagai
--- error: kalau dua-duanya ikut, Animator bawaan dan animator kita menulis ke
--- Motor6D yang sama tiap frame, dan karakternya berkedip antara dua animasi.
---
--- Pembedanya bukan nama, dua-duanya bernama `Animate`, melainkan ISI:
--- script bawaan Roblox membawa puluhan objek Animation sebagai anak (idle,
--- walk, run, jump, dan seterusnya), sementara milik kita kosong melompong.
--- Jadi yang punya anak, itulah yang bawaan.
+-- Pembedanya bukan nama, dua-duanya bernama `Animate`, melainkan ISI: script
+-- bawaan Roblox membawa puluhan objek Animation sebagai anak, sementara milik
+-- kita kosong melompong. Jadi yang punya anak, itulah yang bawaan.
 local function removeDefaultAnimate(character: Model)
 	for _, child in character:GetChildren() do
 		if child.Name == "Animate" and #child:GetChildren() > 0 then
@@ -146,114 +72,48 @@ local function removeDefaultAnimate(character: Model)
 	end
 end
 
-local function buildAccessory(character: Model, spec: CharacterDesign.Accessory, parent: Folder)
-	local host = character:FindFirstChild(spec.attachTo)
-	if host == nil or not host:IsA("BasePart") then
-		return
+-- (3) AKSESORI AKUN TIDAK IKUT MENGHALANGI BIDIKAN.
+--
+-- Bidikan pemain adalah raycast dari kamera (`InputController`), dan raycast
+-- itu cuma mengecualikan karakter si penembak sendiri. Karakter pemain LAIN
+-- tetap bisa menghentikannya, dan itu sudah berlaku sejak dulu untuk badan.
+--
+-- Yang berubah sejak avatar akun dipakai: aksesori ikut termuat, dan aksesori
+-- Roblox bisa jauh lebih besar daripada badan yang memakainya, sayap, topi
+-- lebar, atau rambut yang menjulur. Satu rekan setim dengan topi selebar dua
+-- stud bisa menghentikan tembakan dari jarak yang pemiliknya sendiri tidak
+-- sadari sedang dia halangi.
+--
+-- `CanQuery = false` mengeluarkan Part dari raycast tanpa menyentuh tampilan
+-- maupun tabrakannya. Alasan yang sama dipakai untuk laras senjata di
+-- `WeaponService`.
+local function silenceAccessory(accessory: Accessory)
+	local handle = accessory:FindFirstChild("Handle")
+	if handle ~= nil and handle:IsA("BasePart") then
+		handle.CanQuery = false
 	end
-
-	local hostSize = host.Size
-
-	local part = Instance.new("Part")
-	part.Name = spec.id
-	part.Shape = SHAPES[spec.shape] or Enum.PartType.Block
-	part.Size = Vector3.new(
-		math.max(hostSize.X * spec.sizeScale.X, MIN_PART_SIZE),
-		math.max(hostSize.Y * spec.sizeScale.Y, MIN_PART_SIZE),
-		math.max(hostSize.Z * spec.sizeScale.Z, MIN_PART_SIZE)
-	)
-	part.Color = spec.color
-	part.Material = resolveMaterial(spec.material)
-	part.Transparency = spec.transparency or 0
-
-	-- Empat properti ini yang membuat aksesori benar-benar hiasan:
-	--   Massless  : tidak menambah massa, jadi tinggi lompat dan kecepatan
-	--               karakter tidak berubah hanya karena dia memakai ransel.
-	--   CanCollide,  tidak menabrak dinding atau musuh.
-	--   CanQuery  : tidak tertangkap raycast. Ini yang penting untuk bidikan:
-	--               `InputController` memang sudah mengecualikan karakter
-	--               sendiri, tapi raycast pemain LAIN tidak, dan tanpa ini
-	--               ransel rekan setim bisa menghentikan bidikan di tengah.
-	--   CanTouch  : tidak memicu event sentuhan apa pun.
-	part.Massless = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.Anchored = false
-	part.CastShadow = false
-
-	local offset = CFrame.new(
-		hostSize.X * spec.offsetScale.X,
-		hostSize.Y * spec.offsetScale.Y,
-		hostSize.Z * spec.offsetScale.Z
-	)
-	local rotation = spec.rotation
-	if rotation ~= nil then
-		offset = offset
-			* CFrame.Angles(math.rad(rotation.X), math.rad(rotation.Y), math.rad(rotation.Z))
-	end
-
-	-- Urutannya wajib: posisikan dulu, baru dilas. WeldConstraint mengunci
-	-- jarak yang BERLAKU SAAT DIA DIBUAT, jadi mengelas lebih dulu akan
-	-- mengunci Part di titik asalnya (0,0,0 dunia) dan menyeret karakternya.
-	part.CFrame = host.CFrame * offset
-
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = host
-	weld.Part1 = part
-	weld.Parent = part
-
-	part.Parent = parent
 end
 
--- Memasang seluruh rancangan ke satu karakter. Dipisah dari penyambungan event
--- supaya bisa dipanggil ulang dari Command Bar saat menyetel angka di
--- CharacterDesign, tanpa perlu respawn.
-function CharacterService.applyTo(character: Model): boolean
-	if not waitForRig(character, 5) then
-		return false
-	end
-
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid == nil then
-		return false
-	end
-
-	stripDefaultAppearance(character)
-	removeDefaultAnimate(character)
-	applyBodyColors(character)
-
-	if humanoid.RigType ~= Enum.HumanoidRigType.R15 then
-		if not warnedAboutRig then
-			warnedAboutRig = true
-			warn(
-				string.format(
-					"[%s] rig pemain bukan R15, aksesori karakter dilewati. "
-						.. "Setel Game Settings -> Avatar -> Avatar Type ke R15.",
-					Config.GAME_NAME
-				)
-			)
+-- Dipanggil juga untuk aksesori yang menyusul setelah karakter masuk
+-- Workspace. `CharacterAdded` menyala saat Model-nya muncul, dan aksesori
+-- akun sebagian baru menempel beberapa frame kemudian; memeriksa sekali saja
+-- akan melewatkan justru yang paling besar.
+local function hookCharacter(character: Model)
+	for _, child in character:GetChildren() do
+		if child:IsA("Accessory") then
+			silenceAccessory(child)
 		end
-		return false
 	end
 
-	-- Wadah lama dihapus lebih dulu. Tanpa ini, memanggil applyTo() dua kali
-	-- pada karakter yang sama menumpuk dua set aksesori di tempat yang sama,
-	-- dan yang terlihat cuma permukaannya jadi berkedip (z-fighting).
-	local existing = character:FindFirstChild(CharacterDesign.CONTAINER_NAME)
-	if existing ~= nil then
-		existing:Destroy()
-	end
+	-- Koneksi ini tidak perlu diputus sendiri: karakter lama di-Destroy saat
+	-- pemain respawn, dan Destroy memutus seluruh koneksi ke instance itu.
+	character.ChildAdded:Connect(function(child: Instance)
+		if child:IsA("Accessory") then
+			silenceAccessory(child)
+		end
+	end)
 
-	local container = Instance.new("Folder")
-	container.Name = CharacterDesign.CONTAINER_NAME
-
-	for _, spec in CharacterDesign.ACCESSORIES do
-		buildAccessory(character, spec, container)
-	end
-
-	container.Parent = character
-	return true
+	removeDefaultAnimate(character)
 end
 
 function CharacterService.start()
@@ -262,26 +122,15 @@ function CharacterService.start()
 	end
 	started = true
 
-	local ok, err = CharacterDesign.validate()
-	if not ok then
-		warn(
-			string.format(
-				"[%s] rancangan karakter tidak valid: %s",
-				Config.GAME_NAME,
-				tostring(err)
-			)
-		)
-	end
+	restoreAppearanceLoading()
 
 	local function hook(player: Player)
-		player.CharacterAdded:Connect(function(character: Model)
-			CharacterService.applyTo(character)
-		end)
+		player.CharacterAdded:Connect(hookCharacter)
 		-- Pemain yang karakternya sudah terlanjur spawn sebelum baris ini
 		-- jalan (server reload saat ada orang di dalam) tetap kebagian.
 		local current = player.Character
 		if current ~= nil then
-			task.spawn(CharacterService.applyTo, current)
+			task.spawn(hookCharacter, current)
 		end
 	end
 

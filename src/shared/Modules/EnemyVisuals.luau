@@ -3,7 +3,7 @@
 --
 -- Modul murni: tanpa game:GetService, tanpa Instance. `shape` dan `material`
 -- disimpan sebagai string dengan alasan yang sama seperti di
--- CharacterDesign.luau, supaya bisa di-require test Lune tanpa Enum Roblox.
+-- WeaponVisuals.luau, supaya bisa di-require test Lune tanpa Enum Roblox.
 --
 -- SILUET DULU, WARNA BELAKANGAN
 --
@@ -48,10 +48,18 @@ export type Visual = {
 	pieces: { Piece },
 }
 
--- Palet musuh. Semuanya sisi panas (merah, jingga, ungu, hijau asam), dan itu
--- keputusan yang berpasangan dengan palet pemain di CharacterDesign.luau yang
--- memakai sisi dingin. Kalau salah satu dipindah ke sisi lain, keduanya harus
--- dipindah bersama.
+-- Palet musuh. Semuanya sisi panas: merah, jingga, ungu, hijau asam.
+--
+-- Dulu pilihan ini berpasangan dengan palet pemain yang memakai sisi dingin,
+-- sehingga pemain dan musuh tidak pernah tertukar. Pasangannya sudah tidak
+-- ada: sejak 2026-10-26 pemain memakai avatar akunnya sendiri, dan warnanya
+-- bisa apa saja, termasuk merah menyala.
+--
+-- Jadi yang menanggung pembedaan sekarang tinggal BENTUK, dan itu memang
+-- sengaja dipikul duluan oleh siluet di bawah, bukan oleh warna. Kalau di
+-- playtest ternyata masih ada yang tertukar, yang perlu ditambah adalah
+-- penanda di sisi pemain (outline atau nameplate), bukan warna musuh
+-- digelapkan, menggelapkan musuh justru menghapus pembeda antarmusuh.
 local ADWARE = Color3.fromRGB(240, 160, 50)
 local WORM = Color3.fromRGB(140, 230, 110)
 local ROOTKIT = Color3.fromRGB(165, 120, 225)
