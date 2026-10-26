@@ -42,6 +42,7 @@ local Bosses = require(Shared.Modules.Bosses)
 local CombatEffects = require(Shared.Modules.CombatEffects)
 local Enemies = require(Shared.Modules.Enemies)
 local EnemyAI = require(Shared.Modules.EnemyAI)
+local EnemyVisuals = require(Shared.Modules.EnemyVisuals)
 local Remotes = require(Shared.Remotes)
 local Signal = require(Shared.Modules.Signal)
 local Types = require(Shared.Modules.Types)
@@ -131,51 +132,25 @@ type Context = {
 	playerCount: number,
 }
 
--- Graybox: musuh digambar dari Part primitif. Model dari Blender masuk di M7
--- (bagian 1.6), dan bagian 9 mengizinkan Part primitif sebagai gaya final
--- kalau waktu aset habis. Ini presentasi, bukan balancing, jadi tidak masuk
--- Balance.luau.
-type Visual = {
-	size: Vector3,
-	color: Color3,
-	material: Enum.Material,
-}
-
-local VISUALS: { [string]: Visual } = {
-	basic = {
-		size = Vector3.new(3, 3, 3),
-		color = Color3.fromRGB(220, 160, 60),
-		material = Enum.Material.SmoothPlastic,
-	},
-	fast = {
-		size = Vector3.new(2, 2, 4),
-		color = Color3.fromRGB(120, 220, 140),
-		material = Enum.Material.SmoothPlastic,
-	},
-	tank = {
-		size = Vector3.new(6, 6, 6),
-		color = Color3.fromRGB(150, 120, 200),
-		material = Enum.Material.Metal,
-	},
-	boss_splitter = {
-		size = Vector3.new(9, 9, 9),
-		color = Color3.fromRGB(230, 90, 120),
-		material = Enum.Material.Neon,
-	},
-	boss_locker = {
-		size = Vector3.new(11, 11, 11),
-		color = Color3.fromRGB(240, 70, 70),
-		material = Enum.Material.Neon,
-	},
-}
-
-local FALLBACK_VISUAL: Visual = {
-	size = Vector3.new(3, 3, 3),
-	color = Color3.fromRGB(200, 200, 200),
-	material = Enum.Material.SmoothPlastic,
-}
+-- Bentuk musuh pindah ke `Shared.Modules.EnemyVisuals`.
+--
+-- Dulu tabel bentuknya ada persis di sini: satu Part per musuh, dibedakan
+-- ukuran dan warna saja. Yang dipindah bukan cuma angkanya, sekarang tiap
+-- musuh punya beberapa potongan dengan siluet sendiri, dan alasan tiap bentuk
+-- ditulis di modul itu. Dipindah ke Shared karena client juga membacanya:
+-- EnemyFxController memutar potongan yang bertanda `spin`.
+--
+-- Yang TIDAK berubah: ini tetap presentasi, bukan balancing. Tidak ada satu
+-- pun angka di EnemyVisuals yang memengaruhi HP, damage, atau uji kena,
+-- uji kena memakai jarak ke PrimaryPart (bagian 3.7), bukan geometri Part.
 
 local FOLDER_NAME = "Enemies"
+
+local SHAPES: { [string]: Enum.PartType } = {
+	Block = Enum.PartType.Block,
+	Ball = Enum.PartType.Ball,
+	Cylinder = Enum.PartType.Cylinder,
+}
 
 local active: { [number]: Enemy } = {}
 local activeCount = 0
@@ -308,17 +283,75 @@ local function updateHealthBar(enemy: Enemy)
 		else Color3.fromRGB(230, 80, 80)
 end
 
+-- Potongan hias ditempelkan ke Body yang anchored.
+--
+-- Yang bertanda `spin` dipasang dengan Motor6D, sisanya dengan WeldConstraint.
+-- Bedanya penting: WeldConstraint mengunci mati dan tidak bisa digerakkan
+-- siapa pun, sedangkan Motor6D menyisakan satu sendi yang bisa diputar CLIENT
+-- lewat C0, tanpa menyentuh server dan tanpa replikasi sama sekali. Itu yang
+-- membuat cincin boss bisa berputar 60 fps sementara server tetap cuma
+-- memindahkan satu Part per musuh per frame.
+local function attachPiece(body: BasePart, piece: EnemyVisuals.Piece, parent: Model)
+	local part = Instance.new("Part")
+	part.Name = piece.name
+	part.Shape = SHAPES[piece.shape] or Enum.PartType.Block
+	part.Size = piece.size
+	part.Color = piece.color
+	part.Transparency = piece.transparency or 0
+	part.Anchored = false
+	part.Massless = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+
+	local material = (Enum.Material :: any)[piece.material]
+	part.Material = if typeof(material) == "EnumItem"
+		then material :: Enum.Material
+		else Enum.Material.SmoothPlastic
+
+	local offset = CFrame.new(piece.offset)
+	local rotation = piece.rotation
+	if rotation ~= nil then
+		offset = offset
+			* CFrame.Angles(math.rad(rotation.X), math.rad(rotation.Y), math.rad(rotation.Z))
+	end
+
+	part.CFrame = body.CFrame * offset
+	part.Parent = parent
+
+	if piece.spin ~= nil then
+		local motor = Instance.new("Motor6D")
+		motor.Name = piece.name
+		motor.Part0 = body
+		motor.Part1 = part
+		motor.C0 = offset
+		motor:SetAttribute("Spin", piece.spin)
+		motor.Parent = body
+	else
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = body
+		weld.Part1 = part
+		weld.Parent = part
+	end
+end
+
 local function buildModel(defId: string, name: string, position: Vector3): (Model, BasePart, Frame)
-	local visual = VISUALS[defId] or FALLBACK_VISUAL
+	local visual = EnemyVisuals.get(defId)
 
 	local model = Instance.new("Model")
 	model.Name = name
 
 	local part = Instance.new("Part")
 	part.Name = "Body"
-	part.Size = visual.size
-	part.Color = visual.color
-	part.Material = visual.material
+	part.Shape = SHAPES[visual.bodyShape] or Enum.PartType.Block
+	part.Size = visual.bodySize
+	part.Color = visual.bodyColor
+	part.Transparency = visual.bodyTransparency or 0
+	local bodyMaterial = (Enum.Material :: any)[visual.bodyMaterial]
+	part.Material = if typeof(bodyMaterial) == "EnumItem"
+		then bodyMaterial :: Enum.Material
+		else Enum.Material.SmoothPlastic
 	part.Anchored = true
 	-- CanCollide false dengan sengaja: Part anchored yang bertabrakan dengan
 	-- karakter pemain akan menembus atau mendorongnya ke dalam geometry, dan
@@ -329,9 +362,21 @@ local function buildModel(defId: string, name: string, position: Vector3): (Mode
 	part.BottomSurface = Enum.SurfaceType.Smooth
 	part.CFrame = CFrame.new(position)
 	part.Parent = model
-
 	model.PrimaryPart = part
-	local fill = makeHealthBar(part, visual.size)
+
+	-- Potongan dipasang SETELAH Body punya CFrame dan induk. Dua-duanya
+	-- syarat: offset dihitung dari `body.CFrame`, jadi Body yang masih di titik
+	-- asal akan menempatkan seluruh potongan di tengah peta lalu menyeretnya;
+	-- dan Motor6D yang dibuat sebelum kedua Part punya induk tidak membentuk
+	-- assembly.
+	for _, piece in visual.pieces do
+		attachPiece(part, piece, model)
+	end
+
+	-- Bar HP dipatok ke tinggi BADAN, bukan ke potongan tertinggi. Potongan
+	-- seperti gembok boss menjulur jauh ke atas, dan bar yang mengikutinya akan
+	-- melayang terpisah dari musuhnya.
+	local fill = makeHealthBar(part, visual.bodySize)
 	return model, part, fill
 end
 
@@ -827,6 +872,23 @@ function EnemyService.start()
 		return
 	end
 	started = true
+
+	-- Tiap id musuh dan boss harus punya bentuk. Diperiksa di sini, saat boot,
+	-- karena kalau tidak gejalanya baru muncul di wave 5 sebagai boss berupa
+	-- kubus putih polos, dan "kenapa boss-nya kotak putih" adalah pertanyaan
+	-- yang jauh lebih mahal dijawab daripada satu warn saat server menyala.
+	local known: { string } = {}
+	for id in Enemies do
+		table.insert(known, id)
+	end
+	for id in Bosses do
+		table.insert(known, id)
+	end
+	local visualsOk, visualsErr = EnemyVisuals.validate(known)
+	if not visualsOk then
+		warn(string.format("[EnemyService] bentuk musuh tidak lengkap: %s", tostring(visualsErr)))
+	end
+
 	getFolder()
 	heartbeat = RunService.Heartbeat:Connect(step)
 end

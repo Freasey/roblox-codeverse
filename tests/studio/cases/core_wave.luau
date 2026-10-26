@@ -80,7 +80,7 @@ T.main(function()
 	T.eq("prasyarat.state", MatchService.getState(), "Lobby")
 	T.eq("prasyarat.coreHpPenuh", CoreService.getHp(), CoreService.getMaxHp())
 	T.eq("prasyarat.arenaKosong", EnemyService.activeCount(), 0)
-	T.eq("prasyarat.duaLane", EnemyService.laneCount(), 2)
+	T.eq("prasyarat.tigaLane", EnemyService.laneCount(), 3)
 
 	-- Konteks biasanya di-set MatchService saat wave mulai. Di-set langsung di
 	-- sini karena match tidak bisa dimulai tanpa Player; sama seperti di
@@ -580,9 +580,10 @@ T.main(function()
 	-- mendahuluinya. Jadi sinyalnya yang ditembakkan, dan `WaveService.startWave`
 	-- yang asli memutuskan jumlah musuh, tipenya, dan lane-nya.
 	--
-	-- Kenapa 8 musuh cukup: kalau lane diundi acak dengan 2 lane, peluang
-	-- hasilnya persis bergantian 1,2,1,2,1,2,1,2 cuma 1/128. Bergantian dengan
-	-- 8 musuh karena itu memisahkan round-robin dari acak secara meyakinkan.
+	-- Kenapa 8 musuh cukup: kalau lane diundi acak dengan 3 lane, peluang
+	-- hasilnya persis berurutan 1,2,3,1,2,3,1,2 cuma 1/3^7, sekitar 1/2187.
+	-- Delapan musuh karena itu memisahkan round-robin dari acak secara
+	-- meyakinkan.
 	EnemyService.setContext(1, Difficulties.normal, 1)
 	MatchService.onWaveStarted:Fire(1)
 
@@ -593,7 +594,7 @@ T.main(function()
 	T.ok(
 		"lane.logWaveService",
 		T.waitUntil(function()
-			return T.logContains("[WaveService] wave 1: 8 musuh biasa di 2 lane")
+			return T.logContains("[WaveService] wave 1: 8 musuh biasa di 3 lane")
 		end, 10),
 		T.logFind("[WaveService] wave 1:")
 	)
@@ -608,7 +609,7 @@ T.main(function()
 	table.sort(ids)
 
 	local laneUrut: { number } = {}
-	local perLane: { [number]: number } = { [1] = 0, [2] = 0 }
+	local perLane: { [number]: number } = { [1] = 0, [2] = 0, [3] = 0 }
 	for _, id in ids do
 		local item = EnemyService.get(id)
 		if item ~= nil then
@@ -622,14 +623,17 @@ T.main(function()
 
 	local bergantian = #laneUrut >= 8
 	for position, laneIndex in laneUrut do
-		if laneIndex ~= (position - 1) % 2 + 1 then
+		if laneIndex ~= (position - 1) % 3 + 1 then
 			bergantian = false
 			break
 		end
 	end
 	T.ok("lane.bergantianSatuSatu", bergantian, laneTeks)
-	T.eq("lane.jumlahDiLane1", perLane[1], 4)
-	T.eq("lane.jumlahDiLane2", perLane[2], 4)
+	-- Delapan musuh dibagi tiga lane tidak rata, dan memang begitu: round-robin
+	-- berhenti di tengah putaran ketiga.
+	T.eq("lane.jumlahDiLane1", perLane[1], 3)
+	T.eq("lane.jumlahDiLane2", perLane[2], 3)
+	T.eq("lane.jumlahDiLane3", perLane[3], 2)
 
 	-- Musuh harus benar-benar BERJALAN di lane yang disebutnya, bukan cuma
 	-- menyimpan angkanya. `spawnFromEntry` jatuh ke `math.random` untuk
@@ -638,29 +642,46 @@ T.main(function()
 	--
 	-- Tidak dibandingkan dengan waypoint 1: musuh pertama sudah berjalan ~6
 	-- detik saat musuh kedelapan muncul (SPAWN_INTERVAL 0.9 detik), jadi
-	-- posisinya sudah jauh dari titik spawn. Yang dibandingkan jarak tegak lurus
-	-- ke GARIS lane-nya — waypoint satu lane kolinear (build_arena.luau menaruh
-	-- semuanya pada satu heading), jadi garis itu memang jalurnya.
+	-- posisinya sudah jauh dari titik spawn. Yang dibandingkan jarak ke JALUR
+	-- lane-nya.
+	--
+	-- Jalurnya diukur sebagai RANTAI SEGMEN, bukan satu garis dari waypoint
+	-- pertama ke terakhir. Versi garis lurus benar selama `build_arena.luau`
+	-- yang menaruh waypoint, karena dia menaruh semuanya pada satu heading --
+	-- tapi `ArenaLayout` membelokkan lane, jadi garis lurus dari ujung ke ujung
+	-- memotong tikungannya dan musuh yang berjalan tepat di jalurnya terbaca
+	-- puluhan stud melenceng. Rantai segmen benar untuk kedua bentuk.
 	local function distanceToLane(point: Vector3, laneIndex: number): number
 		local points = arena.lanes[laneIndex].waypoints
-		local first = points[1]
-		local span = points[#points] - first
-		local along = math.clamp((point - first):Dot(span) / span:Dot(span), 0, 1)
-		return (point - (first + span * along)).Magnitude
+		local best = math.huge
+		for index = 1, #points - 1 do
+			local a = points[index]
+			local span = points[index + 1] - a
+			local lengthSq = span:Dot(span)
+			local along = if lengthSq > 0
+				then math.clamp((point - a):Dot(span) / lengthSq, 0, 1)
+				else 0
+			best = math.min(best, (point - (a + span * along)).Magnitude)
+		end
+		return best
 	end
 
-	-- Kedua lane datang dari sudut yang berbeda dan ujungnya pun masih ~34 stud
-	-- terpisah (CORE_CLEARANCE 24 stud dari dua arah yang 90 derajat), jadi
-	-- "dekat lane sendiri" dan "jauh dari lane sebelah" tidak bisa benar
-	-- dua-duanya untuk musuh yang sama.
+	-- Dibandingkan dengan lane TERDEKAT di antara semua lane lain, bukan
+	-- dengan satu lane sebelah. Dengan tiga lane, lane tengah punya tetangga di
+	-- dua sisi, dan memeriksa satu sisi saja meloloskan musuh yang nyasar ke
+	-- sisi yang tidak diperiksa.
 	local diLaneSendiri = #laneUrut >= 8
 	local jejakLane: { string } = {}
 	for _, id in ids do
 		local item = EnemyService.get(id)
 		if item ~= nil then
-			local other = if item.laneIndex == 1 then 2 else 1
 			local mine = distanceToLane(item.primary.CFrame.Position, item.laneIndex)
-			local theirs = distanceToLane(item.primary.CFrame.Position, other)
+			local theirs = math.huge
+			for other = 1, #arena.lanes do
+				if other ~= item.laneIndex then
+					theirs = math.min(theirs, distanceToLane(item.primary.CFrame.Position, other))
+				end
+			end
 			table.insert(jejakLane, string.format("%.1f/%.1f", mine, theirs))
 			if mine > WAYPOINT_TOLERANCE or theirs <= WAYPOINT_TOLERANCE * 2 then
 				diLaneSendiri = false

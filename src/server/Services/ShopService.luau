@@ -45,6 +45,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
@@ -111,7 +112,14 @@ local NO_PURCHASES: { [string]: number } = {}
 local pendingBarriers = 0
 
 type Turret = {
-	part: Part,
+	-- `part` sekarang Model, bukan satu Part: turret dirakit dari alas,
+	-- tiang, kepala, laras, dan lensa. Namanya dibiarkan `part` supaya
+	-- `clearTurrets` yang memanggil `:Destroy()` tidak perlu ikut berubah,
+	-- Model dan Part sama-sama punya Destroy.
+	part: Model,
+	-- Kepala dipisah karena DIA yang berputar mengikuti sasaran. Dulu yang
+	-- diputar seluruh turret, dan alasnya ikut miring.
+	head: BasePart,
 	position: Vector3,
 	nextShotAt: number,
 }
@@ -313,17 +321,107 @@ end
 -- Efek tiap item
 -- --------------------------------------------------------------------------
 
+-- Animasi pemasangan, dijalankan DI SERVER dengan TweenService.
+--
+-- Efek pertempuran (percikan, angka damage) sengaja dibuat di client karena
+-- jumlahnya ratusan per detik. Dua ini kebalikannya: satu pembelian = satu
+-- benda, beberapa kali per match. Dibuat di server, animasinya pasti terlihat
+-- SAMA oleh keempat pemain, dan untuk sesuatu yang baru saja dibayar dengan
+-- koin tim, "apakah pembelianku benar-benar terpasang" adalah pertanyaan yang
+-- tidak boleh dijawab berbeda di tiap layar.
+local INSTALL_TIME = 0.35
+
+local function tweenIn(
+	part: BasePart,
+	goalSize: Vector3,
+	goalCFrame: CFrame,
+	goalTransparency: number
+)
+	local info = TweenInfo.new(INSTALL_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(part, info, {
+		Size = goalSize,
+		CFrame = goalCFrame,
+		Transparency = goalTransparency,
+	}):Play()
+end
+
 local function placeBarrier(laneIndex: number, position: Vector3, duration: number)
-	local part = Instance.new("Part")
-	part.Name = string.format("Barrier%d", laneIndex)
-	part.Size = Vector3.new(16, 8, 2)
-	part.Color = Color3.fromRGB(90, 170, 240)
-	part.Material = Enum.Material.ForceField
-	part.Anchored = true
-	part.CanCollide = false
-	part.CastShadow = false
-	part.CFrame = CFrame.new(position + Vector3.new(0, 4, 0))
-	part.Parent = getFolder()
+	-- Penghalang dirakit sebagai Model: bidang gaya di tengah, dua tiang
+	-- pemancar di sisinya, dan satu palang menyala di atas.
+	--
+	-- Bidang gaya saja ternyata tidak cukup terbaca. Material ForceField
+	-- hampir tembus pandang, jadi di tengah arena yang juga penuh cahaya neon
+	-- dia mudah dikira efek lain, dan pemain yang baru membayar 180 koin
+	-- tidak bisa memastikan pembeliannya benar-benar terpasang. Dua tiang
+	-- padat di sisinya yang memberi penghalang ini bentuk yang jelas.
+	local model = Instance.new("Model")
+	model.Name = string.format("Barrier%d", laneIndex)
+
+	local center = position + Vector3.new(0, 4, 0)
+
+	local field = Instance.new("Part")
+	field.Name = "Field"
+	field.Size = Vector3.new(16, 8, 1)
+	field.Color = Color3.fromRGB(90, 170, 240)
+	field.Material = Enum.Material.ForceField
+	field.Anchored = true
+	field.CanCollide = false
+	field.CanQuery = false
+	field.CanTouch = false
+	field.CastShadow = false
+	field.CFrame = CFrame.new(center)
+	field.Parent = model
+	model.PrimaryPart = field
+
+	for _, spec in
+		{
+			{
+				name = "PostLeft",
+				size = Vector3.new(1.2, 9, 1.2),
+				at = Vector3.new(-8, 0.5, 0),
+				color = Color3.fromRGB(32, 38, 48),
+				material = Enum.Material.Metal,
+			},
+			{
+				name = "PostRight",
+				size = Vector3.new(1.2, 9, 1.2),
+				at = Vector3.new(8, 0.5, 0),
+				color = Color3.fromRGB(32, 38, 48),
+				material = Enum.Material.Metal,
+			},
+			{
+				name = "Bar",
+				size = Vector3.new(17.5, 0.6, 1.4),
+				at = Vector3.new(0, 4.6, 0),
+				color = Color3.fromRGB(120, 190, 255),
+				material = Enum.Material.Neon,
+			},
+		}
+	do
+		local p = Instance.new("Part")
+		p.Name = spec.name
+		p.Size = spec.size
+		p.Color = spec.color
+		p.Material = spec.material
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		p.CastShadow = false
+		p.CFrame = CFrame.new(center + spec.at)
+		p.Parent = model
+	end
+
+	model.Parent = getFolder()
+	local part = model
+
+	-- Firewall naik dari lantai. Mulai setipis 0.5 stud dan tembus pandang,
+	-- lalu tumbuh ke tinggi penuh, bacaannya "penghalang sedang dipasang",
+	-- bukan "ada dinding yang tiba-tiba ada".
+	field.Size = Vector3.new(16, 0.5, 1)
+	field.CFrame = CFrame.new(center - Vector3.new(0, 3.75, 0))
+	field.Transparency = 1
+	tweenIn(field, Vector3.new(16, 8, 1), CFrame.new(center), 0)
 
 	-- Dihapus setelah durasinya habis, dengan Debris-style task.delay. Bukan
 	-- dibiarkan lalu dibersihkan saat match selesai: pemain harus melihat
@@ -390,17 +488,111 @@ local function spawnTurret()
 	local position = arena.corePosition
 		+ Vector3.new(math.cos(angle) * radius, 3, math.sin(angle) * radius)
 
-	local part = Instance.new("Part")
-	part.Name = string.format("Turret%d", index + 1)
-	part.Size = Vector3.new(3, 6, 3)
-	part.Color = Color3.fromRGB(120, 220, 200)
-	part.Material = Enum.Material.Metal
-	part.Anchored = true
-	part.CanCollide = false
-	part.CFrame = CFrame.new(position)
-	part.Parent = getFolder()
+	-- Turret dirakit dari lima bagian, bukan satu kotak.
+	--
+	-- Dulu dia satu Part 3x6x3 berwarna hijau toska, dan dari jarak main tidak
+	-- ada yang membedakannya dari properti arena lain. Pemain yang membayar
+	-- 250 koin untuknya pantas melihat benda yang jelas BERGUNA, dan karena
+	-- kepalanya sekarang berputar mengikuti sasaran, turret juga jadi petunjuk
+	-- gratis ke arah mana musuh terdekat berada.
+	local model = Instance.new("Model")
+	model.Name = string.format("Turret%d", index + 1)
 
-	table.insert(turrets, { part = part, position = position, nextShotAt = 0 })
+	local function piece(
+		name: string,
+		size: Vector3,
+		cf: CFrame,
+		color: Color3,
+		material: Enum.Material
+	): Part
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Size = size
+		p.CFrame = cf
+		p.Color = color
+		p.Material = material
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.Parent = model
+		return p
+	end
+
+	local ground = position - Vector3.new(0, 3, 0)
+	local steel = Color3.fromRGB(44, 52, 64)
+	local glow = Color3.fromRGB(120, 230, 210)
+
+	piece(
+		"Base",
+		Vector3.new(4, 0.6, 4),
+		CFrame.new(ground + Vector3.new(0, 0.3, 0)),
+		steel,
+		Enum.Material.DiamondPlate
+	)
+	piece(
+		"Column",
+		Vector3.new(1.3, 3.2, 1.3),
+		CFrame.new(ground + Vector3.new(0, 2, 0)),
+		steel,
+		Enum.Material.Metal
+	)
+
+	local head = piece(
+		"Head",
+		Vector3.new(2.4, 1.6, 2.8),
+		CFrame.new(ground + Vector3.new(0, 4.2, 0)),
+		Color3.fromRGB(58, 68, 82),
+		Enum.Material.Metal
+	)
+
+	-- Laras dan lensa dilas ke kepala, jadi keduanya ikut berputar saat kepala
+	-- diarahkan. Tanpa las, memutar kepala akan meninggalkan larasnya diam.
+	for _, spec in
+		{
+			{
+				name = "Barrel",
+				size = Vector3.new(0.4, 0.4, 2.2),
+				at = Vector3.new(0, 0, -2),
+				color = steel,
+				mat = Enum.Material.Metal,
+			},
+			{
+				name = "Lens",
+				size = Vector3.new(0.8, 0.8, 0.3),
+				at = Vector3.new(0, 0.5, -1.5),
+				color = glow,
+				mat = Enum.Material.Neon,
+			},
+		}
+	do
+		local p =
+			piece(spec.name, spec.size, head.CFrame * CFrame.new(spec.at), spec.color, spec.mat)
+		p.Anchored = false
+		p.Massless = true
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = head
+		weld.Part1 = p
+		weld.Parent = p
+	end
+
+	model.PrimaryPart = head
+	model.Parent = getFolder()
+
+	-- Turret naik dari dalam lantai. Hanya kepala yang dianimasikan: laras dan
+	-- lensa dilas padanya, jadi keduanya ikut terangkat tanpa perlu tween
+	-- sendiri, dan tween terpisah untuk tiap bagian justru berisiko membuat
+	-- mereka sampai di waktu yang sedikit berbeda dan terlihat terlepas.
+	local headGoal = head.CFrame
+	head.CFrame = headGoal - Vector3.new(0, 4.5, 0)
+	tweenIn(head, head.Size, headGoal, 0)
+
+	table.insert(
+		turrets,
+		{ part = model, head = head :: BasePart, position = position, nextShotAt = 0 }
+	)
 end
 
 local function stepTurrets()
@@ -422,6 +614,7 @@ local function stepTurrets()
 		-- referensi ke musuh yang sudah dihapus adalah cara paling mudah
 		-- membuat turret berhenti menembak selamanya.
 		local bestId: number? = nil
+		local bestPosition: Vector3? = nil
 		local bestDistance = Balance.TURRET_RANGE
 		for id, enemy in EnemyService.getAll() do
 			if enemy.dead then
@@ -431,6 +624,7 @@ local function stepTurrets()
 			if distance <= bestDistance then
 				bestDistance = distance
 				bestId = id
+				bestPosition = enemy.position
 			end
 		end
 
@@ -439,7 +633,23 @@ local function stepTurrets()
 			-- Turret tidak dikaitkan ke pemain mana pun: koin dari musuh yang
 			-- dibunuhnya masuk ke tim, sama seperti koin lainnya.
 			EnemyService.damage(bestId, Balance.TURRET_DAMAGE, nil)
-			turret.part.CFrame = CFrame.lookAt(turret.position, turret.position)
+
+			-- BUG LAMA YANG DIPERBAIKI DI SINI. Baris ini dulu berbunyi
+			-- `CFrame.lookAt(turret.position, turret.position)`, titik asal
+			-- dan titik tujuan yang SAMA PERSIS. Arah pandang jadi vektor nol,
+			-- dan hasilnya orientasi yang tidak terdefinisi: turret tidak
+			-- pernah benar-benar menghadap sasarannya sejak awal. Tidak ada
+			-- error, karena yang keliru di sini cuma arah hadap sebuah Part.
+			--
+			-- Sasaran diratakan ke ketinggian kepala (`head.Y`) supaya laras
+			-- tidak menunduk ke lantai saat menembak musuh yang pusatnya lebih
+			-- rendah.
+			local target = bestPosition
+			if target ~= nil then
+				local headPosition = turret.head.Position
+				turret.head.CFrame =
+					CFrame.lookAt(headPosition, Vector3.new(target.X, headPosition.Y, target.Z))
+			end
 		end
 	end
 end

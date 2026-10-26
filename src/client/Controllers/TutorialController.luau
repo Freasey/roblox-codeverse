@@ -49,7 +49,7 @@ local STEPS: { [string]: Step } = {
 	countdown = {
 		id = "countdown",
 		text = "Match dimulai. Berdirilah di antara jalur musuh dan Core Server. "
-			.. "Tekan C untuk jongkok; jalanmu jadi setengah kecepatan.",
+			.. "Shift lari, C jongkok, Q dash — ketiganya memakai stamina.",
 	},
 	wave1 = {
 		id = "wave1",

@@ -37,16 +37,19 @@ local EVENT_NAMES = {
 	"SetReady", -- C -> S: boolean
 	"SelectLoadout", -- C -> S: weaponId, difficultyId
 
+	-- Gerak (Soal 4)
+	--
+	-- Payload-nya satu STRING niat ("walk"/"sprint"/"crouch"/"dash"), bukan
+	-- kecepatan dan bukan vektor. Alasannya sama dengan `Attack`: client boleh
+	-- mengatakan apa yang DIINGINKAN pemain, tidak pernah apa yang terjadi.
+	-- Client yang dimodifikasi hanya bisa meminta sprint, dan server yang
+	-- memutuskan apakah staminanya cukup. Arah dash pun dibaca server dari
+	-- `Humanoid.MoveDirection`, bukan dikirim client, kalau dikirim, dash
+	-- bisa dipakai menembus dinding dengan arah karangan.
+	"MoveIntent", -- C -> S: string niat gerak
+
 	-- Combat (bagian 3.7)
 	"Attack", -- C -> S: Vector3 arah bidik
-	-- C -> S: boolean, mau jongkok atau berdiri.
-	--
-	-- Jongkok tidak punya efek gameplay (CrouchService menjelaskan kenapa),
-	-- jadi remote ini tidak membawa keputusan apa pun -- dia ada supaya
-	-- SERVER yang menulis HipHeight dan WalkSpeed. Properti yang ditulis
-	-- script client cuma berlaku di layar client itu, jadi tanpa remote ini
-	-- pemain melihat dirinya jongkok sementara yang lain melihatnya berdiri.
-	"SetCrouch",
 	"EnemyHit", -- S -> C: { id, damage, position } — untuk efek saja
 
 	-- Toko Match

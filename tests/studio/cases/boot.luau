@@ -42,7 +42,6 @@ local EXPECTED_LINES = {
 	"[BossService] siap",
 	"[ProgressionService] siap",
 	"[LeaderboardService] siap",
-	"[CrouchService] siap",
 }
 
 -- Berapa KALI sebuah baris muncul di log, bukan cuma apakah dia ada.
@@ -80,13 +79,13 @@ T.main(function()
 	-- salah, dan itu kegagalan yang terlihat sukses.
 	local arenaLine = T.logFind("[MapService] Arena siap")
 	T.ok(
-		"boot.arena.2lane",
-		arenaLine ~= nil and string.find(arenaLine, "2 lane", 1, true) ~= nil,
+		"boot.arena.3lane",
+		arenaLine ~= nil and string.find(arenaLine, "3 lane", 1, true) ~= nil,
 		arenaLine
 	)
 	T.ok(
 		"boot.arena.waypointTerCache",
-		arenaLine ~= nil and string.find(arenaLine, "Lane1=7, Lane2=7", 1, true) ~= nil,
+		arenaLine ~= nil and string.find(arenaLine, "Lane1=7, Lane2=7, Lane3=7", 1, true) ~= nil,
 		arenaLine
 	)
 
@@ -195,14 +194,14 @@ T.main(function()
 	T.eq("boot.coreHpPenuh", CoreService.getHp(), CoreService.getMaxHp())
 	T.ok("boot.coreTidakHancur", not CoreService.isDestroyed())
 	T.eq("boot.tidakAdaMusuh", EnemyService.activeCount(), 0)
-	T.eq("boot.jumlahLane", EnemyService.laneCount(), 2)
+	T.eq("boot.jumlahLane", EnemyService.laneCount(), 3)
 
 	-- Arena benar-benar ada sebagai Instance, bukan cuma angka di log.
 	local arena = MapService.getArena()
 	T.ok("boot.arena.bukanNil", arena ~= nil)
 	if arena ~= nil then
 		T.ok("boot.arena.corePart", arena.corePart ~= nil and arena.corePart:IsA("BasePart"))
-		T.eq("boot.arena.laneDiArena", #arena.lanes, 2)
+		T.eq("boot.arena.laneDiArena", #arena.lanes, 3)
 		T.ok(
 			"boot.arena.corePositionWajar",
 			arena.corePosition.Magnitude == arena.corePosition.Magnitude,

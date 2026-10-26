@@ -23,10 +23,14 @@ local Remotes = require(Shared.Remotes)
 local Waves = require(Shared.Modules.Waves)
 
 local Services = script.Services
+local ArenaBuilder = require(Services.ArenaBuilder)
 local BossService = require(Services.BossService)
+local CharacterService = require(Services.CharacterService)
 local CombatService = require(Services.CombatService)
+local MovementService = require(Services.MovementService)
+local SceneryService = require(Services.SceneryService)
+local WeaponService = require(Services.WeaponService)
 local CoreService = require(Services.CoreService)
-local CrouchService = require(Services.CrouchService)
 local EnemyService = require(Services.EnemyService)
 local LeaderboardService = require(Services.LeaderboardService)
 local MapService = require(Services.MapService)
@@ -74,6 +78,19 @@ end)
 RewardService.start()
 
 PlayerDataService.start()
+
+-- Rancangan karakter (Soal 1). Dijalankan DI SINI, di atas gerbang arena, dan
+-- itu disengaja: tampilan karakter tidak ada hubungannya dengan ada atau
+-- tidaknya map. Kalau dipasang di bawah gerbang, place yang belum punya
+-- assets/Arena.rbxmx akan menampilkan pemain sebagai avatar bawaan di lobby,
+-- yaitu justru keadaan yang paling sering dipakai saat mengambil screenshot.
+CharacterService.start()
+
+-- Senjata yang terlihat di tangan. Dijalankan SETELAH PlayerDataService.start()
+-- di atas, dan itu syarat: senjata yang dipasang dibaca dari data tersimpan
+-- pemain, jadi tanpa data yang sudah dimuat setiap pemain akan selalu memegang
+-- senjata awal sampai pemeriksaan berkala berikutnya.
+WeaponService.start()
 
 -- Rate limit dua remote yang wiring-nya ada di file ini, bukan di service
 -- (bagian 3.6 mewajibkannya untuk SEMUA remote C -> S). Batasnya 2/detik
@@ -138,6 +155,30 @@ end)
 -- dibuka -- persis keadaan saat seseorang baru clone repo ini dan belum punya
 -- assets/Arena.rbxmx.
 LeaderboardService.start()
+
+-- --------------------------------------------------------------------------
+-- Dunia
+-- --------------------------------------------------------------------------
+--
+-- Arena, lobby, dan latar dibangun DARI KODE di sini, dan urutannya mengikat:
+-- keduanya harus selesai SEBELUM `MapService.getArena()` di bawah, karena
+-- MapService membaca Workspace sekali lalu meng-cache hasilnya untuk seumur
+-- server. Dibalik urutannya, MapService akan membaca arena lama, atau tidak
+-- menemukan apa pun, dan seluruh gameplay di bawah tidak dijalankan.
+--
+-- Kalau salah satunya gagal, keduanya sudah mengeluarkan warn sendiri yang
+-- menyebut penyebabnya, dan arena lama di place tetap utuh.
+local sceneryOk, sceneryErr = SceneryService.validate()
+if not sceneryOk then
+	warn(string.format("[%s] latar tidak valid: %s", Config.GAME_NAME, tostring(sceneryErr)))
+end
+SceneryService.build()
+ArenaBuilder.build()
+
+-- Aturan gerak (Soal 4). Tidak bergantung pada arena, tapi ditaruh setelahnya
+-- supaya pemain pertama yang masuk sudah punya lantai untuk dipijak sebelum
+-- kecepatan jalannya disetel.
+MovementService.start()
 
 -- --------------------------------------------------------------------------
 -- Gameplay
@@ -214,10 +255,6 @@ WaveService.start()
 ShopService.start()
 BossService.start()
 ProgressionService.start()
--- Jongkok tidak menyentuh match sama sekali: boleh di lobby, boleh di
--- tengah wave, dan tidak ada state yang menggerbangnya. Jadi dia tidak
--- disambungkan ke apa pun -- cuma dinyalakan.
-CrouchService.start()
 
 -- Boss mati bisa berarti wave sudah bersih (kalau musuh biasanya sudah habis
 -- lebih dulu). Diperiksa lewat jalur yang sama dengan musuh terakhir mati.
