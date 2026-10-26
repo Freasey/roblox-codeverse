@@ -255,6 +255,27 @@ local function onAttack(player: Player, rawDirection: unknown)
 	end
 	lastAttackAt[player.UserId] = now
 
+	-- Penanda untuk animasi serangan di client.
+	--
+	-- Ditaruh DI SINI, tepat setelah cooldown lolos dan SEBELUM target dicari,
+	-- dan itu disengaja: ayunan harus terlihat walaupun tidak kena siapa-siapa.
+	-- Kalau penanda ini dipasang setelah `#hits == 0`, senjata pemain hanya
+	-- bergerak saat serangannya berhasil, dan pemain yang meleset akan
+	-- mengira tombolnya tidak terbaca, bukan mengira dia meleset.
+	--
+	-- Isinya NOMOR URUT, bukan waktu. `os.clock()` di server dan di client
+	-- menghitung dari titik awal yang berbeda, jadi stempel waktu server tidak
+	-- berarti apa-apa di client. Yang dibutuhkan client cuma "ada serangan
+	-- baru", dan untuk itu angka yang BERUBAH sudah cukup.
+	local character = player.Character
+	if character ~= nil then
+		local sequence = character:GetAttribute("AttackSeq")
+		character:SetAttribute(
+			"AttackSeq",
+			if type(sequence) == "number" then sequence + 1 else 1
+		)
+	end
+
 	local damage = stats.damage * math.max(0, mods.damageMult)
 	if damage <= 0 then
 		return

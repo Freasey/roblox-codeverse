@@ -28,6 +28,17 @@ local EVENT_NAMES = {
 	"SetReady", -- C -> S: boolean
 	"SelectLoadout", -- C -> S: weaponId, difficultyId
 
+	-- Gerak (Soal 4)
+	--
+	-- Payload-nya satu STRING niat ("walk"/"sprint"/"crouch"/"dash"), bukan
+	-- kecepatan dan bukan vektor. Alasannya sama dengan `Attack`: client boleh
+	-- mengatakan apa yang DIINGINKAN pemain, tidak pernah apa yang terjadi.
+	-- Client yang dimodifikasi hanya bisa meminta sprint, dan server yang
+	-- memutuskan apakah staminanya cukup. Arah dash pun dibaca server dari
+	-- `Humanoid.MoveDirection`, bukan dikirim client, kalau dikirim, dash
+	-- bisa dipakai menembus dinding dengan arah karangan.
+	"MoveIntent", -- C -> S: string niat gerak
+
 	-- Combat (bagian 3.7)
 	"Attack", -- C -> S: Vector3 arah bidik
 	"EnemyHit", -- S -> C: { id, damage, position } — untuk efek saja

@@ -1,0 +1,25 @@
+--!strict
+-- Animate: SENGAJA KOSONG.
+--
+-- File ini tidak menganimasikan apa pun, dan itu memang pekerjaannya.
+--
+-- Roblox menyisipkan LocalScript bernama `Animate` ke dalam setiap karakter
+-- saat spawn, dan script itulah yang memutar klip idle/walk/run/jump bawaan
+-- lewat Animator. Penyisipan itu dilewati kalau karakternya SUDAH punya anak
+-- bernama `Animate`, dan karena seluruh isi StarterCharacterScripts disalin
+-- ke dalam karakter sebelum pemeriksaan itu, file inilah yang menempati
+-- tempatnya.
+--
+-- Kenapa harus dilewati: animasi di game ini dihitung, bukan diputar dari klip
+-- (alasan lengkapnya ada di kepala `Shared.Modules.Poses`). Kalau `Animate`
+-- bawaan tetap jalan, Animator akan menulis ke sendi yang sama setiap frame,
+-- dan dua penulis pada satu Motor6D menghasilkan karakter yang bergetar,
+-- bukan satu animasi menang atas yang lain, melainkan keduanya tampak
+-- berkedip bergantian.
+--
+-- JANGAN menghapus file ini dengan alasan "isinya kosong". Menghapusnya
+-- mengembalikan animasi bawaan, dan gejalanya tidak akan terbaca sebagai
+-- akibat dari penghapusan ini.
+--
+-- Yang menganimasikan karakter:
+--   StarterPlayerScripts/Client/Controllers/CharacterAnimatorController.luau
