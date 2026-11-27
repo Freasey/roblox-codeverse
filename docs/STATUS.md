@@ -296,6 +296,36 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
   menang, melainkan karakter yang berkedip bergantian. **Kalau karakternya
   bergetar, itu gejala pertama yang harus dicari.**
 
+  **`StarterPlayer.AvatarJointUpgrade` WAJIB `Disabled`, dan ini temuan
+  playtest pertama (2026-11-27).** Roblox sedang memigrasi rig R15: sendinya
+  bukan lagi `Motor6D` melainkan `AnimationConstraint`, dengan nama yang
+  PERSIS SAMA (Root, Waist, Neck, LeftShoulder, ...). Place yang tidak
+  menyetel properti ini ikut migrasi itu, dan akibatnya tidak terbaca sebagai
+  error apa pun: `CharacterAnimatorController` mencari `Motor6D`, menemukan
+  **nol**, dan karena Animate bawaan sudah ditahan oleh stub kosong,
+  karakternya **meluncur tanpa animasi sama sekali** -- bukan animasi yang
+  salah, tapi patung yang bergeser.
+
+  `default.project.json` sekarang menyetelnya `Disabled`, dan itu terbukti:
+  sebelum → `motor6d=0`, sendinya `AnimationConstraint`, Output berisi
+  `animasi DAFFAARDHANA berjalan tanpa 13 sendi`. Sesudah → `motor6d=15` dan
+  `animasi aktif untuk DAFFAARDHANA (13 sendi)`.
+
+  Dua hal yang perlu disadari. Pertama, **place yang dibuat tangan di Studio
+  tidak kebagian** properti ini; dia cuma ikut kalau place-nya dibangun atau
+  disinkronkan dari `default.project.json`. Kedua, ini **menunda migrasi
+  Roblox, bukan menyelesaikannya**: suatu saat opt-out-nya hilang, dan saat
+  itu `CharacterAnimatorController` harus bisa menulis ke
+  `AnimationConstraint`, bukan cuma ke `Motor6D`. Itu utang yang sudah punya
+  tanggal jatuh tempo, cuma belum diketahui tanggalnya.
+
+  Catatan kecil yang mahal: pesan peringatan animator dulu menyarankan
+  "kalau rig-nya R6, setel Avatar Type ke R15". Saran itu **salah** untuk
+  kasus ini -- rig-nya memang sudah R15 -- dan sempat membuat pelacakannya
+  berputar ke arah yang keliru. Pesannya sudah dibetulkan: sekarang dia
+  membedakan "semua sendi hilang" (joint upgrade) dari "sebagian hilang"
+  (R6 atau replikasi yang belum selesai).
+
   **Gerak pemain jadi tiga sikap badan.** Shift lari, C jongkok, Q dash, dan
   ketiganya memakai stamina: sprint menguras, jongkok memulihkan paling cepat.
   Server yang menegakkannya (`MovementService` membaca `MoveRules`), client

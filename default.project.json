@@ -20,7 +20,8 @@
 
     "StarterPlayer": {
       "$properties": {
-        "LoadCharacterAppearance": true
+        "LoadCharacterAppearance": true,
+        "AvatarJointUpgrade": "Disabled"
       },
 
       "StarterPlayerScripts": {

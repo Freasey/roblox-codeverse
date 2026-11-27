@@ -279,7 +279,8 @@ local function update(entry: Entry, dt: number)
 	--
 	-- Versi sebelumnya keluar dari fungsi ini kalau ada satu saja sendi yang
 	-- belum ketemu. Niatnya baik, akibatnya buruk: satu nama sendi yang tidak
-	-- cocok (rig R6, bagian tubuh yang belum sempat direplikasi, aksesori yang
+	-- cocok (Avatar Joint Upgrade yang mengganti Motor6D jadi AnimationConstraint,
+	-- rig R6, bagian tubuh yang belum sempat direplikasi, aksesori yang
 	-- menyisipkan Motor6D bernama lain) membuat SELURUH karakter diam total,
 	-- dan tidak ada apa pun di layar maupun di Output yang menjelaskannya.
 	--
@@ -306,7 +307,12 @@ local function update(entry: Entry, dt: number)
 			warn(
 				string.format(
 					"[CodeVerse] animasi %s berjalan tanpa %d sendi: %s. "
-						.. "Kalau rig-nya R6, setel Game Settings > Avatar > Avatar Type ke R15.",
+						.. "Kalau SEMUA sendi hilang padahal rig-nya R15, sebabnya hampir "
+						.. "pasti Avatar Joint Upgrade: sendinya AnimationConstraint, bukan "
+						.. "Motor6D. Setel StarterPlayer.AvatarJointUpgrade ke Disabled "
+						.. "(default.project.json sudah melakukannya; place yang dibuat "
+						.. "tangan belum). Kalau cuma SEBAGIAN yang hilang, rig-nya R6 atau "
+						.. "bagian tubuhnya belum sempat direplikasi.",
 					entry.character.Name,
 					#entry.missing,
 					table.concat(entry.missing, ", ")
