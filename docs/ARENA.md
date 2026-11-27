@@ -1,5 +1,20 @@
 # Arena graybox: cara menghasilkan `assets/Arena.rbxmx`
 
+> **KEDALUWARSA sejak 2026-10-26, dan tidak lagi dipakai sejak 2026-11-27.**
+>
+> Arena CodeVerse sekarang dibangun `ArenaBuilder` dari `ArenaLayout` saat
+> server start, dengan **tiga** lane, bersama lobby dan latar belakangnya.
+> Tidak ada file arena yang perlu dihasilkan, disimpan, atau di-commit lagi.
+>
+> `assets/Arena.rbxmx` masih ada di git sebagai arsip, tapi **tidak lagi
+> di-mount** oleh `default.project.json`: isinya arena dua lane, dan satu-
+> satunya yang dia lakukan adalah membuat Edit mode terlihat seperti seluruh
+> migrasi dibatalkan. `scripts/build_arena.luau` juga masih jalan dan masih
+> menghasilkan bentuk lama -- **jangan dijalankan untuk "memperbaiki" arena.**
+>
+> Dokumen ini disimpan karena dia menjelaskan bagaimana aset itu dulu dibuat,
+> dan kenapa waypoint-nya dinamai angka. Jangan diikuti sebagai prosedur.
+
 Arena CodeVerse tidak dibangun dengan klik di Studio, tapi dihasilkan oleh
 script: [`scripts/build_arena.luau`](../scripts/build_arena.luau). Alasannya ada
 satu dan cukup penting — kode M1 membaca jalur musuh dari **nama** Part

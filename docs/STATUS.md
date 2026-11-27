@@ -191,8 +191,8 @@ Simulation → Bad Internet**, jalankan hanya case ini, lalu **matikan lagi**.
 Jangan digabung dengan lapis 2: dengan lag menyala semua case lain ikut terasa
 aneh dan kamu akan mengejar bug yang tidak ada.
 
-**Lapis 4 — dua case `EDIT`, paling akhir.** `BOOT-03` (rename
-`assets/Arena.rbxmx`) dan `BOOT-06` (set `DEBUG_VISIBLE_WAYPOINTS = true`).
+**Lapis 4 — dua case `EDIT`, paling akhir.** `BOOT-03` (nonaktifkan
+`ArenaBuilder.build()`) dan `BOOT-06` (set `DEBUG_VISIBLE_WAYPOINTS = true`).
 Keduanya mengubah file di working tree, jadi menjalankannya lebih awal berarti
 seluruh sisa playtest dikerjakan di atas repo yang sudah kotor. Setelah selesai,
 `git status` harus bersih lagi — itu caranya tahu kedua perubahan sudah
@@ -262,11 +262,28 @@ Jujur, karena ini mudah disalahpahami sebagai "sudah beres":
 
   **Arena dibangun dari kode, bukan dari file.** `ArenaBuilder` merakit arena,
   lobby, dan latar belakang dari `ArenaLayout` saat server start;
-  `SceneryService` menyetel pencahayaan, kabut, dan atmosphere. `assets/Arena.rbxmx`
-  sengaja TIDAK dihapus: builder merakit yang baru di luar Workspace lalu
-  menukarnya, jadi kalau dia gagal di tengah jalan yang tersisa arena lama,
-  bukan place tanpa lantai. Kalau arena yang muncul terlihat seperti graybox
-  lama, itu bukan selera -- itu builder yang gagal, dan warn-nya ada di Output.
+  `SceneryService` menyetel pencahayaan, kabut, dan atmosphere.
+
+  **`assets/Arena.rbxmx` tidak lagi di-mount sejak 2026-11-27**, dan alasannya
+  layak dibaca sekali. Dia sempat dibiarkan ter-mount sebagai jaring pengaman
+  kalau builder gagal di tengah jalan. Tapi file itu arena graybox PRA-migrasi
+  dengan **dua** lane (Lane1 dan Lane2, tujuh waypoint masing-masing),
+  sementara kodenya tiga -- jadi yang dia tawarkan bukan arena sederhana yang
+  masih bisa dimainkan, melainkan game yang menebar musuh ke lane yang tidak
+  punya bentuk fisik.
+
+  Dan dia menagih harga tiap hari: karena arena sungguhan baru ada setelah
+  server hidup, satu-satunya yang terlihat di **Edit mode** adalah file itu.
+  Membuka place-nya berarti melihat graybox dua lane tanpa lobby, tanpa latar,
+  tanpa pencahayaan -- yang terbaca persis seperti seluruh pekerjaan migrasi
+  dibatalkan. Itu betulan terjadi ke Daffa pada 2026-11-27.
+
+  Sekarang `Workspace` tidak memetakan apa pun. Di Edit mode dia KOSONG, dan
+  itu jujur: arena memang belum ada sebelum F5. Filenya tetap di git sebagai
+  arsip; `docs/ARENA.md` yang menjelaskan cara membuatnya sudah diberi
+  penanda kedaluwarsa. Kalau builder gagal sekarang, pemain jatuh tanpa lantai
+  -- kegagalan yang tidak bisa disalahpahami sebagai "arenanya cuma jelek" --
+  dan warn `[ArenaBuilder]` ada di Output.
 
   **Arena barunya punya TIGA lane.** Kode tidak pernah mematok dua; yang
   mematok cuma harness, dan patokannya sudah diperbarui. Yang perlu dilihat

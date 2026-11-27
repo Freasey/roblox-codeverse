@@ -32,16 +32,6 @@
       "StarterCharacterScripts": {
         "$path": "src/character"
       }
-    },
-
-    "Workspace": {
-      "Arena": {
-        "$path": "assets/Arena.rbxmx"
-      },
-
-      "Lobby": {
-        "$path": { "optional": "assets/Lobby.rbxmx" }
-      }
     }
   }
 }

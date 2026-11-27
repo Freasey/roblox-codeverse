@@ -153,8 +153,8 @@ end)
 -- `OnServerInvoke` untuk `GetLeaderboard`, dan remote yang terdaftar tanpa
 -- handler membuat client yang memanggilnya menggantung selamanya. Kalau
 -- dipindah ke bawah, place tanpa arena akan membekukan lobby tiap kali papan
--- dibuka -- persis keadaan saat seseorang baru clone repo ini dan belum punya
--- assets/Arena.rbxmx.
+-- dibuka -- persis keadaan yang terjadi kalau `ArenaBuilder.build()` di bawah
+-- gagal.
 LeaderboardService.start()
 
 -- --------------------------------------------------------------------------
@@ -168,7 +168,13 @@ LeaderboardService.start()
 -- menemukan apa pun, dan seluruh gameplay di bawah tidak dijalankan.
 --
 -- Kalau salah satunya gagal, keduanya sudah mengeluarkan warn sendiri yang
--- menyebut penyebabnya, dan arena lama di place tetap utuh.
+-- menyebut penyebabnya, dan Workspace tinggal KOSONG. Itu disengaja sejak
+-- 2026-11-27: `assets/Arena.rbxmx` tidak lagi di-mount. Dia dulu di situ
+-- sebagai jaring kalau builder gagal, tapi jaring itu DUA lane sementara
+-- kodenya tiga, jadi yang dia hasilkan bukan arena sederhana yang masih bisa
+-- dimainkan melainkan game yang menebar musuh ke lane yang tidak punya
+-- bentuk fisik. Workspace kosong gagal dengan jujur: pemain jatuh, warn-nya
+-- terbaca, dan tidak ada yang mengira arenanya cuma jelek.
 local sceneryOk, sceneryErr = SceneryService.validate()
 if not sceneryOk then
 	warn(string.format("[%s] latar tidak valid: %s", Config.GAME_NAME, tostring(sceneryErr)))
